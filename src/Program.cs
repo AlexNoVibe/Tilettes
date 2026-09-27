@@ -12,6 +12,12 @@ namespace WinPanel
         private TabControl tabControl;
         private NotifyIcon trayIcon;
 
+        // Colors for modern dark theme
+        private Color bgColor = Color.FromArgb(30, 30, 30); // #1E1E1E
+        private Color panelColor = Color.FromArgb(45, 45, 48); // #2D2D30
+        private Color hoverColor = Color.FromArgb(62, 62, 66);
+        private Color textColor = Color.White;
+
         public MainForm()
         {
             settings = Settings.Load(settingsPath);
@@ -21,11 +27,21 @@ namespace WinPanel
             this.Height = settings.WindowHeight;
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(settings.WindowX, settings.WindowY);
+            
+            // Apply Modern Flat Design to Form
+            this.BackColor = bgColor;
+            this.ForeColor = textColor;
+            this.Font = new Font("Segoe UI", 9f);
+            this.Padding = new Padding(5);
 
             tabControl = new TabControl
             {
-                Dock = DockStyle.Fill
+                Dock = DockStyle.Fill,
+                DrawMode = TabDrawMode.OwnerDrawFixed,
+                Padding = new Point(12, 8)
             };
+            tabControl.DrawItem += TabControl_DrawItem;
+            
             this.Controls.Add(tabControl);
 
             trayIcon = new NotifyIcon();
@@ -48,6 +64,22 @@ namespace WinPanel
             this.ContextMenu = formMenu;
 
             LoadTabs();
+        }
+
+        private void TabControl_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            var g = e.Graphics;
+            var tabPage = tabControl.TabPages[e.Index];
+            var tabBounds = tabControl.GetTabRect(e.Index);
+
+            bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            
+            using (var brush = new SolidBrush(isSelected ? panelColor : bgColor))
+            {
+                g.FillRectangle(brush, tabBounds);
+            }
+
+            TextRenderer.DrawText(g, tabPage.Text, e.Font, tabBounds, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
 
         private void OpenSettings()
@@ -92,13 +124,19 @@ namespace WinPanel
             tabControl.TabPages.Clear();
             foreach (var tabData in settings.Tabs)
             {
-                var page = new TabPage(tabData.Name);
+                var page = new TabPage(tabData.Name)
+                {
+                    BackColor = bgColor
+                };
+                
                 var flowLayout = new FlowLayoutPanel
                 {
                     Dock = DockStyle.Fill,
                     AutoScroll = true,
                     AllowDrop = true,
-                    Tag = tabData
+                    Tag = tabData,
+                    BackColor = bgColor,
+                    Padding = new Padding(10)
                 };
                 flowLayout.DragEnter += FlowLayout_DragEnter;
                 flowLayout.DragDrop += FlowLayout_DragDrop;
@@ -157,8 +195,14 @@ namespace WinPanel
                 Text = item.Name,
                 TextImageRelation = TextImageRelation.ImageAboveText,
                 TextAlign = ContentAlignment.BottomCenter,
-                Margin = new Padding(5)
+                Margin = new Padding(5),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
             };
+            btn.FlatAppearance.BorderSize = 0;
+            btn.FlatAppearance.MouseOverBackColor = hoverColor;
+            btn.FlatAppearance.MouseDownBackColor = panelColor;
 
             try
             {
