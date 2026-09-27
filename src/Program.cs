@@ -95,6 +95,8 @@ namespace WinPanel
             {
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
+                    this.settings = Settings.Load(settingsPath);
+                    
                     this.Width = settings.WindowWidth;
                     this.Height = settings.WindowHeight;
                     this.Location = new Point(settings.WindowX, settings.WindowY);
@@ -291,6 +293,8 @@ namespace WinPanel
                 var targetList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
                 
                 var pt = layoutPanel.PointToClient(Cursor.Position);
+                pt.X -= layoutPanel.DisplayRectangle.X;
+                pt.Y -= layoutPanel.DisplayRectangle.Y;
                 
                 var folder = new ShortcutItem
                 {
@@ -320,6 +324,8 @@ namespace WinPanel
             var tabData = (TabData)layoutPanel.Tag;
 
             var pt = layoutPanel.PointToClient(new Point(e.X, e.Y));
+            pt.X -= layoutPanel.DisplayRectangle.X;
+            pt.Y -= layoutPanel.DisplayRectangle.Y;
             var navStack = tabNavigations[tabData];
             var targetList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
 
@@ -395,7 +401,10 @@ namespace WinPanel
                 {
                     if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     {
-                        pic.Image = IconExtractor.GetIcon(item.CustomIconPath, iconSize >= 32);
+                        if (item.CustomIconPath.ToLower().EndsWith(".exe") || item.CustomIconPath.ToLower().EndsWith(".ico"))
+                            pic.Image = IconExtractor.GetIcon(item.CustomIconPath, iconSize >= 32);
+                        else
+                            pic.Image = Image.FromFile(item.CustomIconPath);
                     }
                     else
                     {
@@ -404,6 +413,7 @@ namespace WinPanel
                     }
                 }
                 catch { }
+                if (pic.Image == null) pic.Image = SystemIcons.Application.ToBitmap();
             }
 
             var lbl = new Label

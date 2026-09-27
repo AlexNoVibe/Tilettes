@@ -77,6 +77,7 @@ namespace WinPanel
         private static Settings GetDefaultSettings(Settings baseSettings = null)
         {
             var s = baseSettings ?? new Settings();
+            if (s.Tabs == null) s.Tabs = new List<TabData>();
             if (s.Tabs.Count == 0)
             {
                 s.Tabs.Add(new TabData { Name = "Main" });
