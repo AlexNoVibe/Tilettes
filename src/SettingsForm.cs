@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 
 namespace WinPanel
@@ -16,6 +17,8 @@ namespace WinPanel
         private CheckBox chkMinimizeToTray;
         private Button btnSave;
         private Button btnCancel;
+        private Button btnBackup;
+        private Button btnRestore;
         
         private Color bgColor = Color.FromArgb(30, 30, 30);
         private Color panelColor = Color.FromArgb(45, 45, 48);
@@ -29,7 +32,7 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 320;
-            this.Height = 280;
+            this.Height = 350;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -52,13 +55,21 @@ namespace WinPanel
 
             chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = 140, Width = 250, Checked = settings.MinimizeToTray, FlatStyle = FlatStyle.Flat };
 
-            btnSave = new Button { Text = "Save", Left = 50, Top = 190, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = 180, Width = 120, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnBackup.FlatAppearance.BorderSize = 0;
+            btnBackup.Click += BtnBackup_Click;
+
+            btnRestore = new Button { Text = "Restore Settings", Left = 150, Top = 180, Width = 120, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnRestore.FlatAppearance.BorderSize = 0;
+            btnRestore.Click += BtnRestore_Click;
+
+            btnSave = new Button { Text = "Save", Left = 50, Top = 240, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
             btnSave.FlatAppearance.BorderSize = 0;
             btnSave.FlatAppearance.MouseOverBackColor = hoverColor;
             btnSave.FlatAppearance.MouseDownBackColor = panelColor;
             btnSave.Click += BtnSave_Click;
 
-            btnCancel = new Button { Text = "Cancel", Left = 160, Top = 190, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnCancel = new Button { Text = "Cancel", Left = 160, Top = 240, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
             btnCancel.FlatAppearance.BorderSize = 0;
             btnCancel.FlatAppearance.MouseOverBackColor = hoverColor;
             btnCancel.FlatAppearance.MouseDownBackColor = panelColor;
@@ -73,6 +84,8 @@ namespace WinPanel
             this.Controls.Add(lblY);
             this.Controls.Add(numY);
             this.Controls.Add(chkMinimizeToTray);
+            this.Controls.Add(btnBackup);
+            this.Controls.Add(btnRestore);
             this.Controls.Add(btnSave);
             this.Controls.Add(btnCancel);
         }
@@ -87,6 +100,44 @@ namespace WinPanel
             settings.Save(settingsPath);
             this.DialogResult = DialogResult.OK;
             this.Close();
+        }
+
+        private void BtnBackup_Click(object sender, EventArgs e)
+        {
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*";
+                sfd.FileName = "settings_backup.xml";
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    settings.Save(sfd.FileName);
+                    MessageBox.Show("Backup created successfully.", "Backup");
+                }
+            }
+        }
+
+        private void BtnRestore_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*";
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        File.Copy(ofd.FileName, settingsPath, true);
+                        MessageBox.Show("Settings restored successfully! They will take effect when you close this window.", "Restore");
+                        
+                        // We set dialog result to OK to let MainForm reload the newly copied settings
+                        this.DialogResult = DialogResult.OK;
+                        this.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Failed to restore settings: " + ex.Message, "Error");
+                    }
+                }
+            }
         }
     }
 }

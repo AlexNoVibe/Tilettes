@@ -163,7 +163,7 @@ namespace WinPanel
             }
         }
 
-        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSmall, Action onMedium, Action onLarge, Action onRemove)
+        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSmall, Action onMedium, Action onLarge, Action onRemove, Action onRename, Action onChangeIcon)
         {
             uint dummy;
             IntPtr pidl;
@@ -194,7 +194,9 @@ namespace WinPanel
                     AddMenuItem(hMenu, customIdStart, "Size: Small");
                     AddMenuItem(hMenu, customIdStart + 1, "Size: Medium");
                     AddMenuItem(hMenu, customIdStart + 2, "Size: Large");
-                    AddMenuItem(hMenu, customIdStart + 3, "Remove from Panel");
+                    AddMenuItem(hMenu, customIdStart + 3, "Rename");
+                    AddMenuItem(hMenu, customIdStart + 4, "Change Icon");
+                    AddMenuItem(hMenu, customIdStart + 5, "Remove from Panel");
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
                     uint cmd = TrackPopupMenuEx(hMenu, TPM_RETURNCMD, x, y, handle, IntPtr.Zero);
@@ -212,7 +214,9 @@ namespace WinPanel
                     else if (cmd == customIdStart) { if (onSmall != null) onSmall(); }
                     else if (cmd == customIdStart + 1) { if (onMedium != null) onMedium(); }
                     else if (cmd == customIdStart + 2) { if (onLarge != null) onLarge(); }
-                    else if (cmd == customIdStart + 3) { if (onRemove != null) onRemove(); }
+                    else if (cmd == customIdStart + 3) { if (onRename != null) onRename(); }
+                    else if (cmd == customIdStart + 4) { if (onChangeIcon != null) onChangeIcon(); }
+                    else if (cmd == customIdStart + 5) { if (onRemove != null) onRemove(); }
 
                     DestroyMenu(hMenu);
                     Marshal.ReleaseComObject(contextMenu);

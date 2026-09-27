@@ -9,6 +9,16 @@ namespace WinPanel
     {
         public string Path { get; set; }
         public string Name { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public bool IsFolder { get; set; }
+        public string CustomIconPath { get; set; }
+        public List<ShortcutItem> Children { get; set; }
+
+        public ShortcutItem()
+        {
+            Children = new List<ShortcutItem>();
+        }
     }
 
     public class TabData
