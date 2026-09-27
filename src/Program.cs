@@ -35,34 +35,31 @@ namespace WinPanel
             
             var trayMenu = new ContextMenu();
             trayMenu.MenuItems.Add("Restore", (s, e) => RestoreWindow());
+            trayMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
             trayMenu.MenuItems.Add("Exit", (s, e) => { Application.Exit(); });
             trayIcon.ContextMenu = trayMenu;
             trayIcon.Visible = true;
 
             this.FormClosing += MainForm_FormClosing;
-            this.ResizeEnd += MainForm_ResizeEnd;
-            this.LocationChanged += MainForm_LocationChanged;
+
+            // Adding a context menu to the form itself to access Settings easily
+            var formMenu = new ContextMenu();
+            formMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
+            this.ContextMenu = formMenu;
 
             LoadTabs();
         }
 
-        private void MainForm_LocationChanged(object sender, EventArgs e)
+        private void OpenSettings()
         {
-            if (this.WindowState == FormWindowState.Normal)
+            using (var sf = new SettingsForm(settings, settingsPath))
             {
-                settings.WindowX = this.Location.X;
-                settings.WindowY = this.Location.Y;
-                settings.Save(settingsPath);
-            }
-        }
-
-        private void MainForm_ResizeEnd(object sender, EventArgs e)
-        {
-            if (this.WindowState == FormWindowState.Normal)
-            {
-                settings.WindowWidth = this.Width;
-                settings.WindowHeight = this.Height;
-                settings.Save(settingsPath);
+                if (sf.ShowDialog() == DialogResult.OK)
+                {
+                    this.Width = settings.WindowWidth;
+                    this.Height = settings.WindowHeight;
+                    this.Location = new Point(settings.WindowX, settings.WindowY);
+                }
             }
         }
 
@@ -105,6 +102,9 @@ namespace WinPanel
                 };
                 flowLayout.DragEnter += FlowLayout_DragEnter;
                 flowLayout.DragDrop += FlowLayout_DragDrop;
+                
+                // Assign form menu to flow layout as well
+                flowLayout.ContextMenu = this.ContextMenu;
                 
                 page.Controls.Add(flowLayout);
                 tabControl.TabPages.Add(page);

@@ -25,12 +25,28 @@ namespace WinPanel
         [ComImport, Guid("000214E4-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         public interface IContextMenu
         {
-            [PreserveSig]
-            int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
-            [PreserveSig]
-            int InvokeCommand(ref CMINVOKECOMMANDINFO pici);
-            [PreserveSig]
-            int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved, StringBuilder pszName, uint cchMax);
+            [PreserveSig] int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
+            [PreserveSig] int InvokeCommand(ref CMINVOKECOMMANDINFO pici);
+            [PreserveSig] int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved, StringBuilder pszName, uint cchMax);
+        }
+
+        [ComImport, Guid("000214F4-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        public interface IContextMenu2 : IContextMenu
+        {
+            [PreserveSig] new int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
+            [PreserveSig] new int InvokeCommand(ref CMINVOKECOMMANDINFO pici);
+            [PreserveSig] new int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved, StringBuilder pszName, uint cchMax);
+            [PreserveSig] int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
+        }
+
+        [ComImport, Guid("BCFCE0A0-6E7C-101B-BC65-08002B2CE9D6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        public interface IContextMenu3 : IContextMenu2
+        {
+            [PreserveSig] new int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
+            [PreserveSig] new int InvokeCommand(ref CMINVOKECOMMANDINFO pici);
+            [PreserveSig] new int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved, StringBuilder pszName, uint cchMax);
+            [PreserveSig] new int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
+            [PreserveSig] int HandleMenuMsg2(uint uMsg, IntPtr wParam, IntPtr lParam, ref IntPtr plResult);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -46,9 +62,6 @@ namespace WinPanel
             public int dwHotKey;
             public IntPtr hIcon;
         }
-
-        [DllImport("shell32.dll")]
-        public static extern int SHGetDesktopFolder(out IShellFolder ppshf);
 
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         public static extern int SHParseDisplayName([MarshalAs(UnmanagedType.LPWStr)] string pszName, IntPtr pbc, out IntPtr ppidl, uint sfgaoIn, out uint psfgaoOut);
@@ -70,6 +83,9 @@ namespace WinPanel
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern bool InsertMenuItem(IntPtr hMenu, uint uItem, bool fByPosition, ref MENUITEMINFO lpmii);
+
+        [DllImport("user32.dll")]
+        public static extern int GetMenuItemCount(IntPtr hMenu);
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         public struct MENUITEMINFO
@@ -96,6 +112,56 @@ namespace WinPanel
 
         public const uint TPM_RETURNCMD = 0x0100;
         public const uint CMF_NORMAL = 0x00000000;
+        public const uint CMF_EXPLORE = 0x00000004;
+
+        private class ContextMenuHook : NativeWindow
+        {
+            private IContextMenu2 cm2;
+            private IContextMenu3 cm3;
+
+            public ContextMenuHook(IntPtr hwnd, IContextMenu cm)
+            {
+                this.AssignHandle(hwnd);
+                cm2 = cm as IContextMenu2;
+                cm3 = cm as IContextMenu3;
+            }
+
+            public void Detach()
+            {
+                this.ReleaseHandle();
+            }
+
+            protected override void WndProc(ref Message m)
+            {
+                const int WM_INITMENUPOPUP = 0x0117;
+                const int WM_DRAWITEM = 0x002B;
+                const int WM_MEASUREITEM = 0x002C;
+                const int WM_MENUCHAR = 0x0120;
+
+                if (m.Msg == WM_INITMENUPOPUP || m.Msg == WM_DRAWITEM || m.Msg == WM_MEASUREITEM || m.Msg == WM_MENUCHAR)
+                {
+                    if (cm3 != null)
+                    {
+                        IntPtr lResult = IntPtr.Zero;
+                        if (cm3.HandleMenuMsg2((uint)m.Msg, m.WParam, m.LParam, ref lResult) == 0) // S_OK
+                        {
+                            m.Result = lResult;
+                            return;
+                        }
+                    }
+                    else if (cm2 != null)
+                    {
+                        if (cm2.HandleMenuMsg((uint)m.Msg, m.WParam, m.LParam) == 0) // S_OK
+                        {
+                            if (m.Msg != WM_INITMENUPOPUP) m.Result = (IntPtr)1;
+                            return;
+                        }
+                    }
+                }
+                
+                base.WndProc(ref m);
+            }
+        }
 
         public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSmall, Action onMedium, Action onLarge, Action onRemove)
         {
@@ -116,7 +182,7 @@ namespace WinPanel
                     IContextMenu contextMenu = (IContextMenu)Marshal.GetTypedObjectForIUnknown(pCtxMenu, typeof(IContextMenu));
                     IntPtr hMenu = CreatePopupMenu();
                     
-                    contextMenu.QueryContextMenu(hMenu, 0, 1, 0x7FFF, CMF_NORMAL);
+                    contextMenu.QueryContextMenu(hMenu, 0, 1, 0x7FFF, CMF_NORMAL | CMF_EXPLORE);
                     
                     uint customIdStart = 0x8000;
 
@@ -130,7 +196,10 @@ namespace WinPanel
                     AddMenuItem(hMenu, customIdStart + 2, "Size: Large");
                     AddMenuItem(hMenu, customIdStart + 3, "Remove from Panel");
 
+                    ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
                     uint cmd = TrackPopupMenuEx(hMenu, TPM_RETURNCMD, x, y, handle, IntPtr.Zero);
+                    hook.Detach();
+
                     if (cmd >= 1 && cmd < customIdStart)
                     {
                         CMINVOKECOMMANDINFO ici = new CMINVOKECOMMANDINFO();
@@ -152,9 +221,6 @@ namespace WinPanel
             }
             CoTaskMemFree(pidl);
         }
-
-        [DllImport("user32.dll")]
-        public static extern int GetMenuItemCount(IntPtr hMenu);
 
         private static void AddMenuItem(IntPtr hMenu, uint id, string text)
         {
