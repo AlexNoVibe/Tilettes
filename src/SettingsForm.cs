@@ -50,7 +50,7 @@ namespace WinPanel
             var lblY = new Label { Text = "Startup Y:", Left = 20, Top = 110, Width = 120 };
             numY = new NumericUpDown { Left = 150, Top = 108, Width = 120, Maximum = 4000, Minimum = -4000, Value = settings.WindowY, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
 
-            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = 140, Width = 250, Checked = settings.MinimizeToTray };
+            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = 140, Width = 250, Checked = settings.MinimizeToTray, FlatStyle = FlatStyle.Flat };
 
             btnSave = new Button { Text = "Save", Left = 50, Top = 190, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
             btnSave.FlatAppearance.BorderSize = 0;

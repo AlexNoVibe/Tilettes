@@ -9,7 +9,8 @@ namespace WinPanel
     {
         private Settings settings;
         private string settingsPath = "settings.xml";
-        private TabControl tabControl;
+        private Panel tabBar;
+        private Panel contentPanel;
         private NotifyIcon trayIcon;
 
         // Colors for modern dark theme
@@ -17,6 +18,7 @@ namespace WinPanel
         private Color panelColor = Color.FromArgb(45, 45, 48); // #2D2D30
         private Color hoverColor = Color.FromArgb(62, 62, 66);
         private Color textColor = Color.White;
+        private Font mainFont = new Font("Segoe UI", 9f);
 
         public MainForm()
         {
@@ -31,18 +33,23 @@ namespace WinPanel
             // Apply Modern Flat Design to Form
             this.BackColor = bgColor;
             this.ForeColor = textColor;
-            this.Font = new Font("Segoe UI", 9f);
-            this.Padding = new Padding(5);
+            this.Font = mainFont;
 
-            tabControl = new TabControl
+            tabBar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 35,
+                BackColor = bgColor
+            };
+            
+            contentPanel = new Panel
             {
                 Dock = DockStyle.Fill,
-                DrawMode = TabDrawMode.OwnerDrawFixed,
-                Padding = new Point(12, 8)
+                BackColor = bgColor
             };
-            tabControl.DrawItem += TabControl_DrawItem;
             
-            this.Controls.Add(tabControl);
+            this.Controls.Add(contentPanel);
+            this.Controls.Add(tabBar);
 
             trayIcon = new NotifyIcon();
             trayIcon.Text = "WinPanel";
@@ -66,22 +73,6 @@ namespace WinPanel
             LoadTabs();
         }
 
-        private void TabControl_DrawItem(object sender, DrawItemEventArgs e)
-        {
-            var g = e.Graphics;
-            var tabPage = tabControl.TabPages[e.Index];
-            var tabBounds = tabControl.GetTabRect(e.Index);
-
-            bool isSelected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            
-            using (var brush = new SolidBrush(isSelected ? panelColor : bgColor))
-            {
-                g.FillRectangle(brush, tabBounds);
-            }
-
-            TextRenderer.DrawText(g, tabPage.Text, e.Font, tabBounds, textColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        }
-
         private void OpenSettings()
         {
             using (var sf = new SettingsForm(settings, settingsPath))
@@ -91,6 +82,7 @@ namespace WinPanel
                     this.Width = settings.WindowWidth;
                     this.Height = settings.WindowHeight;
                     this.Location = new Point(settings.WindowX, settings.WindowY);
+                    LoadTabs(); // Reload to apply icon size changes if any
                 }
             }
         }
@@ -121,14 +113,14 @@ namespace WinPanel
 
         private void LoadTabs()
         {
-            tabControl.TabPages.Clear();
+            tabBar.Controls.Clear();
+            contentPanel.Controls.Clear();
+            
+            int xOffset = 0;
+            bool isFirst = true;
+
             foreach (var tabData in settings.Tabs)
             {
-                var page = new TabPage(tabData.Name)
-                {
-                    BackColor = bgColor
-                };
-                
                 var flowLayout = new FlowLayoutPanel
                 {
                     Dock = DockStyle.Fill,
@@ -136,7 +128,8 @@ namespace WinPanel
                     AllowDrop = true,
                     Tag = tabData,
                     BackColor = bgColor,
-                    Padding = new Padding(10)
+                    Padding = new Padding(15),
+                    Visible = isFirst
                 };
                 flowLayout.DragEnter += FlowLayout_DragEnter;
                 flowLayout.DragDrop += FlowLayout_DragDrop;
@@ -144,13 +137,51 @@ namespace WinPanel
                 // Assign form menu to flow layout as well
                 flowLayout.ContextMenu = this.ContextMenu;
                 
-                page.Controls.Add(flowLayout);
-                tabControl.TabPages.Add(page);
+                contentPanel.Controls.Add(flowLayout);
 
                 foreach (var item in tabData.Items)
                 {
                     AddShortcutControl(flowLayout, item, tabData);
                 }
+
+                // Custom Tab Button
+                var tabBtn = new Button
+                {
+                    Text = tabData.Name,
+                    Width = 100,
+                    Height = 35,
+                    Location = new Point(xOffset, 0),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = isFirst ? panelColor : bgColor,
+                    ForeColor = textColor,
+                    Cursor = Cursors.Hand,
+                    Font = new Font("Segoe UI", 9f, isFirst ? FontStyle.Bold : FontStyle.Regular)
+                };
+                tabBtn.FlatAppearance.BorderSize = 0;
+                tabBtn.FlatAppearance.MouseOverBackColor = isFirst ? panelColor : hoverColor;
+                tabBtn.FlatAppearance.MouseDownBackColor = panelColor;
+                
+                tabBtn.Click += (s, e) =>
+                {
+                    foreach (Control c in contentPanel.Controls) c.Visible = false;
+                    foreach (Control c in tabBar.Controls)
+                    {
+                        c.BackColor = bgColor;
+                        c.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+                        Button b = c as Button;
+                        if (b != null) b.FlatAppearance.MouseOverBackColor = hoverColor;
+                    }
+                    
+                    flowLayout.Visible = true;
+                    tabBtn.BackColor = panelColor;
+                    tabBtn.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+                    tabBtn.FlatAppearance.MouseOverBackColor = panelColor;
+                };
+
+                tabBar.Controls.Add(tabBtn);
+                xOffset += tabBtn.Width;
+                
+                isFirst = false;
             }
         }
 
@@ -186,63 +217,89 @@ namespace WinPanel
         private void AddShortcutControl(FlowLayoutPanel panel, ShortcutItem item, TabData tabData)
         {
             int iconSize = settings.IconSize;
-            int btnSize = iconSize + 30;
+            int tileWidth = iconSize + 60;
+            int tileHeight = iconSize + 40;
 
-            var btn = new Button
+            var tile = new Panel
             {
-                Width = btnSize,
-                Height = btnSize + 10,
-                Text = item.Name,
-                TextImageRelation = TextImageRelation.ImageAboveText,
-                TextAlign = ContentAlignment.BottomCenter,
-                Margin = new Padding(5),
-                FlatStyle = FlatStyle.Flat,
+                Width = tileWidth,
+                Height = tileHeight,
+                Margin = new Padding(8),
                 BackColor = panelColor,
-                ForeColor = textColor
+                Cursor = Cursors.Hand
             };
-            btn.FlatAppearance.BorderSize = 0;
-            btn.FlatAppearance.MouseOverBackColor = hoverColor;
-            btn.FlatAppearance.MouseDownBackColor = panelColor;
+
+            var pic = new PictureBox
+            {
+                Width = iconSize,
+                Height = iconSize,
+                SizeMode = PictureBoxSizeMode.StretchImage,
+                Enabled = false,
+                Location = new Point((tileWidth - iconSize) / 2, 10)
+            };
 
             try
             {
                 var img = IconExtractor.GetIcon(item.Path, iconSize >= 32);
                 if (img != null)
                 {
-                    if (img.Width != iconSize || img.Height != iconSize)
-                        btn.Image = new Bitmap(img, new Size(iconSize, iconSize));
-                    else
-                        btn.Image = img;
+                    pic.Image = img;
                 }
             }
             catch { }
 
-            btn.Click += (s, e) =>
+            var lbl = new Label
             {
-                try
+                Text = item.Name,
+                ForeColor = textColor,
+                AutoSize = false,
+                TextAlign = ContentAlignment.TopCenter,
+                Width = tileWidth - 10,
+                Height = 25,
+                Location = new Point(5, iconSize + 15),
+                Enabled = false,
+                AutoEllipsis = true
+            };
+
+            tile.Controls.Add(pic);
+            tile.Controls.Add(lbl);
+
+            // Hover effects
+            tile.MouseEnter += (s, e) => tile.BackColor = hoverColor;
+            tile.MouseLeave += (s, e) => tile.BackColor = panelColor;
+            
+            // Allow triggering mouse events even on children by passing them through, or disable children.
+            // Since we disabled the children (Enabled=false), the Panel receives the clicks and mouse events!
+
+            tile.MouseClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
                 {
-                    System.Diagnostics.Process.Start(item.Path);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Error opening file: " + ex.Message);
+                    try
+                    {
+                        System.Diagnostics.Process.Start(item.Path);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("Error opening file: " + ex.Message);
+                    }
                 }
             };
 
-            btn.MouseDown += (s, e) =>
+            tile.MouseDown += (s, e) =>
             {
                 if (e.Button == MouseButtons.Right)
                 {
-                    var pt = btn.PointToScreen(e.Location);
+                    var pt = tile.PointToScreen(e.Location);
                     NativeContextMenu.ShowContextMenu(item.Path, pt.X, pt.Y, this.Handle,
                         () => ChangeIconSize(16),
                         () => ChangeIconSize(32),
                         () => ChangeIconSize(48),
-                        () => RemoveItem(panel, btn, item, tabData));
+                        () => RemoveItem(panel, tile, item, tabData));
                 }
             };
 
-            panel.Controls.Add(btn);
+            panel.Controls.Add(tile);
         }
 
         private void ChangeIconSize(int newSize)
@@ -252,11 +309,11 @@ namespace WinPanel
             LoadTabs();
         }
 
-        private void RemoveItem(FlowLayoutPanel panel, Button btn, ShortcutItem item, TabData tabData)
+        private void RemoveItem(FlowLayoutPanel panel, Panel tile, ShortcutItem item, TabData tabData)
         {
             tabData.Items.Remove(item);
-            panel.Controls.Remove(btn);
-            btn.Dispose();
+            panel.Controls.Remove(tile);
+            tile.Dispose();
             settings.Save(settingsPath);
         }
     }
