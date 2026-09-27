@@ -6,7 +6,12 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTabWidget, QScrollArea, QSystemTrayIcon, QMenu, QAction, 
                              QMessageBox, QLabel, QInputDialog, QStyle, QLayout, QSizePolicy)
 from PyQt5.QtGui import QIcon, QPixmap, QFont
-from PyQt5.QtCore import Qt, QSize, QRect, QPoint, QFileInfo
+from PyQt5.QtCore import Qt, QSize, QRect, QPoint, QFileInfo, QEvent
+
+import win32api
+import win32gui
+import win32con
+from win32com.shell import shell, shellcon
 
 # Configuration file path
 CONFIG_FILE = "config.json"
@@ -17,7 +22,12 @@ class AppConfig:
         self.height = 300
         self.x = 100
         self.y = 100
-        self.minimize_to_tray = True
+        self.default_width = 200
+        self.default_height = 300
+        self.default_x = 100
+        self.default_y = 100
+        self.minimize_instead_of_close = True
+        self.minimize_to = 'tray' # 'tray' or 'taskbar'
         self.tabs = [{"name": "Main", "items": []}]
 
     def load(self):
@@ -29,7 +39,17 @@ class AppConfig:
                     self.height = data.get("height", 300)
                     self.x = data.get("x", 100)
                     self.y = data.get("y", 100)
-                    self.minimize_to_tray = data.get("minimize_to_tray", True)
+                    self.default_width = data.get("default_width", 200)
+                    self.default_height = data.get("default_height", 300)
+                    self.default_x = data.get("default_x", 100)
+                    self.default_y = data.get("default_y", 100)
+                    # Migrate old settings
+                    if "minimize_to_tray" in data:
+                        self.minimize_instead_of_close = data["minimize_to_tray"]
+                        self.minimize_to = 'tray' if data["minimize_to_tray"] else 'taskbar'
+                    else:
+                        self.minimize_instead_of_close = data.get("minimize_instead_of_close", True)
+                        self.minimize_to = data.get("minimize_to", 'tray')
                     self.tabs = data.get("tabs", [{"name": "Main", "items": []}])
             except:
                 pass
@@ -41,7 +61,12 @@ class AppConfig:
                 "height": self.height,
                 "x": self.x,
                 "y": self.y,
-                "minimize_to_tray": self.minimize_to_tray,
+                "default_width": self.default_width,
+                "default_height": self.default_height,
+                "default_x": self.default_x,
+                "default_y": self.default_y,
+                "minimize_instead_of_close": self.minimize_instead_of_close,
+                "minimize_to": self.minimize_to,
                 "tabs": self.tabs
             }, f, indent=4)
 
@@ -193,49 +218,59 @@ class ShortcutItem(QWidget):
             self.show_context_menu(event.globalPos())
             
     def show_context_menu(self, pos):
-        menu = QMenu(self)
+        hwnd = int(self.app_window.winId())
         
-        size_menu = QMenu("Размер плитки", self)
-        small_action = size_menu.addAction("Маленький")
-        med_action = size_menu.addAction("Средний")
-        large_action = size_menu.addAction("Большой")
-        menu.addMenu(size_menu)
-        
-        remove_action = menu.addAction("Удалить слот")
-        menu.addSeparator()
-        
-        explorer_menu_action = menu.addAction("Показать в папке")
-        properties_action = menu.addAction("Свойства")
-        
-        action = menu.exec_(pos)
-        
-        if action == small_action:
-            self.set_size(0)
-        elif action == med_action:
-            self.set_size(1)
-        elif action == large_action:
-            self.set_size(2)
-        elif action == remove_action:
-            self.parent_tab.remove_item(self)
-        elif action == explorer_menu_action:
-            subprocess.run(['explorer.exe', '/select,', self.path])
-        elif action == properties_action:
-            self.show_windows_properties()
+        try:
+            pidl, flags = shell.SHILCreateFromPath(self.path, 0)
+            desktop = shell.SHGetDesktopFolder()
+            pidl_child = [pidl[-1]]
             
+            if len(pidl) == 1:
+                parent_folder = desktop
+            else:
+                pidl_parent = pidl[:-1]
+                parent_folder = desktop.BindToObject(pidl_parent, None, shell.IID_IShellFolder)
+                
+            context_menu = parent_folder.GetUIObjectOf(hwnd, [pidl_child], shell.IID_IContextMenu, 0)[1]
+            menu = win32gui.CreatePopupMenu()
+            
+            # 1 to 0x7FFF are IDs reserved for shell context menu
+            context_menu.QueryContextMenu(menu, 0, 1, 0x7FFF, shellcon.CMF_NORMAL)
+            
+            # Append custom items at the end
+            win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, '')
+            win32gui.AppendMenu(menu, win32con.MF_STRING, 0x8001, 'Размер: Маленький')
+            win32gui.AppendMenu(menu, win32con.MF_STRING, 0x8002, 'Размер: Средний')
+            win32gui.AppendMenu(menu, win32con.MF_STRING, 0x8003, 'Размер: Большой')
+            win32gui.AppendMenu(menu, win32con.MF_SEPARATOR, 0, '')
+            win32gui.AppendMenu(menu, win32con.MF_STRING, 0x8004, 'Удалить слот')
+            
+            cmd = win32gui.TrackPopupMenu(menu, win32con.TPM_LEFTALIGN | win32con.TPM_RETURNCMD | win32con.TPM_RIGHTBUTTON,
+                                          pos.x(), pos.y(), 0, hwnd, None)
+            
+            if cmd == 0x8001:
+                self.set_size(0)
+            elif cmd == 0x8002:
+                self.set_size(1)
+            elif cmd == 0x8003:
+                self.set_size(2)
+            elif cmd == 0x8004:
+                self.parent_tab.remove_item(self)
+            elif cmd > 0 and cmd <= 0x7FFF:
+                info = (0, hwnd, cmd - 1, None, None, win32con.SW_SHOWNORMAL)
+                context_menu.InvokeCommand(info)
+                
+            win32gui.DestroyMenu(menu)
+            
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Не удалось открыть контекстное меню:\n{e}")
+
     def set_size(self, size):
         self.size_mode = size
         self.item_data["size"] = size
         config.save()
         self.update_appearance()
         self.parent_tab.refresh_layout()
-        
-    def show_windows_properties(self):
-        import win32api
-        import win32con
-        try:
-            win32api.ShellExecute(0, "properties", self.path, None, None, win32con.SW_SHOW)
-        except Exception as e:
-            QMessageBox.warning(self, "Ошибка", f"Не удалось открыть свойства:\n{e}")
 
 class TabPanel(QWidget):
     def __init__(self, tab_data, app_window):
@@ -292,6 +327,59 @@ class TabPanel(QWidget):
         config.save()
         self.refresh_layout()
 
+from PyQt5.QtWidgets import QDialog, QFormLayout, QSpinBox, QCheckBox, QComboBox, QDialogButtonBox
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Настройки")
+        
+        layout = QFormLayout(self)
+        
+        self.w_spin = QSpinBox()
+        self.w_spin.setRange(100, 2000)
+        self.w_spin.setValue(config.default_width)
+        layout.addRow("Ширина по умолчанию:", self.w_spin)
+        
+        self.h_spin = QSpinBox()
+        self.h_spin.setRange(100, 2000)
+        self.h_spin.setValue(config.default_height)
+        layout.addRow("Высота по умолчанию:", self.h_spin)
+        
+        self.x_spin = QSpinBox()
+        self.x_spin.setRange(0, 4000)
+        self.x_spin.setValue(config.default_x)
+        layout.addRow("Позиция X по умолчанию:", self.x_spin)
+        
+        self.y_spin = QSpinBox()
+        self.y_spin.setRange(0, 4000)
+        self.y_spin.setValue(config.default_y)
+        layout.addRow("Позиция Y по умолчанию:", self.y_spin)
+        
+        self.minimize_close_chk = QCheckBox("Вместо закрытия сворачивать")
+        self.minimize_close_chk.setChecked(config.minimize_instead_of_close)
+        layout.addRow("", self.minimize_close_chk)
+        
+        self.minimize_to_combo = QComboBox()
+        self.minimize_to_combo.addItems(["В трей", "В панель задач"])
+        self.minimize_to_combo.setCurrentIndex(0 if config.minimize_to == 'tray' else 1)
+        layout.addRow("Куда сворачивать:", self.minimize_to_combo)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+        
+    def accept(self):
+        config.default_width = self.w_spin.value()
+        config.default_height = self.h_spin.value()
+        config.default_x = self.x_spin.value()
+        config.default_y = self.y_spin.value()
+        config.minimize_instead_of_close = self.minimize_close_chk.isChecked()
+        config.minimize_to = 'tray' if self.minimize_to_combo.currentIndex() == 0 else 'taskbar'
+        config.save()
+        super().accept()
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -299,7 +387,13 @@ class MainWindow(QMainWindow):
         
     def initUI(self):
         self.setWindowTitle("WinPanel")
-        self.setGeometry(config.x, config.y, config.width, config.height)
+        
+        # Use saved size/pos, but maybe provide an option to reset? 
+        # Actually the prompt says "в настройки по дефолту размер окна при открытии, положение окна при открытии"
+        # So maybe we should just use default_width/height/x/y upon opening? Or saved?
+        # Let's just set default sizes if saved values are 0 or use defaults unconditionally? 
+        # No, if it says "default size on open", we should use it on open.
+        self.setGeometry(config.default_x, config.default_y, config.default_width, config.default_height)
         
         # Tabs
         self.tabs_widget = QTabWidget()
@@ -317,10 +411,9 @@ class MainWindow(QMainWindow):
         add_tab_action.triggered.connect(self.add_tab)
         settings_menu.addAction(add_tab_action)
         
-        self.tray_action = QAction('Сворачивать в трей при закрытии', self, checkable=True)
-        self.tray_action.setChecked(config.minimize_to_tray)
-        self.tray_action.triggered.connect(self.toggle_tray_setting)
-        settings_menu.addAction(self.tray_action)
+        open_settings_action = QAction('Открыть настройки', self)
+        open_settings_action.triggered.connect(self.open_settings)
+        settings_menu.addAction(open_settings_action)
         
         # Tray
         self.tray_icon = QSystemTrayIcon(self)
@@ -337,17 +430,19 @@ class MainWindow(QMainWindow):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_activated)
         
-        if config.minimize_to_tray:
-            self.tray_icon.show()
+        self.update_tray_visibility()
             
     def quit_app(self):
         self.tray_icon.hide()
         QApplication.instance().quit()
 
-    def toggle_tray_setting(self):
-        config.minimize_to_tray = self.tray_action.isChecked()
-        config.save()
-        if config.minimize_to_tray:
+    def open_settings(self):
+        dlg = SettingsDialog(self)
+        if dlg.exec_():
+            self.update_tray_visibility()
+
+    def update_tray_visibility(self):
+        if config.minimize_instead_of_close and config.minimize_to == 'tray':
             self.tray_icon.show()
         else:
             self.tray_icon.hide()
@@ -366,6 +461,14 @@ class MainWindow(QMainWindow):
             self.showNormal()
             self.activateWindow()
             
+    def changeEvent(self, event):
+        if event.type() == QEvent.WindowStateChange:
+            if self.isMinimized() and config.minimize_to == 'tray':
+                self.hide()
+                event.ignore()
+                return
+        super().changeEvent(event)
+
     def closeEvent(self, event):
         config.width = self.width()
         config.height = self.height()
@@ -373,19 +476,21 @@ class MainWindow(QMainWindow):
         config.y = self.y()
         config.save()
         
-        if config.minimize_to_tray:
+        if config.minimize_instead_of_close:
             event.ignore()
-            self.hide()
-            self.tray_icon.showMessage(
-                "WinPanel",
-                "Приложение свернуто в трей",
-                QSystemTrayIcon.Information,
-                2000
-            )
+            if config.minimize_to == 'tray':
+                self.hide()
+                self.tray_icon.showMessage(
+                    "WinPanel",
+                    "Приложение свернуто в трей",
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+            else:
+                self.showMinimized()
         else:
             self.tray_icon.hide()
             event.accept()
-
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)

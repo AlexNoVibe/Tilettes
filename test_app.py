@@ -16,20 +16,21 @@ class TestAppConfig(unittest.TestCase):
         config = AppConfig()
         self.assertEqual(config.width, 200)
         self.assertEqual(config.height, 300)
-        self.assertTrue(config.minimize_to_tray)
+        self.assertTrue(config.minimize_instead_of_close)
+        self.assertEqual(config.minimize_to, 'tray')
         self.assertEqual(len(config.tabs), 1)
 
     def test_save_and_load(self):
         config = AppConfig()
         config.width = 400
-        config.minimize_to_tray = False
+        config.minimize_instead_of_close = False
         config.tabs = [{"name": "TestTab", "items": [{"path": "C:\\test", "size": 2}]}]
         config.save()
 
         config2 = AppConfig()
         config2.load()
         self.assertEqual(config2.width, 400)
-        self.assertFalse(config2.minimize_to_tray)
+        self.assertFalse(config2.minimize_instead_of_close)
         self.assertEqual(config2.tabs[0]["name"], "TestTab")
         self.assertEqual(config2.tabs[0]["items"][0]["size"], 2)
 
