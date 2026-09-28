@@ -39,7 +39,9 @@ namespace WinPanel
             {
                 Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
                 DestroyIcon(shinfo.hIcon);
-                return icon.ToBitmap();
+                var bmp = icon.ToBitmap();
+                icon.Dispose();
+                return bmp;
             }
             return null;
         }

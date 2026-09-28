@@ -11,6 +11,8 @@ namespace WinPanel
         public string Name { get; set; }
         public int X { get; set; }
         public int Y { get; set; }
+        public int GridX { get; set; }
+        public int GridY { get; set; }
         public int Size { get; set; } // Cell size for grid layout: 1 (1x1), 2 (2x2), 3 (3x3), 4 (4x4)
         public bool IsFolder { get; set; }
         public string CustomIconPath { get; set; }
@@ -19,6 +21,8 @@ namespace WinPanel
         public ShortcutItem()
         {
             Size = 2;
+            GridX = -1;
+            GridY = -1;
             Children = new List<ShortcutItem>();
         }
     }

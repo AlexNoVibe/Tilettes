@@ -141,6 +141,24 @@ namespace WinPanel
 
         private void LoadTabs()
         {
+            foreach (Control c in contentPanel.Controls)
+            {
+                var pnl = c as Panel;
+                if (pnl != null)
+                {
+                    foreach (Control pc in pnl.Controls)
+                    {
+                        var tc = pc as TileControl;
+                        if (tc != null)
+                        {
+                            if (tc.IconImage != null) tc.IconImage.Dispose();
+                            foreach (var img in tc.ChildIcons) if (img != null) img.Dispose();
+                        }
+                        pc.Dispose();
+                    }
+                }
+                c.Dispose();
+            }
             tabBar.Controls.Clear();
             contentPanel.Controls.Clear();
             
@@ -279,6 +297,16 @@ namespace WinPanel
 
         private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
         {
+            foreach (Control c in layoutPanel.Controls)
+            {
+                var tc = c as TileControl;
+                if (tc != null)
+                {
+                    if (tc.IconImage != null) tc.IconImage.Dispose();
+                    foreach (var img in tc.ChildIcons) if (img != null) img.Dispose();
+                }
+                c.Dispose();
+            }
             layoutPanel.Controls.Clear();
             var navStack = tabNavigations[tabData];
             List<ShortcutItem> itemsToRender = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
@@ -353,6 +381,15 @@ namespace WinPanel
                     Y = pt.Y,
                     Size = 2
                 };
+                if (tabData.IsGridLayout)
+                {
+                    int cellWidth = layoutPanel.Width / 16;
+                    int cellHeight = layoutPanel.Height / 20;
+                    if (cellWidth < 10) cellWidth = 20;
+                    if (cellHeight < 10) cellHeight = 20;
+                    folder.GridX = Math.Max(0, Math.Min(16 - 2, folder.X / cellWidth));
+                    folder.GridY = Math.Max(0, Math.Min(20 - 2, folder.Y / cellHeight));
+                }
                 targetList.Add(folder);
                 records.Save(recordsPath);
                 RenderCurrentFolder(layoutPanel, tabData);
@@ -390,6 +427,15 @@ namespace WinPanel
                     Y = pt.Y + offset,
                     Size = 2
                 };
+                if (tabData.IsGridLayout)
+                {
+                    int cellWidth = layoutPanel.Width / 16;
+                    int cellHeight = layoutPanel.Height / 20;
+                    if (cellWidth < 10) cellWidth = 20;
+                    if (cellHeight < 10) cellHeight = 20;
+                    shortcut.GridX = Math.Max(0, Math.Min(16 - 2, shortcut.X / cellWidth));
+                    shortcut.GridY = Math.Max(0, Math.Min(20 - 2, shortcut.Y / cellHeight));
+                }
                 if (string.IsNullOrEmpty(shortcut.Name)) shortcut.Name = Path.GetFileName(file);
                 
                 targetList.Add(shortcut);
@@ -417,8 +463,11 @@ namespace WinPanel
                 tileWidth = s * cellWidth;
                 tileHeight = s * cellHeight;
                 
-                int col = Math.Max(0, Math.Min(16 - s, item.X / cellWidth));
-                int row = Math.Max(0, Math.Min(20 - s, item.Y / cellHeight));
+                if (item.GridX == -1) item.GridX = Math.Max(0, Math.Min(16 - s, item.X / cellWidth));
+                if (item.GridY == -1) item.GridY = Math.Max(0, Math.Min(20 - s, item.Y / cellHeight));
+
+                int col = Math.Max(0, Math.Min(16 - s, item.GridX));
+                int row = Math.Max(0, Math.Min(20 - s, item.GridY));
                 
                 xPos = col * cellWidth;
                 yPos = row * cellHeight;
@@ -455,6 +504,27 @@ namespace WinPanel
                     }
                 }
                 catch { }
+
+                if (item.Children != null)
+                {
+                    int maxIcons = Math.Min(9, item.Children.Count);
+                    for (int i = 0; i < maxIcons; i++)
+                    {
+                        var child = item.Children[i];
+                        Image childImg = null;
+                        if (child.IsFolder)
+                        {
+                            var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
+                            if (folderIcon != null) childImg = folderIcon.ToBitmap();
+                            else childImg = SystemIcons.WinLogo.ToBitmap();
+                        }
+                        else
+                        {
+                            try { childImg = IconExtractor.GetIcon(child.Path, true); } catch { }
+                        }
+                        tile.ChildIcons.Add(childImg);
+                    }
+                }
             }
             else
             {
@@ -541,8 +611,8 @@ namespace WinPanel
                         {
                             int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
                             int row = Math.Max(0, Math.Min(20 - s, (tile.Top + cellHeight/2) / cellHeight));
-                            item.X = col * cellWidth;
-                            item.Y = row * cellHeight;
+                            item.GridX = col;
+                            item.GridY = row;
                         }
                         else
                         {
@@ -637,11 +707,27 @@ namespace WinPanel
         private Color hoverColor = Color.FromArgb(62, 62, 66);
         public bool IsHovered { get; set; }
         public Image IconImage { get; set; }
+        public List<Image> ChildIcons { get; set; }
 
         public TileControl()
         {
             this.DoubleBuffered = true;
             this.Cursor = Cursors.Hand;
+            ChildIcons = new List<Image>();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (IconImage != null) IconImage.Dispose();
+                if (ChildIcons != null)
+                {
+                    foreach (var img in ChildIcons) if (img != null) img.Dispose();
+                    ChildIcons.Clear();
+                }
+            }
+            base.Dispose(disposing);
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -677,9 +763,9 @@ namespace WinPanel
                     e.Graphics.FillPath(brush, path);
                 }
 
-                if (Item.Children != null && Item.Children.Count > 0)
+                if (ChildIcons != null && ChildIcons.Count > 0)
                 {
-                    int maxIcons = Math.Min(9, Item.Children.Count);
+                    int maxIcons = Math.Min(9, ChildIcons.Count);
                     int cols = maxIcons > 4 ? 3 : 2;
                     int rows = (int)Math.Ceiling(maxIcons / (float)cols);
                     int padding = 10;
@@ -689,21 +775,12 @@ namespace WinPanel
 
                     for (int i = 0; i < maxIcons; i++)
                     {
-                        var child = Item.Children[i];
+                        var childImg = ChildIcons[i];
                         int c = i % cols;
                         int r = i / cols;
                         int cx = padding + c * miniWidth + (miniWidth - miniSize)/2;
                         int cy = padding + r * miniHeight + (miniHeight - miniSize)/2;
 
-                        Image childImg = null;
-                        if (child.IsFolder)
-                        {
-                            var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                            if (folderIcon != null) childImg = folderIcon.ToBitmap();
-                            else childImg = SystemIcons.WinLogo.ToBitmap();
-                        }
-                        else childImg = IconExtractor.GetIcon(child.Path, true);
-                        
                         if (childImg != null)
                         {
                             e.Graphics.DrawImage(childImg, new Rectangle(cx, cy, miniSize, miniSize));

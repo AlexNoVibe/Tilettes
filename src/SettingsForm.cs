@@ -106,8 +106,8 @@ namespace WinPanel
         {
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*";
-                sfd.FileName = "settings_backup.xml";
+                sfd.Filter = "INI Files (*.ini)|*.ini|All Files (*.*)|*.*";
+                sfd.FileName = "settings_backup.ini";
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
                     settings.Save(sfd.FileName);
@@ -120,7 +120,7 @@ namespace WinPanel
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = "XML Files (*.xml)|*.xml|All Files (*.*)|*.*";
+                ofd.Filter = "INI Files (*.ini)|*.ini|All Files (*.*)|*.*";
                 if (ofd.ShowDialog() == DialogResult.OK)
                 {
                     try
