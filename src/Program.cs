@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
@@ -9,7 +10,9 @@ namespace WinPanel
     public class MainForm : Form
     {
         private Settings settings;
-        private string settingsPath = "settings.xml";
+        private Records records;
+        private string settingsPath = "settings.ini";
+        private string recordsPath = "records.xml";
         private Panel tabBar;
         private Panel contentPanel;
         private NotifyIcon trayIcon;
@@ -24,16 +27,16 @@ namespace WinPanel
         // State for dragging
         private bool isDragging = false;
         private Point dragStartPoint;
-        private Panel draggingTile;
+        private Control draggingTile;
         private ShortcutItem draggingItem;
 
         // State for folder navigation
-        // Map TabData to its current navigation stack
         private Dictionary<TabData, Stack<ShortcutItem>> tabNavigations = new Dictionary<TabData, Stack<ShortcutItem>>();
 
         public MainForm()
         {
             settings = Settings.Load(settingsPath);
+            records = Records.Load(recordsPath);
 
             this.Text = "WinPanel";
             this.Width = settings.WindowWidth;
@@ -41,7 +44,6 @@ namespace WinPanel
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(settings.WindowX, settings.WindowY);
             
-            // Apply Modern Flat Design to Form
             this.BackColor = bgColor;
             this.ForeColor = textColor;
             this.Font = mainFont;
@@ -75,13 +77,22 @@ namespace WinPanel
             trayIcon.Visible = true;
 
             this.FormClosing += MainForm_FormClosing;
+            this.ResizeEnd += (s, e) => {
+                if (settings != null) {
+                    settings.WindowWidth = this.Width;
+                    settings.WindowHeight = this.Height;
+                    settings.WindowX = this.Location.X;
+                    settings.WindowY = this.Location.Y;
+                    settings.Save(settingsPath);
+                }
+                LoadTabs(); // Redraw grid if layout changed
+            };
 
-            // Adding a context menu to the form itself to access Settings easily
             var formMenu = new ContextMenu();
             formMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
             this.ContextMenu = formMenu;
 
-            foreach (var tab in settings.Tabs)
+            foreach (var tab in records.Tabs)
             {
                 tabNavigations[tab] = new Stack<ShortcutItem>();
             }
@@ -96,17 +107,9 @@ namespace WinPanel
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
                     this.settings = Settings.Load(settingsPath);
-                    
                     this.Width = settings.WindowWidth;
                     this.Height = settings.WindowHeight;
                     this.Location = new Point(settings.WindowX, settings.WindowY);
-                    
-                    // Synchronize tabNavigations
-                    var toRemove = new List<TabData>();
-                    foreach (var k in tabNavigations.Keys) if (!settings.Tabs.Contains(k)) toRemove.Add(k);
-                    foreach (var k in toRemove) tabNavigations.Remove(k);
-                    foreach (var tab in settings.Tabs) if (!tabNavigations.ContainsKey(tab)) tabNavigations[tab] = new Stack<ShortcutItem>();
-
                     LoadTabs();
                 }
             }
@@ -144,8 +147,28 @@ namespace WinPanel
             int xOffset = 0;
             bool isFirst = true;
 
-            foreach (var tabData in settings.Tabs)
+            // Settings button
+            var settingsBtn = new Button
             {
+                Text = "⚙️",
+                Width = 35,
+                Height = 35,
+                Dock = DockStyle.Right,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = bgColor,
+                ForeColor = textColor,
+                Cursor = Cursors.Hand,
+                Font = new Font("Segoe UI", 12f)
+            };
+            settingsBtn.FlatAppearance.BorderSize = 0;
+            settingsBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+            settingsBtn.Click += (s, e) => OpenSettings();
+            tabBar.Controls.Add(settingsBtn);
+
+            foreach (var tabData in records.Tabs)
+            {
+                if (!tabNavigations.ContainsKey(tabData)) tabNavigations[tabData] = new Stack<ShortcutItem>();
+
                 var layoutPanel = new Panel
                 {
                     Dock = DockStyle.Fill,
@@ -167,7 +190,6 @@ namespace WinPanel
 
                 RenderCurrentFolder(layoutPanel, tabData);
 
-                // Custom Tab Button
                 var tabBtn = new Button
                 {
                     Text = tabData.Name,
@@ -184,13 +206,17 @@ namespace WinPanel
                 tabBtn.FlatAppearance.MouseOverBackColor = isFirst ? panelColor : hoverColor;
                 tabBtn.FlatAppearance.MouseDownBackColor = panelColor;
                 
-                // Tab right-click menu
                 var tabMenu = new ContextMenu();
+                tabMenu.MenuItems.Add("Toggle Layout (Grid/Free)", (s, e) => {
+                    tabData.IsGridLayout = !tabData.IsGridLayout;
+                    records.Save(recordsPath);
+                    RenderCurrentFolder(layoutPanel, tabData);
+                });
                 tabMenu.MenuItems.Add("Remove Tab", (s, e) => {
-                    if (settings.Tabs.Count > 1) {
-                        settings.Tabs.Remove(tabData);
+                    if (records.Tabs.Count > 1) {
+                        records.Tabs.Remove(tabData);
                         tabNavigations.Remove(tabData);
-                        settings.Save(settingsPath);
+                        records.Save(recordsPath);
                         LoadTabs();
                     } else {
                         MessageBox.Show("Cannot remove the last tab.");
@@ -203,6 +229,7 @@ namespace WinPanel
                     foreach (Control c in contentPanel.Controls) c.Visible = false;
                     foreach (Control c in tabBar.Controls)
                     {
+                        if (c == settingsBtn) continue;
                         c.BackColor = bgColor;
                         c.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
                         Button b = c as Button;
@@ -240,10 +267,10 @@ namespace WinPanel
                 string name = Prompt.ShowDialog("New Tab Name", "Add Tab");
                 if (!string.IsNullOrWhiteSpace(name))
                 {
-                    var newTab = new TabData { Name = name };
-                    settings.Tabs.Add(newTab);
+                    var newTab = new TabData { Name = name, IsGridLayout = true };
+                    records.Tabs.Add(newTab);
                     tabNavigations[newTab] = new Stack<ShortcutItem>();
-                    settings.Save(settingsPath);
+                    records.Save(recordsPath);
                     LoadTabs();
                 }
             };
@@ -278,6 +305,28 @@ namespace WinPanel
                 layoutPanel.Controls.Add(backBtn);
             }
 
+            // Layout button overlay inside the panel
+            var layoutBtn = new Button
+            {
+                Text = tabData.IsGridLayout ? "Layout: Grid (16x20)" : "Layout: Free",
+                Location = new Point(layoutPanel.Width - 150, 10),
+                Width = 130,
+                Height = 30,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = bgColor,
+                ForeColor = Color.LightGray,
+                Cursor = Cursors.Hand,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            layoutBtn.FlatAppearance.BorderSize = 1;
+            layoutBtn.FlatAppearance.BorderColor = Color.Gray;
+            layoutBtn.Click += (s, e) => {
+                tabData.IsGridLayout = !tabData.IsGridLayout;
+                records.Save(recordsPath);
+                RenderCurrentFolder(layoutPanel, tabData);
+            };
+            layoutPanel.Controls.Add(layoutBtn);
+
             foreach (var item in itemsToRender)
             {
                 AddShortcutControl(layoutPanel, item, tabData);
@@ -301,10 +350,11 @@ namespace WinPanel
                     Name = name,
                     IsFolder = true,
                     X = pt.X,
-                    Y = pt.Y
+                    Y = pt.Y,
+                    Size = 2
                 };
                 targetList.Add(folder);
-                settings.Save(settingsPath);
+                records.Save(recordsPath);
                 RenderCurrentFolder(layoutPanel, tabData);
             }
         }
@@ -337,7 +387,8 @@ namespace WinPanel
                     Path = file,
                     Name = Path.GetFileNameWithoutExtension(file),
                     X = pt.X + offset,
-                    Y = pt.Y + offset
+                    Y = pt.Y + offset,
+                    Size = 2
                 };
                 if (string.IsNullOrEmpty(shortcut.Name)) shortcut.Name = Path.GetFileName(file);
                 
@@ -345,33 +396,52 @@ namespace WinPanel
                 AddShortcutControl(layoutPanel, shortcut, tabData);
                 offset += 20; // stagger drops
             }
-            settings.Save(settingsPath);
+            records.Save(recordsPath);
+            RenderCurrentFolder(layoutPanel, tabData); // Re-render to apply snapping
         }
 
         private void AddShortcutControl(Panel panel, ShortcutItem item, TabData tabData)
         {
-            int iconSize = settings.IconSize;
-            int tileWidth = iconSize + 60;
-            int tileHeight = iconSize + 40;
+            int cellWidth = panel.Width / 16;
+            int cellHeight = panel.Height / 20;
+            if (cellWidth < 10) cellWidth = 20;
+            if (cellHeight < 10) cellHeight = 20;
 
-            var tile = new Panel
+            int s = item.Size;
+            if (s <= 0 || s > 4) s = 2; // Default 2x2
+
+            int tileWidth, tileHeight, xPos, yPos;
+            
+            if (tabData.IsGridLayout)
             {
+                tileWidth = s * cellWidth;
+                tileHeight = s * cellHeight;
+                
+                int col = Math.Max(0, Math.Min(16 - s, item.X / cellWidth));
+                int row = Math.Max(0, Math.Min(20 - s, item.Y / cellHeight));
+                
+                xPos = col * cellWidth;
+                yPos = row * cellHeight;
+            }
+            else
+            {
+                // Free layout: base size on 40x40 unit
+                tileWidth = s * 40;
+                tileHeight = s * 40;
+                xPos = item.X;
+                yPos = item.Y;
+            }
+
+            var tile = new TileControl
+            {
+                Item = item,
+                TabData = tabData,
                 Width = tileWidth,
                 Height = tileHeight,
-                BackColor = panelColor,
-                Cursor = Cursors.Hand,
-                Location = new Point(item.X, item.Y)
+                Location = new Point(xPos, yPos)
             };
 
-            var pic = new PictureBox
-            {
-                Width = iconSize,
-                Height = iconSize,
-                SizeMode = PictureBoxSizeMode.StretchImage,
-                Enabled = false,
-                Location = new Point((tileWidth - iconSize) / 2, 10)
-            };
-
+            Image iconImg = null;
             if (item.IsFolder)
             {
                 try
@@ -379,21 +449,12 @@ namespace WinPanel
                     if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     {
                         if (item.CustomIconPath.ToLower().EndsWith(".exe") || item.CustomIconPath.ToLower().EndsWith(".ico"))
-                            pic.Image = IconExtractor.GetIcon(item.CustomIconPath, iconSize >= 32);
+                            iconImg = IconExtractor.GetIcon(item.CustomIconPath, true);
                         else
-                            pic.Image = Image.FromFile(item.CustomIconPath);
-                    }
-                    else
-                    {
-                        // Use default folder icon, fallback to a standard icon if unavailable.
-                        Icon folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                        if (folderIcon != null)
-                            pic.Image = folderIcon.ToBitmap();
-                        else
-                            pic.Image = SystemIcons.WinLogo.ToBitmap();
+                            iconImg = Image.FromFile(item.CustomIconPath);
                     }
                 }
-                catch { pic.Image = SystemIcons.WinLogo.ToBitmap(); }
+                catch { }
             }
             else
             {
@@ -402,44 +463,22 @@ namespace WinPanel
                     if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     {
                         if (item.CustomIconPath.ToLower().EndsWith(".exe") || item.CustomIconPath.ToLower().EndsWith(".ico"))
-                            pic.Image = IconExtractor.GetIcon(item.CustomIconPath, iconSize >= 32);
+                            iconImg = IconExtractor.GetIcon(item.CustomIconPath, true);
                         else
-                            pic.Image = Image.FromFile(item.CustomIconPath);
+                            iconImg = Image.FromFile(item.CustomIconPath);
                     }
                     else
                     {
-                        var img = IconExtractor.GetIcon(item.Path, iconSize >= 32);
-                        if (img != null) pic.Image = img;
+                        iconImg = IconExtractor.GetIcon(item.Path, true);
                     }
                 }
                 catch { }
-                if (pic.Image == null) pic.Image = SystemIcons.Application.ToBitmap();
+                if (iconImg == null) iconImg = SystemIcons.Application.ToBitmap();
             }
+            tile.IconImage = iconImg;
 
-            var lbl = new Label
-            {
-                Text = item.Name,
-                ForeColor = textColor,
-                AutoSize = false,
-                TextAlign = ContentAlignment.TopCenter,
-                Width = tileWidth - 10,
-                Height = 25,
-                Location = new Point(5, iconSize + 15),
-                Enabled = false,
-                AutoEllipsis = true
-            };
-
-            tile.Controls.Add(pic);
-            tile.Controls.Add(lbl);
-
-            // Hover effects
-            tile.MouseEnter += (s, e) => tile.BackColor = hoverColor;
-            tile.MouseLeave += (s, e) => tile.BackColor = panelColor;
-
-            // Drag and drop / click logic
             bool dragFired = false;
-            
-            tile.MouseDown += (s, e) =>
+            tile.MouseDown += (sender, e) =>
             {
                 if (e.Button == MouseButtons.Left)
                 {
@@ -456,25 +495,26 @@ namespace WinPanel
                     if (item.IsFolder)
                     {
                         var fMenu = new ContextMenu();
-                        fMenu.MenuItems.Add("Rename", (s2, e2) => RenameItem(item, lbl));
-                        fMenu.MenuItems.Add("Change Icon", (s2, e2) => ChangeItemIcon(item, pic));
+                        fMenu.MenuItems.Add("Rename", (s2, e2) => RenameItem(item, tile));
+                        fMenu.MenuItems.Add("Change Icon", (s2, e2) => ChangeItemIcon(item, tile));
                         fMenu.MenuItems.Add("Remove", (s2, e2) => RemoveItem(panel, tile, item, tabData));
                         fMenu.Show(tile, e.Location);
                     }
                     else
                     {
                         NativeContextMenu.ShowContextMenu(item.Path, pt.X, pt.Y, this.Handle,
-                            () => ChangeIconSize(16),
-                            () => ChangeIconSize(32),
-                            () => ChangeIconSize(48),
+                            () => ChangeIconSize(item, tile, panel, tabData, 1),
+                            () => ChangeIconSize(item, tile, panel, tabData, 2),
+                            () => ChangeIconSize(item, tile, panel, tabData, 3),
+                            () => ChangeIconSize(item, tile, panel, tabData, 4),
                             () => RemoveItem(panel, tile, item, tabData),
-                            () => RenameItem(item, lbl),
-                            () => ChangeItemIcon(item, pic));
+                            () => RenameItem(item, tile),
+                            () => ChangeItemIcon(item, tile));
                     }
                 }
             };
 
-            tile.MouseMove += (s, e) =>
+            tile.MouseMove += (sender, e) =>
             {
                 if (isDragging && draggingTile == tile)
                 {
@@ -490,20 +530,30 @@ namespace WinPanel
                 }
             };
 
-            tile.MouseUp += (s, e) =>
+            tile.MouseUp += (sender, e) =>
             {
                 if (e.Button == MouseButtons.Left && isDragging && draggingTile == tile)
                 {
                     isDragging = false;
                     if (dragFired)
                     {
-                        draggingItem.X = tile.Left;
-                        draggingItem.Y = tile.Top;
-                        settings.Save(settingsPath);
+                        if (tabData.IsGridLayout)
+                        {
+                            int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
+                            int row = Math.Max(0, Math.Min(20 - s, (tile.Top + cellHeight/2) / cellHeight));
+                            item.X = col * cellWidth;
+                            item.Y = row * cellHeight;
+                        }
+                        else
+                        {
+                            item.X = tile.Left;
+                            item.Y = tile.Top;
+                        }
+                        records.Save(recordsPath);
+                        RenderCurrentFolder(panel, tabData);
                     }
                     else
                     {
-                        // Clicked
                         if (item.IsFolder)
                         {
                             tabNavigations[tabData].Push(item);
@@ -529,18 +579,18 @@ namespace WinPanel
             panel.Controls.Add(tile);
         }
 
-        private void RenameItem(ShortcutItem item, Label lbl)
+        private void RenameItem(ShortcutItem item, TileControl tile)
         {
             string newName = Prompt.ShowDialog("New Name", "Rename", item.Name);
             if (!string.IsNullOrWhiteSpace(newName))
             {
                 item.Name = newName;
-                lbl.Text = newName;
-                settings.Save(settingsPath);
+                records.Save(recordsPath);
+                tile.Invalidate();
             }
         }
 
-        private void ChangeItemIcon(ShortcutItem item, PictureBox pic)
+        private void ChangeItemIcon(ShortcutItem item, TileControl tile)
         {
             using (var ofd = new OpenFileDialog())
             {
@@ -548,33 +598,167 @@ namespace WinPanel
                 if (ofd.ShowDialog() == DialogResult.OK)
                 {
                     item.CustomIconPath = ofd.FileName;
-                    settings.Save(settingsPath);
+                    records.Save(recordsPath);
                     if (item.CustomIconPath.ToLower().EndsWith(".exe") || item.CustomIconPath.ToLower().EndsWith(".ico"))
-                        pic.Image = IconExtractor.GetIcon(item.CustomIconPath, settings.IconSize >= 32);
+                        tile.IconImage = IconExtractor.GetIcon(item.CustomIconPath, true);
                     else
                     {
-                        try { pic.Image = Image.FromFile(item.CustomIconPath); }
+                        try { tile.IconImage = Image.FromFile(item.CustomIconPath); }
                         catch { }
                     }
+                    tile.Invalidate();
                 }
             }
         }
 
-        private void ChangeIconSize(int newSize)
+        private void ChangeIconSize(ShortcutItem item, TileControl tile, Panel panel, TabData tabData, int newSize)
         {
-            settings.IconSize = newSize;
-            settings.Save(settingsPath);
-            LoadTabs();
+            item.Size = newSize;
+            records.Save(recordsPath);
+            RenderCurrentFolder(panel, tabData);
         }
 
-        private void RemoveItem(Panel panel, Panel tile, ShortcutItem item, TabData tabData)
+        private void RemoveItem(Panel panel, Control tile, ShortcutItem item, TabData tabData)
         {
             var navStack = tabNavigations[tabData];
             var targetList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
             targetList.Remove(item);
             panel.Controls.Remove(tile);
             tile.Dispose();
-            settings.Save(settingsPath);
+            records.Save(recordsPath);
+        }
+    }
+
+    public class TileControl : Control
+    {
+        public ShortcutItem Item { get; set; }
+        public TabData TabData { get; set; }
+        private Color bgColor = Color.FromArgb(45, 45, 48);
+        private Color hoverColor = Color.FromArgb(62, 62, 66);
+        public bool IsHovered { get; set; }
+        public Image IconImage { get; set; }
+
+        public TileControl()
+        {
+            this.DoubleBuffered = true;
+            this.Cursor = Cursors.Hand;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            IsHovered = true;
+            this.Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            IsHovered = false;
+            this.Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+
+            Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
+            int radius = 15;
+            var path = GetRoundRectangle(rect, radius);
+
+            Color currentBg = IsHovered ? hoverColor : bgColor;
+
+            if (Item.IsFolder)
+            {
+                using (var brush = new SolidBrush(Color.FromArgb(128, currentBg)))
+                {
+                    e.Graphics.FillPath(brush, path);
+                }
+
+                if (Item.Children != null && Item.Children.Count > 0)
+                {
+                    int maxIcons = Math.Min(9, Item.Children.Count);
+                    int cols = maxIcons > 4 ? 3 : 2;
+                    int rows = (int)Math.Ceiling(maxIcons / (float)cols);
+                    int padding = 10;
+                    int miniWidth = (this.Width - padding * 2) / cols;
+                    int miniHeight = ((this.Height - 25) - padding * 2) / rows;
+                    int miniSize = Math.Min(miniWidth, miniHeight) - 4;
+
+                    for (int i = 0; i < maxIcons; i++)
+                    {
+                        var child = Item.Children[i];
+                        int c = i % cols;
+                        int r = i / cols;
+                        int cx = padding + c * miniWidth + (miniWidth - miniSize)/2;
+                        int cy = padding + r * miniHeight + (miniHeight - miniSize)/2;
+
+                        Image childImg = null;
+                        if (child.IsFolder)
+                        {
+                            var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
+                            if (folderIcon != null) childImg = folderIcon.ToBitmap();
+                            else childImg = SystemIcons.WinLogo.ToBitmap();
+                        }
+                        else childImg = IconExtractor.GetIcon(child.Path, true);
+                        
+                        if (childImg != null)
+                        {
+                            e.Graphics.DrawImage(childImg, new Rectangle(cx, cy, miniSize, miniSize));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                using (var brush = new SolidBrush(currentBg))
+                {
+                    e.Graphics.FillPath(brush, path);
+                }
+
+                if (IconImage != null)
+                {
+                    int iconSize = Math.Min(this.Width, this.Height - 25) - 20;
+                    if (iconSize > 0)
+                    {
+                        int ix = (this.Width - iconSize) / 2;
+                        int iy = (this.Height - 25 - iconSize) / 2;
+                        e.Graphics.DrawImage(IconImage, new Rectangle(ix, iy, iconSize, iconSize));
+                    }
+                }
+            }
+
+            using (var brush = new SolidBrush(Color.White))
+            using (var font = new Font("Segoe UI", 9f))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+                Rectangle textRect = new Rectangle(5, this.Height - 25, this.Width - 10, 20);
+                e.Graphics.DrawString(Item.Name, font, brush, textRect, sf);
+            }
+        }
+
+        private GraphicsPath GetRoundRectangle(Rectangle bounds, int radius)
+        {
+            var path = new GraphicsPath();
+            int diameter = radius * 2;
+            if (bounds.Width < diameter || bounds.Height < diameter)
+            {
+                path.AddRectangle(bounds);
+                return path;
+            }
+            Size size = new Size(diameter, diameter);
+            Rectangle arc = new Rectangle(bounds.Location, size);
+            path.AddArc(arc, 180, 90);
+            arc.X = bounds.Right - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = bounds.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = bounds.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
         }
     }
 
@@ -606,7 +790,6 @@ namespace WinPanel
         }
     }
 
-    // Helper for shell icons since standard C# doesn't provide easy folder icons
     public static class ShellIcon
     {
         [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]

@@ -1,37 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Xml.Serialization;
 
 namespace WinPanel
 {
-    public class ShortcutItem
-    {
-        public string Path { get; set; }
-        public string Name { get; set; }
-        public int X { get; set; }
-        public int Y { get; set; }
-        public bool IsFolder { get; set; }
-        public string CustomIconPath { get; set; }
-        public List<ShortcutItem> Children { get; set; }
-
-        public ShortcutItem()
-        {
-            Children = new List<ShortcutItem>();
-        }
-    }
-
-    public class TabData
-    {
-        public string Name { get; set; }
-        public List<ShortcutItem> Items { get; set; }
-
-        public TabData()
-        {
-            Items = new List<ShortcutItem>();
-        }
-    }
-
     public class Settings
     {
         public int WindowWidth { get; set; }
@@ -39,48 +10,38 @@ namespace WinPanel
         public int WindowX { get; set; }
         public int WindowY { get; set; }
         public bool MinimizeToTray { get; set; }
-        public int IconSize { get; set; }
-        public List<TabData> Tabs { get; set; }
 
         public Settings()
         {
-            WindowWidth = 200;
-            WindowHeight = 300;
+            WindowWidth = 800;
+            WindowHeight = 600;
             WindowX = 100;
             WindowY = 100;
             MinimizeToTray = true;
-            IconSize = 32;
-            Tabs = new List<TabData>();
         }
 
         public static Settings Load(string path)
         {
+            var s = new Settings();
             if (!File.Exists(path))
-                return GetDefaultSettings();
+            {
+                return s;
+            }
 
             try
             {
-                var serializer = new XmlSerializer(typeof(Settings));
-                using (var fs = new FileStream(path, FileMode.Open))
-                {
-                    var s = (Settings)serializer.Deserialize(fs);
-                    if (s.Tabs == null || s.Tabs.Count == 0) return GetDefaultSettings(s);
-                    return s;
-                }
+                var ini = new IniFile(path);
+                int w, h, x, y;
+                bool m;
+                if (int.TryParse(ini.Read("WindowWidth"), out w)) s.WindowWidth = w;
+                if (int.TryParse(ini.Read("WindowHeight"), out h)) s.WindowHeight = h;
+                if (int.TryParse(ini.Read("WindowX"), out x)) s.WindowX = x;
+                if (int.TryParse(ini.Read("WindowY"), out y)) s.WindowY = y;
+                if (bool.TryParse(ini.Read("MinimizeToTray"), out m)) s.MinimizeToTray = m;
             }
             catch
             {
-                return GetDefaultSettings();
-            }
-        }
-
-        private static Settings GetDefaultSettings(Settings baseSettings = null)
-        {
-            var s = baseSettings ?? new Settings();
-            if (s.Tabs == null) s.Tabs = new List<TabData>();
-            if (s.Tabs.Count == 0)
-            {
-                s.Tabs.Add(new TabData { Name = "Main" });
+                // fallback to defaults
             }
             return s;
         }
@@ -89,11 +50,12 @@ namespace WinPanel
         {
             try
             {
-                var serializer = new XmlSerializer(typeof(Settings));
-                using (var fs = new FileStream(path, FileMode.Create))
-                {
-                    serializer.Serialize(fs, this);
-                }
+                var ini = new IniFile(path);
+                ini.Write("WindowWidth", WindowWidth.ToString());
+                ini.Write("WindowHeight", WindowHeight.ToString());
+                ini.Write("WindowX", WindowX.ToString());
+                ini.Write("WindowY", WindowY.ToString());
+                ini.Write("MinimizeToTray", MinimizeToTray.ToString());
             }
             catch (Exception ex)
             {

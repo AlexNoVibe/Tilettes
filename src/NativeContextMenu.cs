@@ -163,7 +163,7 @@ namespace WinPanel
             }
         }
 
-        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSmall, Action onMedium, Action onLarge, Action onRemove, Action onRename, Action onChangeIcon)
+        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSize1, Action onSize2, Action onSize3, Action onSize4, Action onRemove, Action onRename, Action onChangeIcon)
         {
             uint dummy;
             IntPtr pidl;
@@ -191,12 +191,13 @@ namespace WinPanel
                     InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref sep);
 
                     // Add custom items
-                    AddMenuItem(hMenu, customIdStart, "Size: Small");
-                    AddMenuItem(hMenu, customIdStart + 1, "Size: Medium");
-                    AddMenuItem(hMenu, customIdStart + 2, "Size: Large");
-                    AddMenuItem(hMenu, customIdStart + 3, "Rename");
-                    AddMenuItem(hMenu, customIdStart + 4, "Change Icon");
-                    AddMenuItem(hMenu, customIdStart + 5, "Remove from Panel");
+                    AddMenuItem(hMenu, customIdStart, "Size: 1x1");
+                    AddMenuItem(hMenu, customIdStart + 1, "Size: 2x2");
+                    AddMenuItem(hMenu, customIdStart + 2, "Size: 3x3");
+                    AddMenuItem(hMenu, customIdStart + 3, "Size: 4x4");
+                    AddMenuItem(hMenu, customIdStart + 4, "Rename");
+                    AddMenuItem(hMenu, customIdStart + 5, "Change Icon");
+                    AddMenuItem(hMenu, customIdStart + 6, "Remove from Panel");
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
                     uint cmd = TrackPopupMenuEx(hMenu, TPM_RETURNCMD, x, y, handle, IntPtr.Zero);
@@ -211,12 +212,13 @@ namespace WinPanel
                         ici.nShow = 1; // SW_SHOWNORMAL
                         contextMenu.InvokeCommand(ref ici);
                     }
-                    else if (cmd == customIdStart) { if (onSmall != null) onSmall(); }
-                    else if (cmd == customIdStart + 1) { if (onMedium != null) onMedium(); }
-                    else if (cmd == customIdStart + 2) { if (onLarge != null) onLarge(); }
-                    else if (cmd == customIdStart + 3) { if (onRename != null) onRename(); }
-                    else if (cmd == customIdStart + 4) { if (onChangeIcon != null) onChangeIcon(); }
-                    else if (cmd == customIdStart + 5) { if (onRemove != null) onRemove(); }
+                    else if (cmd == customIdStart) { if (onSize1 != null) onSize1(); }
+                    else if (cmd == customIdStart + 1) { if (onSize2 != null) onSize2(); }
+                    else if (cmd == customIdStart + 2) { if (onSize3 != null) onSize3(); }
+                    else if (cmd == customIdStart + 3) { if (onSize4 != null) onSize4(); }
+                    else if (cmd == customIdStart + 4) { if (onRename != null) onRename(); }
+                    else if (cmd == customIdStart + 5) { if (onChangeIcon != null) onChangeIcon(); }
+                    else if (cmd == customIdStart + 6) { if (onRemove != null) onRemove(); }
 
                     DestroyMenu(hMenu);
                     Marshal.ReleaseComObject(contextMenu);
