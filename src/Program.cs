@@ -667,8 +667,8 @@ namespace WinPanel
                         if (child.IsFolder)
                         {
                             var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                            if (folderIcon != null) childImg = folderIcon.ToBitmap();
-                            else childImg = SystemIcons.WinLogo.ToBitmap();
+                            if (folderIcon != null) childImg = IconExtractor.ToBitmapRobust(folderIcon);
+                            else childImg = IconExtractor.ToBitmapRobust(SystemIcons.WinLogo);
                         }
                         else
                         {
@@ -695,7 +695,7 @@ namespace WinPanel
                     }
                 }
                 catch { }
-                if (iconImg == null) iconImg = SystemIcons.Application.ToBitmap();
+                if (iconImg == null) iconImg = IconExtractor.ToBitmapRobust(SystemIcons.Application);
             }
             tile.IconImage = iconImg;
 
@@ -1088,6 +1088,10 @@ namespace WinPanel
         public enum IconSize { Large = 0, Small = 1 }
         public enum FolderType { Closed = 0, Open = 1 }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
         public static Icon GetFolderIcon(IconSize size, FolderType folderType)
         {
             uint flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
@@ -1100,7 +1104,9 @@ namespace WinPanel
 
             if (shfi.hIcon != IntPtr.Zero)
             {
-                return (Icon)Icon.FromHandle(shfi.hIcon).Clone();
+                Icon icon = (Icon)Icon.FromHandle(shfi.hIcon).Clone();
+                DestroyIcon(shfi.hIcon);
+                return icon;
             }
             return null;
         }

@@ -74,7 +74,7 @@ namespace WinPanel
         private const int SHIL_EXTRALARGE = 2;
         private const int ILD_TRANSPARENT = 1;
 
-        private static Bitmap ToBitmapRobust(Icon icon)
+        public static Bitmap ToBitmapRobust(Icon icon)
         {
             if (icon == null) return null;
             Bitmap bmp = new Bitmap(icon.Width, icon.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
