@@ -133,6 +133,7 @@ namespace WinPanel
                     this.Width = settings.WindowWidth;
                     this.Height = settings.WindowHeight;
                     this.Location = new Point(settings.WindowX, settings.WindowY);
+                    ApplyThemeColors();
                     LoadTabs();
                 }
             }
@@ -154,6 +155,10 @@ namespace WinPanel
                 hoverColor = Color.FromArgb(62, 62, 66);
                 textColor = Color.White;
             }
+            this.BackColor = bgColor;
+            this.ForeColor = textColor;
+            if (tabBar != null) tabBar.BackColor = bgColor;
+            if (contentPanel != null) contentPanel.BackColor = bgColor;
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -514,7 +519,7 @@ namespace WinPanel
                 var tc = c as TileControl;
                 if (tc != null && tc.Item.IsFolder)
                 {
-                    if (tc.Bounds.Contains(displayPt))
+                    if (tc.Bounds.Contains(pt))
                     {
                         targetFolder = tc.Item;
                         break;
@@ -757,17 +762,44 @@ namespace WinPanel
                     if (dragFired)
                     {
                         if (!isEditMode) return;
-                        if (tabData.IsGridLayout)
+
+                        var ptClient = panel.PointToClient(Cursor.Position);
+                        ShortcutItem targetFolder = null;
+                        foreach (Control c in panel.Controls)
                         {
-                            int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
-                            int row = Math.Max(0, Math.Min(16 - s, (tile.Top + cellHeight/2) / cellHeight));
-                            item.GridX = col;
-                            item.GridY = row;
+                            var otherTile = c as TileControl;
+                            if (otherTile != null && otherTile != tile && otherTile.Item.IsFolder)
+                            {
+                                if (otherTile.Bounds.Contains(ptClient))
+                                {
+                                    targetFolder = otherTile.Item;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetFolder != null)
+                        {
+                            var navStack = tabNavigations[tabData];
+                            var currentList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
+                            currentList.Remove(item);
+                            if (targetFolder.Children == null) targetFolder.Children = new List<ShortcutItem>();
+                            targetFolder.Children.Add(item);
                         }
                         else
                         {
-                            item.X = tile.Left;
-                            item.Y = tile.Top;
+                            if (tabData.IsGridLayout)
+                            {
+                                int col = Math.Max(0, Math.Min(cols - s, (tile.Left + cellWidth/2) / cellWidth));
+                                int row = Math.Max(0, Math.Min(rows - s, (tile.Top + cellHeight/2) / cellHeight));
+                                item.GridX = col;
+                                item.GridY = row;
+                            }
+                            else
+                            {
+                                item.X = tile.Left - panel.DisplayRectangle.X;
+                                item.Y = tile.Top - panel.DisplayRectangle.Y;
+                            }
                         }
                         records.Save(recordsPath);
                         RenderCurrentFolder(panel, tabData);
