@@ -15,6 +15,7 @@ namespace WinPanel
 
         private Settings settings;
         private Records records;
+        private MiniExplorerForm miniExplorer;
         private string settingsPath = "settings.ini";
         private string recordsPath = "records.xml";
         private Panel topPanel;
@@ -1435,18 +1436,22 @@ namespace WinPanel
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
                     {
-                        if (!isEditMode) return;
                         var fMenu = new ContextMenu();
-                        if (tabNavigations[tabData].Count > 0)
-                            fMenu.MenuItems.Add("Move out of folder", (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
-                        var fSizeMenu = fMenu.MenuItems.Add("Size");
-                        fSizeMenu.MenuItems.Add("1 x 1", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 1));
-                        fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
-                        fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
-                        fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
-                        fMenu.MenuItems.Add("Rename", (s2, e2) => RenameItem(item, tile));
-                        fMenu.MenuItems.Add("Change Icon", (s2, e2) => ChangeItemIcon(item, tile));
-                        fMenu.MenuItems.Add("Remove", (s2, e2) => RemoveItem(panel, tile, item, tabData));
+                        fMenu.MenuItems.Add("Open in Mini Explorer", (s2, e2) => OpenMiniExplorer(item));
+                        if (isEditMode)
+                        {
+                            fMenu.MenuItems.Add("-");
+                            if (tabNavigations[tabData].Count > 0)
+                                fMenu.MenuItems.Add("Move out of folder", (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
+                            var fSizeMenu = fMenu.MenuItems.Add("Size");
+                            fSizeMenu.MenuItems.Add("1 x 1", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 1));
+                            fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
+                            fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
+                            fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
+                            fMenu.MenuItems.Add("Rename", (s2, e2) => RenameItem(item, tile));
+                            fMenu.MenuItems.Add("Change Icon", (s2, e2) => ChangeItemIcon(item, tile));
+                            fMenu.MenuItems.Add("Remove", (s2, e2) => RemoveItem(panel, tile, item, tabData));
+                        }
                         fMenu.Show(tile, e.Location);
                     }
                     else
@@ -1538,7 +1543,11 @@ namespace WinPanel
                     {
                         if (item.IsFolder)
                         {
-                            if (settings.OpenFoldersInPopup)
+                            if ((Control.ModifierKeys & Keys.Control) == Keys.Control && settings.MiniExplorerCtrlClick && Directory.Exists(item.Path))
+                            {
+                                OpenMiniExplorer(item);
+                            }
+                            else if (settings.OpenFoldersInPopup)
                             {
                                 OpenFolderPopup(item, tile, panel, tabData);
                             }
@@ -1605,6 +1614,31 @@ namespace WinPanel
                     RenderCurrentFolder(panel, tabData);
                 });
             popup.Show(this);
+        }
+
+        // Opens the mini explorer window at the folder; if it is already open it is
+        // re-used and navigated to the folder instead of opening a second window.
+        private void OpenMiniExplorer(ShortcutItem item)
+        {
+            if (item == null || string.IsNullOrEmpty(item.Path)) return;
+            if (!Directory.Exists(item.Path))
+            {
+                LaunchItem(item.Path);
+                return;
+            }
+            try
+            {
+                if (miniExplorer == null || miniExplorer.IsDisposed)
+                    miniExplorer = new MiniExplorerForm(item.Path, settings);
+                else
+                    miniExplorer.NavigateExternal(item.Path);
+                if (!miniExplorer.Visible) miniExplorer.Show(this);
+                else miniExplorer.Activate();
+            }
+            catch (Exception ex)
+            {
+                ReportLaunchError("Mini Explorer error: " + ex.Message);
+            }
         }
 
         private void RenameItem(ShortcutItem item, TileControl tile)

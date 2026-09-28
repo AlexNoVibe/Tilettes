@@ -26,6 +26,7 @@ namespace WinPanel
         private NumericUpDown numGridRows;
         private NumericUpDown numDefaultItemSize;
         private CheckBox chkLightTheme;
+        private CheckBox chkMiniExplorer;
 
         private NumericUpDown numIconScale;
 
@@ -90,7 +91,7 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 430;
-            this.Height = 660;
+            this.Height = 690;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -195,6 +196,9 @@ namespace WinPanel
             btnTypeOpen.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.OpenWith, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
             y += 36;
 
+            chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 380, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
+            y += 26;
+
             btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
@@ -239,6 +243,7 @@ namespace WinPanel
             this.Controls.Add(lblFolders);
             this.Controls.Add(cmbFolders);
             this.Controls.Add(chkLightTheme);
+            this.Controls.Add(chkMiniExplorer);
             this.Controls.Add(lblHotkey);
             this.Controls.Add(cmbHotkey);
             this.Controls.Add(lblTypes);
@@ -399,6 +404,7 @@ namespace WinPanel
             settings.WindowY = (int)numY.Value;
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
             settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
+            settings.MiniExplorerCtrlClick = chkMiniExplorer.Checked;
             settings.HotkeyShow = cmbHotkey.SelectedItem != null ? cmbHotkey.SelectedItem.ToString() : "Ctrl+J";
             settings.GridTransparency = (int)numGridTransparency.Value;
             settings.GridColumns = (int)numGridCols.Value;

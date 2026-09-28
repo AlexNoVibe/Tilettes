@@ -20,6 +20,8 @@ namespace WinPanel
         public bool GridVisible { get; set; }
         // Hotkey to show the window, e.g. "Ctrl+J" ("None" = disabled)
         public string HotkeyShow { get; set; }
+        // Ctrl+Click on a folder opens the mini explorer window
+        public bool MiniExplorerCtrlClick { get; set; }
 
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
@@ -53,6 +55,7 @@ namespace WinPanel
             OpenFoldersInPopup = false;
             GridVisible = true;
             HotkeyShow = "Ctrl+J";
+            MiniExplorerCtrlClick = true;
 
             GridTransparency = 50;
             GridColumns = 16;
@@ -152,6 +155,9 @@ namespace WinPanel
                 string hk = ini.Read("HotkeyShow");
                 if (!string.IsNullOrEmpty(hk)) s.HotkeyShow = hk;
 
+                bool mx;
+                if (bool.TryParse(ini.Read("MiniExplorerCtrlClick"), out mx)) s.MiniExplorerCtrlClick = mx;
+
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
@@ -193,6 +199,7 @@ namespace WinPanel
                 ini.Write("EditMode", EditMode.ToString());
                 ini.Write("GridVisible", GridVisible.ToString());
                 ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+J" : HotkeyShow);
+                ini.Write("MiniExplorerCtrlClick", MiniExplorerCtrlClick.ToString());
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());

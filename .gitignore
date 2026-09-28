@@ -5,3 +5,5 @@ settings.xml
 .opencode/
 .zcode/
 config/
+bookmarks.xml
+filetypes.xml
