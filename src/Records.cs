@@ -30,12 +30,14 @@ namespace WinPanel
     public class TabData
     {
         public string Name { get; set; }
-        public bool IsGridLayout { get; set; } // True = 16x16 Grid, False = Free layout
+        public bool IsGridLayout { get; set; } // True = Grid, False = Free layout
+        public int Row { get; set; } // Tab bar row; tabs are placed into rows manually by dragging
         public List<ShortcutItem> Items { get; set; }
 
         public TabData()
         {
             Items = new List<ShortcutItem>();
+            Row = 0;
         }
     }
 

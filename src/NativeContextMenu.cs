@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -87,6 +90,12 @@ namespace WinPanel
         [DllImport("user32.dll")]
         public static extern int GetMenuItemCount(IntPtr hMenu);
 
+        [DllImport("user32.dll")]
+        public static extern uint GetSysColor(int nIndex);
+
+        [DllImport("gdi32.dll")]
+        public static extern bool DeleteObject(IntPtr hObject);
+
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         public struct MENUITEMINFO
         {
@@ -107,6 +116,8 @@ namespace WinPanel
         public const uint MIIM_STRING = 0x00000040;
         public const uint MIIM_ID = 0x00000002;
         public const uint MIIM_FTYPE = 0x00000100;
+        public const uint MIIM_SUBMENU = 0x00000004;
+        public const uint MIIM_BITMAP = 0x00000080;
         public const uint MFT_SEPARATOR = 0x00000800;
         public const uint MFT_STRING = 0x00000000;
 
@@ -163,7 +174,11 @@ namespace WinPanel
             }
         }
 
-        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, Action onSize1, Action onSize2, Action onSize3, Action onSize4, Action onRemove, Action onRename, Action onChangeIcon)
+        public static void ShowContextMenu(string path, int x, int y, IntPtr handle, bool editMode,
+            bool canMoveOutOfFolder, Action onMoveOutOfFolder,
+            Action onOpenContainingFolder,
+            Action onSize1, Action onSize2, Action onSize3, Action onSize4,
+            Action onRemove, Action onRename, Action onChangeIcon)
         {
             uint dummy;
             IntPtr pidl;
@@ -181,27 +196,50 @@ namespace WinPanel
                 {
                     IContextMenu contextMenu = (IContextMenu)Marshal.GetTypedObjectForIUnknown(pCtxMenu, typeof(IContextMenu));
                     IntPtr hMenu = CreatePopupMenu();
-                    
+
                     contextMenu.QueryContextMenu(hMenu, 0, 1, 0x7FFF, CMF_NORMAL | CMF_EXPLORE);
-                    
+
                     uint customIdStart = 0x8000;
+                    IntPtr marker = CreateMarkerBitmap();
 
-                    // Add Separator
-                    MENUITEMINFO sep = new MENUITEMINFO { cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO)), fMask = MIIM_FTYPE, fType = MFT_SEPARATOR };
-                    InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref sep);
+                    // Our items go on top so they are shown before the Explorer items.
+                    uint pos = 0;
+                    InsertCustomItem(hMenu, pos++, customIdStart + 7, "Open containing folder", marker);
+                    if (editMode && canMoveOutOfFolder)
+                        InsertCustomItem(hMenu, pos++, customIdStart + 8, "Move out of folder", marker);
+                    InsertSeparator(hMenu, pos++);
 
-                    // Add custom items
-                    AddMenuItem(hMenu, customIdStart, "Size: 1x1");
-                    AddMenuItem(hMenu, customIdStart + 1, "Size: 2x2");
-                    AddMenuItem(hMenu, customIdStart + 2, "Size: 3x3");
-                    AddMenuItem(hMenu, customIdStart + 3, "Size: 4x4");
-                    AddMenuItem(hMenu, customIdStart + 4, "Rename");
-                    AddMenuItem(hMenu, customIdStart + 5, "Change Icon");
-                    AddMenuItem(hMenu, customIdStart + 6, "Remove from Panel");
+                    if (editMode)
+                    {
+                        // Edit actions stay at the bottom, below the Explorer items.
+                        InsertSeparator(hMenu, (uint)GetMenuItemCount(hMenu));
+
+                        IntPtr sizeMenu = CreatePopupMenu();
+                        InsertCustomItem(sizeMenu, 0, customIdStart, "1 x 1", marker);
+                        InsertCustomItem(sizeMenu, 1, customIdStart + 1, "2 x 2", marker);
+                        InsertCustomItem(sizeMenu, 2, customIdStart + 2, "3 x 3", marker);
+                        InsertCustomItem(sizeMenu, 3, customIdStart + 3, "4 x 4", marker);
+
+                        MENUITEMINFO sizeItem = new MENUITEMINFO();
+                        sizeItem.cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO));
+                        sizeItem.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE | MIIM_SUBMENU | MIIM_BITMAP;
+                        sizeItem.fType = MFT_STRING;
+                        sizeItem.wID = customIdStart + 10;
+                        sizeItem.dwTypeData = "Size";
+                        sizeItem.hSubMenu = sizeMenu;
+                        sizeItem.hbmpItem = marker;
+                        InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref sizeItem);
+
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 4, "Rename", marker);
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 5, "Change Icon", marker);
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 6, "Remove from Panel", marker);
+                    }
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
                     uint cmd = TrackPopupMenuEx(hMenu, TPM_RETURNCMD, x, y, handle, IntPtr.Zero);
                     hook.Detach();
+
+                    if (marker != IntPtr.Zero) DeleteObject(marker);
 
                     if (cmd >= 1 && cmd < customIdStart)
                     {
@@ -212,6 +250,8 @@ namespace WinPanel
                         ici.nShow = 1; // SW_SHOWNORMAL
                         contextMenu.InvokeCommand(ref ici);
                     }
+                    else if (cmd == customIdStart + 7) { if (onOpenContainingFolder != null) onOpenContainingFolder(); }
+                    else if (cmd == customIdStart + 8) { if (onMoveOutOfFolder != null) onMoveOutOfFolder(); }
                     else if (cmd == customIdStart) { if (onSize1 != null) onSize1(); }
                     else if (cmd == customIdStart + 1) { if (onSize2 != null) onSize2(); }
                     else if (cmd == customIdStart + 2) { if (onSize3 != null) onSize3(); }
@@ -228,15 +268,54 @@ namespace WinPanel
             CoTaskMemFree(pidl);
         }
 
-        private static void AddMenuItem(IntPtr hMenu, uint id, string text)
+        // Inserts one of our own items (with the round marker icon) at the given position.
+        private static void InsertCustomItem(IntPtr hMenu, uint position, uint id, string text, IntPtr hbmp)
         {
             MENUITEMINFO mii = new MENUITEMINFO();
             mii.cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO));
-            mii.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE;
+            mii.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE | MIIM_BITMAP;
             mii.fType = MFT_STRING;
             mii.wID = id;
             mii.dwTypeData = text;
-            InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref mii);
+            mii.hbmpItem = hbmp;
+            InsertMenuItem(hMenu, position, true, ref mii);
+        }
+
+        private static void InsertSeparator(IntPtr hMenu, uint position)
+        {
+            MENUITEMINFO mii = new MENUITEMINFO();
+            mii.cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO));
+            mii.fMask = MIIM_FTYPE;
+            mii.fType = MFT_SEPARATOR;
+            InsertMenuItem(hMenu, position, true, ref mii);
+        }
+
+        // A small round blue dot drawn on the system menu background — used as the icon
+        // of our own menu items so they are visually different from Explorer items.
+        private static IntPtr CreateMarkerBitmap()
+        {
+            try
+            {
+                const int size = 16;
+                Color menuBg;
+                try { menuBg = ColorTranslator.FromWin32((int)GetSysColor(4)); } // COLOR_MENU
+                catch { menuBg = SystemColors.Menu; }
+                using (var bmp = new Bitmap(size, size))
+                {
+                    using (var g = Graphics.FromImage(bmp))
+                    {
+                        g.Clear(menuBg);
+                        g.SmoothingMode = SmoothingMode.AntiAlias;
+                        using (var brush = new SolidBrush(Color.FromArgb(0, 120, 215)))
+                            g.FillEllipse(brush, 3f, 3f, 10f, 10f);
+                    }
+                    return bmp.GetHbitmap();
+                }
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
         }
     }
 }

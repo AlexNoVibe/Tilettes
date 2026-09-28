@@ -1,2 +1,7 @@
 WinPanel.exe
 settings.xml
+.openclaw/
+.agents/
+.opencode/
+.zcode/
+config/

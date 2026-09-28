@@ -1,35 +1,129 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace WinPanel
 {
     public class Settings
     {
-        public int WindowWidth { get; set; }
-        public int WindowHeight { get; set; }
+        // The window always starts exactly with this size; resizing during a session
+        // does not change it (only the position is remembered).
+        public int StartupWidth { get; set; }
+        public int StartupHeight { get; set; }
         public int WindowX { get; set; }
         public int WindowY { get; set; }
         public bool MinimizeToTray { get; set; }
-        
+        public bool OpenFoldersInPopup { get; set; }
+        public bool EditMode { get; set; }
+
+        // Grid visibility: quick toggle button on the main panel
+        public bool GridVisible { get; set; }
+        // Hotkey to show the window, e.g. "Ctrl+J" ("None" = disabled)
+        public string HotkeyShow { get; set; }
+
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
         public int DefaultItemSize { get; set; }
         public bool IsLightTheme { get; set; }
 
+        // Icon size inside a tile, percent of the default (100 = as designed)
+        public int IconScale { get; set; }
+
+        // Fonts: size, color (hex, empty = theme default) and family per group
+        public int FontItemsSize { get; set; }
+        public string FontItemsColor { get; set; }
+        public string FontItemsName { get; set; }
+
+        public int FontTabsSize { get; set; }
+        public string FontTabsColor { get; set; }
+        public string FontTabsName { get; set; }
+
+        public int FontUiSize { get; set; }
+        public string FontUiColor { get; set; }
+        public string FontUiName { get; set; }
+
         public Settings()
         {
-            WindowWidth = 800;
-            WindowHeight = 600;
+            StartupWidth = 900;
+            StartupHeight = 800;
             WindowX = 100;
             WindowY = 100;
             MinimizeToTray = true;
-            
+            OpenFoldersInPopup = false;
+            GridVisible = true;
+            HotkeyShow = "Ctrl+J";
+
             GridTransparency = 50;
             GridColumns = 16;
             GridRows = 16;
             DefaultItemSize = 2;
             IsLightTheme = false;
+
+            IconScale = 100;
+
+            FontItemsSize = 9;
+            FontItemsColor = "";
+            FontItemsName = "Segoe UI";
+
+            FontTabsSize = 9;
+            FontTabsColor = "";
+            FontTabsName = "Segoe UI";
+
+            FontUiSize = 9;
+            FontUiColor = "";
+            FontUiName = "Segoe UI";
+        }
+
+        public static System.Drawing.Color ParseColor(string hex, System.Drawing.Color fallback)
+        {
+            if (string.IsNullOrWhiteSpace(hex)) return fallback;
+            try { return System.Drawing.ColorTranslator.FromHtml(hex); }
+            catch { return fallback; }
+        }
+
+        // Font family lookup: System.Drawing.FontFamily.Families is expensive and was
+        // previously enumerated on every MakeFont call (i.e. on every repaint).
+        // The name->family map is built once per process.
+        private static Dictionary<string, System.Drawing.FontFamily> fontFamilyCache;
+
+        private static System.Drawing.FontFamily FindFontFamily(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            if (fontFamilyCache == null)
+            {
+                var map = new Dictionary<string, System.Drawing.FontFamily>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    foreach (var f in System.Drawing.FontFamily.Families)
+                    {
+                        if (!map.ContainsKey(f.Name)) map[f.Name] = f;
+                    }
+                }
+                catch { }
+                fontFamilyCache = map;
+            }
+            System.Drawing.FontFamily fam;
+            return fontFamilyCache.TryGetValue(name.Trim(), out fam) ? fam : null;
+        }
+
+        public static System.Drawing.Font MakeFont(string name, int size, System.Drawing.FontStyle style)
+        {
+            float s = size;
+            if (s < 6) s = 6;
+            if (s > 24) s = 24;
+            var fam = FindFontFamily(name);
+            if (fam != null)
+            {
+                try { return new System.Drawing.Font(fam, s, style); }
+                catch { }
+            }
+            return new System.Drawing.Font("Segoe UI", s, style);
+        }
+
+        public static System.Drawing.Font MakeFont(string name, int size)
+        {
+            return MakeFont(name, size, System.Drawing.FontStyle.Regular);
         }
 
         public static Settings Load(string path)
@@ -43,19 +137,40 @@ namespace WinPanel
             try
             {
                 var ini = new IniFile(path);
-                int w, h, x, y, gt, gc, gr, dis;
-                bool m, lt;
-                if (int.TryParse(ini.Read("WindowWidth"), out w)) s.WindowWidth = w;
-                if (int.TryParse(ini.Read("WindowHeight"), out h)) s.WindowHeight = h;
+                int w, h, x, y, gt, gc, gr, dis, iscl, fis, fts, fus;
+                bool m, lt, fp, em;
+                if (int.TryParse(ini.Read("StartupWidth"), out w)) s.StartupWidth = w;
+                if (int.TryParse(ini.Read("StartupHeight"), out h)) s.StartupHeight = h;
                 if (int.TryParse(ini.Read("WindowX"), out x)) s.WindowX = x;
                 if (int.TryParse(ini.Read("WindowY"), out y)) s.WindowY = y;
                 if (bool.TryParse(ini.Read("MinimizeToTray"), out m)) s.MinimizeToTray = m;
-                
+                if (bool.TryParse(ini.Read("OpenFoldersInPopup"), out fp)) s.OpenFoldersInPopup = fp;
+                if (bool.TryParse(ini.Read("EditMode"), out em)) s.EditMode = em;
+
+                bool gv;
+                if (bool.TryParse(ini.Read("GridVisible"), out gv)) s.GridVisible = gv;
+                string hk = ini.Read("HotkeyShow");
+                if (!string.IsNullOrEmpty(hk)) s.HotkeyShow = hk;
+
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
                 if (int.TryParse(ini.Read("DefaultItemSize"), out dis)) s.DefaultItemSize = dis;
                 if (bool.TryParse(ini.Read("IsLightTheme"), out lt)) s.IsLightTheme = lt;
+
+                if (int.TryParse(ini.Read("IconScale"), out iscl)) s.IconScale = iscl;
+
+                string val = ini.Read("FontItemsColor"); if (val != null) s.FontItemsColor = val;
+                val = ini.Read("FontItemsName"); if (val != null && val.Length > 0) s.FontItemsName = val;
+                if (int.TryParse(ini.Read("FontItemsSize"), out fis)) s.FontItemsSize = fis;
+
+                val = ini.Read("FontTabsColor"); if (val != null) s.FontTabsColor = val;
+                val = ini.Read("FontTabsName"); if (val != null && val.Length > 0) s.FontTabsName = val;
+                if (int.TryParse(ini.Read("FontTabsSize"), out fts)) s.FontTabsSize = fts;
+
+                val = ini.Read("FontUiColor"); if (val != null) s.FontUiColor = val;
+                val = ini.Read("FontUiName"); if (val != null && val.Length > 0) s.FontUiName = val;
+                if (int.TryParse(ini.Read("FontUiSize"), out fus)) s.FontUiSize = fus;
             }
             catch
             {
@@ -69,17 +184,35 @@ namespace WinPanel
             try
             {
                 var ini = new IniFile(path);
-                ini.Write("WindowWidth", WindowWidth.ToString());
-                ini.Write("WindowHeight", WindowHeight.ToString());
+                ini.Write("StartupWidth", StartupWidth.ToString());
+                ini.Write("StartupHeight", StartupHeight.ToString());
                 ini.Write("WindowX", WindowX.ToString());
                 ini.Write("WindowY", WindowY.ToString());
                 ini.Write("MinimizeToTray", MinimizeToTray.ToString());
-                
+                ini.Write("OpenFoldersInPopup", OpenFoldersInPopup.ToString());
+                ini.Write("EditMode", EditMode.ToString());
+                ini.Write("GridVisible", GridVisible.ToString());
+                ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+J" : HotkeyShow);
+
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
                 ini.Write("GridRows", GridRows.ToString());
                 ini.Write("DefaultItemSize", DefaultItemSize.ToString());
                 ini.Write("IsLightTheme", IsLightTheme.ToString());
+
+                ini.Write("IconScale", IconScale.ToString());
+
+                ini.Write("FontItemsSize", FontItemsSize.ToString());
+                ini.Write("FontItemsColor", FontItemsColor == null ? "" : FontItemsColor);
+                ini.Write("FontItemsName", FontItemsName == null ? "" : FontItemsName);
+
+                ini.Write("FontTabsSize", FontTabsSize.ToString());
+                ini.Write("FontTabsColor", FontTabsColor == null ? "" : FontTabsColor);
+                ini.Write("FontTabsName", FontTabsName == null ? "" : FontTabsName);
+
+                ini.Write("FontUiSize", FontUiSize.ToString());
+                ini.Write("FontUiColor", FontUiColor == null ? "" : FontUiColor);
+                ini.Write("FontUiName", FontUiName == null ? "" : FontUiName);
             }
             catch (Exception ex)
             {

@@ -76,11 +76,15 @@ namespace WinPanel
 
         public static Image GetIcon(string path, bool large)
         {
+            // SHGFI_SYSICONINDEX alone returns iIcon = 0 on some systems, which makes every
+            // item render the generic blank-page icon. Requesting SHGFI_ICON as well makes
+            // the shell resolve the real system image list index into iIcon.
             SHFILEINFO shinfo = new SHFILEINFO();
-            uint flags = SHGFI_SYSICONINDEX;
+            uint flags = SHGFI_ICON | SHGFI_SYSICONINDEX | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
             IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
             if (res != IntPtr.Zero)
             {
+                if (shinfo.hIcon != IntPtr.Zero) DestroyIcon(shinfo.hIcon);
                 Guid iidImageList = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950");
                 IImageList iml;
                 int hres = SHGetImageList(large ? SHIL_JUMBO : SHIL_EXTRALARGE, ref iidImageList, out iml);
@@ -90,27 +94,82 @@ namespace WinPanel
                     iml.GetIcon(shinfo.iIcon, ILD_TRANSPARENT, ref hIcon);
                     if (hIcon != IntPtr.Zero)
                     {
-                        Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
-                        DestroyIcon(hIcon);
-                        var bmp = icon.ToBitmap();
-                        icon.Dispose();
-                        return bmp;
+                    Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
+                    DestroyIcon(hIcon);
+                    var bmp = icon.ToBitmap();
+                    icon.Dispose();
+                    return TrimTransparent(bmp);
+                }
+            }
+        }
+        
+        // Fallback
+        flags = SHGFI_ICON | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
+        res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
+        if (res != IntPtr.Zero && shinfo.hIcon != IntPtr.Zero)
+        {
+            Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
+            DestroyIcon(shinfo.hIcon);
+            var bmp = icon.ToBitmap();
+            icon.Dispose();
+            return TrimTransparent(bmp);
+        }
+        return null;
+    }
+
+        // Shell icons often carry large fully transparent margins (some apps have no 256px
+        // frame, leaving a tiny glyph in the corner of the jumbo canvas). Crop to the visible
+        // glyph so tiles can scale it up instead of showing a small icon with dead space.
+        public static Bitmap TrimTransparent(Bitmap src)
+        {
+            int w = src.Width, h = src.Height;
+            int minX = w, minY = h, maxX = -1, maxY = -1;
+            var bd = src.LockBits(new Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int stride = bd.Stride;
+                var bytes = new byte[stride * h];
+                System.Runtime.InteropServices.Marshal.Copy(bd.Scan0, bytes, 0, bytes.Length);
+                for (int y = 0; y < h; y++)
+                {
+                    int rowStart = y * stride;
+                    for (int x = 0; x < w; x++)
+                    {
+                        if (bytes[rowStart + x * 4 + 3] > 16)
+                        {
+                            if (x < minX) minX = x;
+                            if (y < minY) minY = y;
+                            if (x > maxX) maxX = x;
+                            if (y > maxY) maxY = y;
+                        }
                     }
                 }
             }
-            
-            // Fallback
-            flags = SHGFI_ICON | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
-            res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
-            if (res != IntPtr.Zero && shinfo.hIcon != IntPtr.Zero)
+            finally
             {
-                Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
-                DestroyIcon(shinfo.hIcon);
-                var bmp = icon.ToBitmap();
-                icon.Dispose();
-                return bmp;
+                src.UnlockBits(bd);
             }
-            return null;
+
+            if (maxX < 0) return src; // fully transparent, keep as is
+            var outBmp = src.Clone(new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1), src.PixelFormat);
+            src.Dispose();
+            return outBmp;
+        }
+
+        // Draws the image centered inside dest, scaled to fit while preserving aspect ratio.
+        public static void DrawFit(Graphics g, Image img, Rectangle dest)
+        {
+            if (img.Width <= 0 || img.Height <= 0)
+            {
+                g.DrawImage(img, dest);
+                return;
+            }
+            double scale = Math.Min(dest.Width / (double)img.Width, dest.Height / (double)img.Height);
+            int dw = Math.Max(1, (int)Math.Round(img.Width * scale));
+            int dh = Math.Max(1, (int)Math.Round(img.Height * scale));
+            int x = dest.X + (dest.Width - dw) / 2;
+            int y = dest.Y + (dest.Height - dh) / 2;
+            g.DrawImage(img, new Rectangle(x, y, dw, dh));
         }
     }
 }

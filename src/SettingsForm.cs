@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
@@ -15,18 +16,36 @@ namespace WinPanel
         private NumericUpDown numX;
         private NumericUpDown numY;
         private CheckBox chkMinimizeToTray;
-        
+        private ComboBox cmbFolders;
+        private ComboBox cmbHotkey;
+        private Label lblLive;
+        private Rectangle liveRect;
+
         private NumericUpDown numGridTransparency;
         private NumericUpDown numGridCols;
         private NumericUpDown numGridRows;
         private NumericUpDown numDefaultItemSize;
         private CheckBox chkLightTheme;
 
+        private NumericUpDown numIconScale;
+
+        private NumericUpDown numFontItemsSize;
+        private Button btnFontItemsColor;
+        private ComboBox cmbFontItems;
+
+        private NumericUpDown numFontTabsSize;
+        private Button btnFontTabsColor;
+        private ComboBox cmbFontTabs;
+
+        private NumericUpDown numFontUiSize;
+        private Button btnFontUiColor;
+        private ComboBox cmbFontUi;
+
         private Button btnSave;
         private Button btnCancel;
         private Button btnBackup;
         private Button btnRestore;
-        
+
         private Color bgColor;
         private Color panelColor;
         private Color hoverColor;
@@ -48,37 +67,37 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
 
-        public SettingsForm(Settings settings, string settingsPath)
+        public SettingsForm(Settings settings, string settingsPath, Rectangle liveWindowRect)
         {
             this.settings = settings;
             this.settingsPath = settingsPath;
+            this.liveRect = liveWindowRect;
 
             if (settings.IsLightTheme)
             {
-                bgColor = Color.FromArgb(240, 240, 240);
-                panelColor = Color.FromArgb(220, 220, 220);
-                hoverColor = Color.FromArgb(200, 200, 200);
+                bgColor = Color.FromArgb(228, 228, 230);
+                panelColor = Color.FromArgb(210, 210, 214);
+                hoverColor = Color.FromArgb(190, 190, 195);
                 textColor = Color.Black;
             }
             else
             {
-                bgColor = Color.FromArgb(30, 30, 30);
+                bgColor = Color.FromArgb(22, 22, 26);
                 panelColor = Color.FromArgb(45, 45, 48);
                 hoverColor = Color.FromArgb(62, 62, 66);
                 textColor = Color.White;
             }
 
             this.Text = "Settings";
-            this.Width = 320;
-            this.Height = 520;
+            this.Width = 430;
+            this.Height = 660;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
 
-            this.BackColor = bgColor;
             this.ForeColor = textColor;
             this.Font = new Font("Segoe UI", 9f);
-            
+
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
 
             var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
@@ -98,75 +117,104 @@ namespace WinPanel
             };
             this.Controls.Add(titleBar);
 
-            int y = 40;
+            int y = 42;
 
-            var lblWidth = new Label { Text = "Startup Width:", Left = 20, Top = y, Width = 120 };
-            numWidth = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 2000, Minimum = 100, Value = settings.WindowWidth, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            y += 30;
-            
-            var lblHeight = new Label { Text = "Startup Height:", Left = 20, Top = y, Width = 120 };
-            numHeight = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 2000, Minimum = 100, Value = settings.WindowHeight, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            y += 30;
-
-            var lblX = new Label { Text = "Startup X:", Left = 20, Top = y, Width = 120 };
-            numX = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 4000, Minimum = -4000, Value = settings.WindowX, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            // Startup size on one row: [W] x [H]
+            var lblSize = new Label { Text = "Startup Size:", Left = 20, Top = y, Width = 110 };
+            numWidth = new NumericUpDown { Left = 135, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupWidth, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblMul = new Label { Text = "x", Left = 208, Top = y, Width = 14 };
+            numHeight = new NumericUpDown { Left = 224, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupHeight, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
-            var lblY = new Label { Text = "Startup Y:", Left = 20, Top = y, Width = 120 };
-            numY = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 4000, Minimum = -4000, Value = settings.WindowY, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            // Window position on one row: [X] , [Y]
+            var lblPos = new Label { Text = "Window Position:", Left = 20, Top = y, Width = 110 };
+            numX = new NumericUpDown { Left = 135, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowX, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblComma = new Label { Text = ",", Left = 208, Top = y, Width = 14 };
+            numY = new NumericUpDown { Left = 224, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowY, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
             var lblTrans = new Label { Text = "Grid Transp. (0-255):", Left = 20, Top = y, Width = 120 };
-            numGridTransparency = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 255, Minimum = 0, Value = settings.GridTransparency, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            numGridTransparency = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 255, Minimum = 0, Value = settings.GridTransparency, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
             var lblCols = new Label { Text = "Grid Columns:", Left = 20, Top = y, Width = 120 };
-            numGridCols = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridColumns, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            numGridCols = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridColumns, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
             var lblRows = new Label { Text = "Grid Rows:", Left = 20, Top = y, Width = 120 };
-            numGridRows = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridRows, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            numGridRows = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridRows, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
-            var lblSize = new Label { Text = "Def. Item Size:", Left = 20, Top = y, Width = 120 };
-            numDefaultItemSize = new NumericUpDown { Left = 150, Top = y-2, Width = 120, Maximum = 4, Minimum = 1, Value = settings.DefaultItemSize, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblDefSize = new Label { Text = "Def. Item Size:", Left = 20, Top = y, Width = 120 };
+            numDefaultItemSize = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 4, Minimum = 1, Value = settings.DefaultItemSize, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
-            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = y, Width = 250, Checked = settings.MinimizeToTray, FlatStyle = FlatStyle.Flat };
-            y += 30;
-            
-            chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 250, Checked = settings.IsLightTheme, FlatStyle = FlatStyle.Flat };
+            // Icon scale, percent (100 = default)
+            var lblIconScale = new Label { Text = "Icon Scale (%):", Left = 20, Top = y, Width = 120 };
+            numIconScale = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 400, Minimum = 25, Value = Math.Max(25, Math.Min(400, settings.IconScale)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
-            btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 120, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = y, Width = 300, Checked = settings.MinimizeToTray, ForeColor = textColor };
+            y += 26;
+
+            var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
+            cmbFolders = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbFolders.Items.Add("Same window");
+            cmbFolders.Items.Add("Popup window");
+            cmbFolders.SelectedIndex = settings.OpenFoldersInPopup ? 1 : 0;
+            y += 30;
+
+            chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 300, Checked = settings.IsLightTheme, ForeColor = textColor };
+            y += 30;
+
+            var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
+            cmbHotkey = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbHotkey.Items.AddRange(new object[] { "None", "Ctrl+J", "Ctrl+Shift+J", "Ctrl+Alt+J", "Ctrl+K", "Ctrl+Shift+K", "Alt+J" });
+            string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+J" : settings.HotkeyShow;
+            if (!cmbHotkey.Items.Contains(hk)) cmbHotkey.Items.Add(hk);
+            cmbHotkey.SelectedItem = hk;
+            y += 30;
+
+            // Font rows: [size] [color] [family] — one row per group
+            AddFontRow("Tiles Font:", y, settings.FontItemsSize, settings.FontItemsColor, settings.FontItemsName,
+                out numFontItemsSize, out btnFontItemsColor, out cmbFontItems);
+            y += 30;
+            AddFontRow("Tabs Font:", y, settings.FontTabsSize, settings.FontTabsColor, settings.FontTabsName,
+                out numFontTabsSize, out btnFontTabsColor, out cmbFontTabs);
+            y += 30;
+            AddFontRow("UI Font:", y, settings.FontUiSize, settings.FontUiColor, settings.FontUiName,
+                out numFontUiSize, out btnFontUiColor, out cmbFontUi);
+            y += 34;
+
+            btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
 
-            btnRestore = new Button { Text = "Restore Settings", Left = 150, Top = y, Width = 120, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnRestore = new Button { Text = "Restore Settings", Left = 165, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnRestore.FlatAppearance.BorderSize = 0;
             btnRestore.Click += BtnRestore_Click;
-            
-            y += 50;
 
-            btnSave = new Button { Text = "Save", Left = 50, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            y += 44;
+
+            btnSave = new Button { Text = "Save", Left = 90, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnSave.FlatAppearance.BorderSize = 0;
             btnSave.FlatAppearance.MouseOverBackColor = hoverColor;
             btnSave.FlatAppearance.MouseDownBackColor = panelColor;
             btnSave.Click += BtnSave_Click;
 
-            btnCancel = new Button { Text = "Cancel", Left = 160, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor };
+            btnCancel = new Button { Text = "Cancel", Left = 200, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnCancel.FlatAppearance.BorderSize = 0;
             btnCancel.FlatAppearance.MouseOverBackColor = hoverColor;
             btnCancel.FlatAppearance.MouseDownBackColor = panelColor;
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
-            this.Controls.Add(lblWidth);
+            this.Controls.Add(lblSize);
             this.Controls.Add(numWidth);
-            this.Controls.Add(lblHeight);
+            this.Controls.Add(lblMul);
             this.Controls.Add(numHeight);
-            this.Controls.Add(lblX);
+            this.Controls.Add(lblPos);
             this.Controls.Add(numX);
-            this.Controls.Add(lblY);
+            this.Controls.Add(lblComma);
             this.Controls.Add(numY);
             this.Controls.Add(lblTrans);
             this.Controls.Add(numGridTransparency);
@@ -174,28 +222,192 @@ namespace WinPanel
             this.Controls.Add(numGridCols);
             this.Controls.Add(lblRows);
             this.Controls.Add(numGridRows);
-            this.Controls.Add(lblSize);
+            this.Controls.Add(lblDefSize);
             this.Controls.Add(numDefaultItemSize);
+            this.Controls.Add(lblIconScale);
+            this.Controls.Add(numIconScale);
             this.Controls.Add(chkMinimizeToTray);
+            this.Controls.Add(lblFolders);
+            this.Controls.Add(cmbFolders);
             this.Controls.Add(chkLightTheme);
+            this.Controls.Add(lblHotkey);
+            this.Controls.Add(cmbHotkey);
             this.Controls.Add(btnBackup);
             this.Controls.Add(btnRestore);
             this.Controls.Add(btnSave);
             this.Controls.Add(btnCancel);
+
+            // Bottom info: the real window position/size — shown only when it differs
+            // from the values entered above (numbers only, no separate button).
+            lblLive = new Label
+            {
+                Left = 20,
+                Top = this.ClientSize.Height - 44,
+                Width = 390,
+                Height = 20,
+                ForeColor = settings.IsLightTheme ? Color.FromArgb(90, 90, 90) : Color.FromArgb(170, 170, 170)
+            };
+            this.Controls.Add(lblLive);
+            numWidth.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            numHeight.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            numX.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            numY.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            UpdateLiveLabel();
+        }
+
+        // Shows the actual (current) window numbers at the bottom, but only when at
+        // least one of them differs from the values in the fields.
+        private void UpdateLiveLabel()
+        {
+            if (lblLive == null) return;
+            bool differs = liveRect.X != (int)numX.Value || liveRect.Y != (int)numY.Value ||
+                           liveRect.Width != (int)numWidth.Value || liveRect.Height != (int)numHeight.Value;
+            lblLive.Visible = differs;
+            if (differs)
+                lblLive.Text = "Current window: " + liveRect.Width + " x " + liveRect.Height +
+                               " at (" + liveRect.X + ", " + liveRect.Y + ")";
+        }
+
+        // One settings row for a font group: [size] [color swatch] [family]
+        private void AddFontRow(string labelText, int y, int size, string colorHex, string family,
+            out NumericUpDown numSize, out Button colorBtn, out ComboBox combo)
+        {
+            var lbl = new Label { Text = labelText, Left = 20, Top = y, Width = 100 };
+            numSize = new NumericUpDown { Left = 125, Top = y - 2, Width = 45, Maximum = 24, Minimum = 6, Value = Math.Max(6, Math.Min(24, size)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+
+            colorBtn = new Button
+            {
+                Left = 175,
+                Top = y - 2,
+                Width = 40,
+                Height = 23,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Settings.ParseColor(colorHex, textColor),
+                ForeColor = textColor
+            };
+            colorBtn.FlatAppearance.BorderSize = 1;
+            var btn = colorBtn; // lambdas cannot capture out parameters
+            colorBtn.Click += (s, e) =>
+            {
+                using (var cd = new ColorDialog { FullOpen = true, Color = btn.BackColor })
+                {
+                    if (cd.ShowDialog(this) == DialogResult.OK)
+                    {
+                        btn.BackColor = cd.Color;
+                        btn.Tag = "custom";
+                    }
+                }
+            };
+
+            combo = new ComboBox
+            {
+                Left = 220,
+                Top = y - 2,
+                Width = 185,
+                DropDownStyle = ComboBoxStyle.DropDown,
+                BackColor = panelColor,
+                ForeColor = textColor,
+                FlatStyle = FlatStyle.Flat
+            };
+            try
+            {
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var f in FontFamily.Families) names.Add(f.Name);
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+                if (!names.Contains(family)) names.Insert(0, family);
+                combo.Items.AddRange(names.ToArray());
+            }
+            catch { }
+            combo.Text = family;
+
+            this.Controls.Add(lbl);
+            this.Controls.Add(numSize);
+            this.Controls.Add(colorBtn);
+            this.Controls.Add(combo);
+        }
+
+        private string ColorValue(Button colorBtn, string original)
+        {
+            if (colorBtn.Tag == null) return original == null ? "" : original;
+            try { return ColorTranslator.ToHtml(colorBtn.BackColor); }
+            catch { return original == null ? "" : original; }
+        }
+
+        private string FamilyValue(ComboBox combo, string original)
+        {
+            string name = (combo.Text ?? "").Trim();
+            return name.Length > 0 ? name : original;
+        }
+
+        // The dialog gets its own slightly darker gradient so its contour is visible
+        // against the main window behind it.
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            using (var brush = new LinearGradientBrush(this.ClientRectangle, bgColor, ControlPaint.Dark(bgColor, 0.08f), LinearGradientMode.Vertical))
+            {
+                e.Graphics.FillRectangle(brush, this.ClientRectangle);
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(Color.FromArgb(120, textColor)))
+            {
+                e.Graphics.DrawPath(pen, GetRoundedPath(new Rectangle(0, 0, Width - 1, Height - 1), 15));
+            }
+        }
+
+        private GraphicsPath GetRoundedPath(Rectangle bounds, int radius)
+        {
+            var path = new GraphicsPath();
+            int d = radius * 2;
+            if (bounds.Width < d || bounds.Height < d)
+            {
+                path.AddRectangle(bounds);
+                return path;
+            }
+            Rectangle arc = new Rectangle(bounds.Location, new Size(d, d));
+            path.AddArc(arc, 180, 90);
+            arc.X = bounds.Right - d;
+            path.AddArc(arc, 270, 90);
+            arc.Y = bounds.Bottom - d;
+            path.AddArc(arc, 0, 90);
+            arc.X = bounds.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
         }
 
         private void BtnSave_Click(object sender, EventArgs e)
         {
-            settings.WindowWidth = (int)numWidth.Value;
-            settings.WindowHeight = (int)numHeight.Value;
+            settings.StartupWidth = (int)numWidth.Value;
+            settings.StartupHeight = (int)numHeight.Value;
             settings.WindowX = (int)numX.Value;
             settings.WindowY = (int)numY.Value;
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
+            settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
+            settings.HotkeyShow = cmbHotkey.SelectedItem != null ? cmbHotkey.SelectedItem.ToString() : "Ctrl+J";
             settings.GridTransparency = (int)numGridTransparency.Value;
             settings.GridColumns = (int)numGridCols.Value;
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.IsLightTheme = chkLightTheme.Checked;
+
+            settings.IconScale = (int)numIconScale.Value;
+
+            settings.FontItemsSize = (int)numFontItemsSize.Value;
+            settings.FontItemsColor = ColorValue(btnFontItemsColor, settings.FontItemsColor);
+            settings.FontItemsName = FamilyValue(cmbFontItems, settings.FontItemsName);
+
+            settings.FontTabsSize = (int)numFontTabsSize.Value;
+            settings.FontTabsColor = ColorValue(btnFontTabsColor, settings.FontTabsColor);
+            settings.FontTabsName = FamilyValue(cmbFontTabs, settings.FontTabsName);
+
+            settings.FontUiSize = (int)numFontUiSize.Value;
+            settings.FontUiColor = ColorValue(btnFontUiColor, settings.FontUiColor);
+            settings.FontUiName = FamilyValue(cmbFontUi, settings.FontUiName);
+
             settings.Save(settingsPath);
             this.DialogResult = DialogResult.OK;
             this.Close();
@@ -226,7 +438,7 @@ namespace WinPanel
                     {
                         File.Copy(ofd.FileName, settingsPath, true);
                         MessageBox.Show("Settings restored successfully! They will take effect when you close this window.", "Restore");
-                        
+
                         this.DialogResult = DialogResult.OK;
                         this.Close();
                     }
