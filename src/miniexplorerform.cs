@@ -35,8 +35,15 @@ namespace WinPanel
         // controls
         private Label titleLbl, statusLbl;
         private Label lblConsole, hintLbl, promptLbl, bmHeader;
-        private Button btnBack, btnFwd, btnUp, btnRefresh, btnEditPath, btnBmAdd, btnToggleBm;
+        private Button btnBack, btnFwd, btnUp, btnRefresh, btnEditPath, btnBmAdd, btnToggleBm, btnTopBar;
         private Button btnConsoleWin, btnConsoleRestart, btnConsoleClear, btnSaveCmd, btnRunCmd;
+        private Panel topBarHost, splitter;
+        private FlowLayoutPanel topBarFlow;
+        private int splitGrabDy;
+        private bool topBarVisible = true;
+        private bool splitterDragging;
+        private bool sizing;
+        private double consoleFrac = 0.40;
         private Panel crumbHost;
         private FlowLayoutPanel crumbFlow;
         private TextBox pathEdit, consoleIn;
@@ -73,6 +80,9 @@ namespace WinPanel
             settings = st != null ? st : new Settings();
             settingsPath = stPath != null ? stPath : "settings.ini";
             bookmarksVisible = settings.MiniExplorerBookmarks;
+            topBarVisible = settings.MiniExplorerTopBar;
+            if (settings.MiniExplorerConsole >= 15 && settings.MiniExplorerConsole <= 85)
+                consoleFrac = settings.MiniExplorerConsole / 100.0;
             bool light = settings.IsLightTheme;
             bgColor = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
             panelColor = light ? Color.FromArgb(212, 212, 216) : Color.FromArgb(45, 45, 48);
@@ -120,12 +130,22 @@ namespace WinPanel
             this.ForeColor = textColor;
             this.Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize);
             this.DoubleBuffered = true;
+            this.Paint += (s, e) =>
+            {
+                try
+                {
+                    Color bc = light ? Color.FromArgb(185, 185, 190) : Color.FromArgb(78, 78, 84);
+                    using (var pen = new Pen(bc))
+                        e.Graphics.DrawRectangle(pen, 0, 0, this.ClientSize.Width - 1, this.ClientSize.Height - 1);
+                }
+                catch { }
+            };
             this.KeyDown += Mini_KeyDown;
             boldFont = new Font(this.Font, FontStyle.Bold);
             tip = new ToolTip();
 
             // ---------- title bar ----------
-            var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
+            var titleBar = new EdgeTitlePanel(this) { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
             titleBar.MouseDown += (s, e) =>
             {
                 if (e.Button == MouseButtons.Left)
@@ -153,15 +173,26 @@ namespace WinPanel
                 try { fileList.Focus(); } catch { }
             };
             tip.SetToolTip(btnToggleBm, "Show / hide bookmarks panel");
-            btnBack = NavButton("←", 44);
-            btnFwd = NavButton("→", 82);
-            btnUp = NavButton("↑", 120);
-            btnRefresh = NavButton("↻", 158);
+            btnTopBar = NavButton("\u2630", 44);
+            btnTopBar.Click += (s, e) =>
+            {
+                topBarVisible = !topBarVisible;
+                settings.MiniExplorerTopBar = topBarVisible;
+                LayoutAll();
+                SaveWindowState();
+                try { fileList.Focus(); } catch { }
+            };
+            tip.SetToolTip(btnTopBar, "Show / hide top bookmarks bar");
+            btnBack = NavButton("←", 82);
+            btnFwd = NavButton("→", 120);
+            btnUp = NavButton("↑", 158);
+            btnRefresh = NavButton("↻", 196);
             btnBack.Click += (s, e) => GoBack();
             btnFwd.Click += (s, e) => GoForward();
             btnUp.Click += (s, e) => GoUp();
             btnRefresh.Click += (s, e) => LoadDir();
             this.Controls.Add(btnToggleBm);
+            this.Controls.Add(btnTopBar);
             this.Controls.Add(btnBack);
             this.Controls.Add(btnFwd);
             this.Controls.Add(btnUp);
@@ -193,6 +224,23 @@ namespace WinPanel
 
             statusLbl = new Label { Left = 812, Top = 37, Width = 120, Height = 18, ForeColor = dimColor, TextAlign = ContentAlignment.MiddleRight, AutoEllipsis = true };
             this.Controls.Add(statusLbl);
+
+            // ---------- top bookmarks bar (same list as the left panel) ----------
+            topBarHost = new Panel { Left = 8, Top = 64, Width = 100, Height = 26, BackColor = bgColor, AutoScroll = true };
+            topBarHost.MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) ShowTopBarMenu(); };
+            topBarFlow = new FlowLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                WrapContents = false,
+                FlowDirection = FlowDirection.LeftToRight,
+                BackColor = bgColor,
+                Location = new Point(2, 2),
+                Height = 24
+            };
+            topBarFlow.MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) ShowTopBarMenu(); };
+            topBarHost.Controls.Add(topBarFlow);
+            this.Controls.Add(topBarHost);
 
             // ---------- bookmarks panel ----------
             bmHeader = new Label { Text = "BOOKMARKS", Left = 10, Top = 70, Width = 150, Height = 16, ForeColor = dimColor };
@@ -243,6 +291,15 @@ namespace WinPanel
             fileList.MouseLeave += (s, e) => { if (hoverFile != -1) { hoverFile = -1; fileList.Invalidate(); } };
             this.Controls.Add(fileList);
 
+            // ---------- splitter (drag to resize the console) ----------
+            splitter = new Panel { Left = 8, Top = 400, Width = 100, Height = 8, BackColor = panelColor, Cursor = Cursors.SizeNS };
+            splitter.MouseDown += Splitter_MouseDown;
+            splitter.MouseMove += Splitter_MouseMove;
+            splitter.MouseUp += Splitter_MouseUp;
+            splitter.Paint += Splitter_Paint;
+            tip.SetToolTip(splitter, "Drag to resize the console");
+            this.Controls.Add(splitter);
+
             // ---------- console ----------
             lblConsole = new Label { Text = "Console", Left = 10, Top = 440, Width = 120, ForeColor = textColor };
             this.Controls.Add(lblConsole);
@@ -285,7 +342,7 @@ namespace WinPanel
             btnRunCmd.Click += (s, e) => RunConsoleInput();
             this.Controls.Add(btnRunCmd);
 
-            hintLbl = new Label
+            hintLbl = new EdgeHintLabel(this)
             {
                 Text = "Ctrl+L or Edit - edit path · F5 - refresh · Backspace - up · Enter - open · double-click - open",
                 Left = 8,
@@ -329,29 +386,32 @@ namespace WinPanel
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (this.IsHandleCreated)
+            if (!this.IsHandleCreated) return;
+            if (sizing)
             {
-                UpdateRegion();
                 LayoutAll();
+                return;
             }
+            UpdateRegion();
+            LayoutAll();
         }
 
-        protected override void WndProc(ref Message m)
+        // Shared edge calculation for the form itself and the edge-aware child controls.
+        internal void ApplyEdgeHit(ref Message m)
         {
-            const int WM_NCHITTEST = 0x84;
-            if (m.Msg == WM_NCHITTEST)
+            int lp = m.LParam.ToInt32();
+            int sx = (short)(lp & 0xFFFF);
+            int sy = (short)((lp >> 16) & 0xFFFF);
+            Point p = PointToClient(new Point(sx, sy));
+            int w = ClientSize.Width;
+            int h = ClientSize.Height;
+            const int grip = 12;
+            bool left = p.X < grip;
+            bool right = p.X >= w - grip;
+            bool top = p.Y < grip;
+            bool bottom = p.Y >= h - grip;
+            if (top || left || right || bottom)
             {
-                base.WndProc(ref m);
-                if ((int)m.Result != 1) return;
-                int lp = m.LParam.ToInt32();
-                int sx = (short)(lp & 0xFFFF);
-                int sy = (short)((lp >> 16) & 0xFFFF);
-                Point cp = PointToClient(new Point(sx, sy));
-                const int grip = 6;
-                bool left = cp.X < grip;
-                bool right = cp.X >= ClientSize.Width - grip;
-                bool top = cp.Y < grip;
-                bool bottom = cp.Y >= ClientSize.Height - grip;
                 if (top && left) m.Result = (IntPtr)13;
                 else if (top && right) m.Result = (IntPtr)14;
                 else if (bottom && left) m.Result = (IntPtr)16;
@@ -360,7 +420,40 @@ namespace WinPanel
                 else if (right) m.Result = (IntPtr)11;
                 else if (top) m.Result = (IntPtr)12;
                 else if (bottom) m.Result = (IntPtr)15;
+            }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCHITTEST = 0x84;
+            const int WM_SIZING = 0x0214;
+            const int WM_EXITSIZEMOVE = 0x0232;
+            if (m.Msg == WM_NCHITTEST)
+            {
+                base.WndProc(ref m);
+                ApplyEdgeHit(ref m);
                 return;
+            }
+            if (m.Msg == WM_SIZING)
+            {
+                // While the user drags a border: drop the rounded region so the whole
+                // window paints with no clipping gaps (this removed the resize flicker).
+                if (!sizing)
+                {
+                    sizing = true;
+                    try { this.Region = null; } catch { }
+                }
+            }
+            else if (m.Msg == WM_EXITSIZEMOVE)
+            {
+                if (sizing)
+                {
+                    sizing = false;
+                    base.WndProc(ref m);
+                    UpdateRegion();
+                    LayoutAll();
+                    return;
+                }
             }
             base.WndProc(ref m);
         }
@@ -385,6 +478,8 @@ namespace WinPanel
                 settings.MiniExplorerX = this.Location.X;
                 settings.MiniExplorerY = this.Location.Y;
                 settings.MiniExplorerBookmarks = bookmarksVisible;
+                settings.MiniExplorerTopBar = topBarVisible;
+                settings.MiniExplorerConsole = (int)Math.Round(consoleFrac * 100);
                 settings.Save(settingsPath);
             }
             catch { }
@@ -401,27 +496,33 @@ namespace WinPanel
             int rightEdge = W - 8;
 
             btnToggleBm.SetBounds(8, top + 2, 28, 26);
-            btnBack.SetBounds(44, top + 2, 28, 26);
-            btnFwd.SetBounds(82, top + 2, 28, 26);
-            btnUp.SetBounds(120, top + 2, 28, 26);
-            btnRefresh.SetBounds(158, top + 2, 28, 26);
+            btnTopBar.SetBounds(44, top + 2, 28, 26);
+            btnBack.SetBounds(82, top + 2, 28, 26);
+            btnFwd.SetBounds(120, top + 2, 28, 26);
+            btnUp.SetBounds(158, top + 2, 28, 26);
+            btnRefresh.SetBounds(196, top + 2, 28, 26);
 
             statusLbl.SetBounds(rightEdge - 120, top + 7, 120, 18);
             int editX = rightEdge - 120 - 6 - 44;
             btnEditPath.SetBounds(editX, top + 2, 44, 26);
-            int crumbsX = 194;
+            int crumbsX = 232;
             int crumbsW = Math.Max(120, editX - 6 - crumbsX);
             crumbHost.SetBounds(crumbsX, top + 1, crumbsW, 30);
             pathEdit.SetBounds(crumbsX, top + 2, crumbsW, 24);
 
-            int listTop = top + 58;
+            topBarHost.Visible = topBarVisible;
+            topBarHost.SetBounds(8, top + 56, W - 16, 26);
+
+            int listTop = top + 58 + (topBarVisible ? 28 : 0);
             int contentH = H - top;
-            int consArea = (int)(contentH * 0.40);
-            if (consArea < 170) consArea = Math.Min(170, contentH / 2);
+            int consArea = (int)(contentH * consoleFrac);
+            if (consArea < 120) consArea = Math.Min(120, contentH / 2);
             int consTop = H - consArea;
             if (consTop < listTop + 90) consTop = listTop + 90;
-            int listH = consTop - 8 - listTop;
-            if (listH < 80) listH = 80;
+            int splitH = 8;
+            int splitTop = consTop - 10;
+            int listH = splitTop - 4 - listTop;
+            if (listH < 60) listH = 60;
 
             bmHeader.SetBounds(10, top + 40, 150, 16);
             btnBmAdd.SetBounds(184, top + 36, 24, 20);
@@ -432,6 +533,8 @@ namespace WinPanel
 
             int fx = bookmarksVisible ? 216 : 8;
             fileList.SetBounds(fx, listTop, W - fx - 8, listH);
+
+            splitter.SetBounds(8, listTop + listH + 2, W - 16, splitH);
 
             lblConsole.SetBounds(10, consTop + 6, 120, 18);
             btnConsoleWin.SetBounds(rightEdge - 100, consTop + 3, 100, 22);
@@ -452,6 +555,153 @@ namespace WinPanel
             btnRunCmd.SetBounds(runX, ipTop, 56, 24);
 
             hintLbl.SetBounds(8, H - 20, W - 16, 16);
+        }
+
+        // ---------- top bookmarks bar ----------
+
+        private void RebuildTopBar()
+        {
+            if (topBarFlow == null || topBarFlow.IsDisposed) return;
+            topBarFlow.SuspendLayout();
+            var old = new List<Control>();
+            foreach (Control c in topBarFlow.Controls) old.Add(c);
+            topBarFlow.Controls.Clear();
+            foreach (var c in old) c.Dispose();
+            foreach (var b in bookmarks) topBarFlow.Controls.Add(MakeChip(b));
+            topBarFlow.ResumeLayout();
+            topBarHost.Visible = topBarVisible;
+        }
+
+        private Button MakeChip(ExplorerBookmark b)
+        {
+            string text;
+            if (b.Kind == "group") text = b.Name + " \u25BE";
+            else if (b.Kind == "folder") text = b.Name;
+            else text = "\u203A " + (string.IsNullOrEmpty(b.Value) ? b.Name : b.Value);
+            var chip = new Button
+            {
+                Text = text,
+                AutoSize = true,
+                Height = 20,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor,
+                Cursor = Cursors.Hand,
+                Padding = new Padding(8, 0, 8, 0),
+                Margin = new Padding(2, 2, 2, 1)
+            };
+            chip.FlatAppearance.BorderSize = 0;
+            chip.FlatAppearance.MouseOverBackColor = hoverColor;
+            var cap = b;
+            chip.Click += (s, e) => OnChipClick(cap, chip);
+            chip.MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) ShowTopBarItemMenu(cap, chip, e.Location); };
+            return chip;
+        }
+
+        private void OnChipClick(ExplorerBookmark b, Button chip)
+        {
+            if (b.Kind == "group") { ShowGroupMenu(b, chip); return; }
+            if (b.Kind == "folder") { Navigate(b.Value); return; }
+            RunInConsole(b.Value);
+        }
+
+        private void ShowGroupMenu(ExplorerBookmark g, Control anchor)
+        {
+            var m = new ContextMenu();
+            var kids = g.Children != null ? g.Children : new List<ExplorerBookmark>();
+            if (kids.Count == 0)
+            {
+                var dead = m.MenuItems.Add("(empty)");
+                dead.Enabled = false;
+            }
+            foreach (var c in kids)
+            {
+                var cap = c;
+                string label = c.Kind == "cmd"
+                    ? (string.IsNullOrEmpty(c.Value) ? c.Name : c.Value)
+                    : (c.Kind == "group" ? c.Name + " \u203A" : c.Name);
+                m.MenuItems.Add(label, (s2, e2) =>
+                {
+                    if (cap.Kind == "cmd") RunInConsole(cap.Value);
+                    else if (cap.Kind == "folder") Navigate(cap.Value);
+                    else if (cap.Kind == "group") ShowGroupMenu(cap, anchor);
+                });
+            }
+            m.MenuItems.Add("-");
+            m.MenuItems.Add("Rename...", (s2, e2) => RenameBookmark(g));
+            m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(g));
+            m.Show(anchor, new Point(0, anchor.Height));
+        }
+
+        private void ShowTopBarMenu()
+        {
+            var m = new ContextMenu();
+            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.Show(topBarHost, new Point(8, topBarHost.Height));
+        }
+
+        private void ShowTopBarItemMenu(ExplorerBookmark b, Control anchor, Point loc)
+        {
+            var m = new ContextMenu();
+            m.MenuItems.Add("Rename...", (s2, e2) => RenameBookmark(b));
+            m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(b));
+            m.MenuItems.Add("-");
+            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.Show(anchor, loc);
+        }
+
+        // ---------- splitter ----------
+
+        private void Splitter_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                splitterDragging = true;
+                splitGrabDy = e.Y;
+                try { splitter.Capture = true; } catch { }
+            }
+        }
+
+        private void Splitter_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!splitterDragging) return;
+            Point p = this.PointToClient(splitter.PointToScreen(e.Location));
+            int contentH = this.ClientSize.Height - 30;
+            if (contentH < 100) return;
+            int desiredTop = p.Y - splitGrabDy;
+            int consArea = this.ClientSize.Height - (desiredTop + 12);
+            double f = consArea / (double)contentH;
+            if (f < 0.15) f = 0.15;
+            if (f > 0.85) f = 0.85;
+            if (Math.Abs(f - consoleFrac) > 0.004)
+            {
+                consoleFrac = f;
+                LayoutAll();
+            }
+        }
+
+        private void Splitter_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (splitterDragging)
+            {
+                splitterDragging = false;
+                try { splitter.Capture = false; } catch { }
+                SaveWindowState();
+            }
+        }
+
+        private void Splitter_Paint(object sender, PaintEventArgs e)
+        {
+            try
+            {
+                var r = new Rectangle((splitter.Width - 40) / 2, (splitter.Height - 2) / 2, 40, 2);
+                using (var b = new SolidBrush(dimColor)) e.Graphics.FillRectangle(b, r);
+            }
+            catch { }
         }
 
         private Font ConsoleFont()
@@ -1028,6 +1278,7 @@ namespace WinPanel
             foreach (var r in bmRows) bookmarksList.Items.Add(r.Bm.Name);
             bookmarksList.EndUpdate();
             bookmarksList.Invalidate();
+            RebuildTopBar();
         }
 
         private void AddRows(ExplorerBookmark b, int depth)
@@ -1487,6 +1738,41 @@ namespace WinPanel
         private void OpenRealConsole()
         {
             try { Process.Start("cmd.exe", "/k cd /d \"" + currentPath + "\""); } catch { }
+        }
+
+        // The title bar and the bottom hint cover the very edge of the form; these
+        // subclasses keep the normal WinForms behaviour and add the edge hit test
+        // (a NativeWindow hook would replace the control procedure and break painting).
+        private class EdgeTitlePanel : Panel
+        {
+            private MiniExplorerForm form;
+            public EdgeTitlePanel(MiniExplorerForm f) { form = f; }
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == 0x84)
+                {
+                    base.WndProc(ref m);
+                    form.ApplyEdgeHit(ref m);
+                    return;
+                }
+                base.WndProc(ref m);
+            }
+        }
+
+        private class EdgeHintLabel : Label
+        {
+            private MiniExplorerForm form;
+            public EdgeHintLabel(MiniExplorerForm f) { form = f; }
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == 0x84)
+                {
+                    base.WndProc(ref m);
+                    form.ApplyEdgeHit(ref m);
+                    return;
+                }
+                base.WndProc(ref m);
+            }
         }
     }
 }

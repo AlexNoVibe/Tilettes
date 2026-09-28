@@ -30,6 +30,9 @@ namespace WinPanel
         public int MiniExplorerY { get; set; }
         // Bookmarks side panel visibility in the mini explorer
         public bool MiniExplorerBookmarks { get; set; }
+        // Top bookmarks bar visibility; console height percent (default 40)
+        public bool MiniExplorerTopBar { get; set; }
+        public int MiniExplorerConsole { get; set; }
 
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
@@ -65,6 +68,8 @@ namespace WinPanel
             HotkeyShow = "Ctrl+J";
             MiniExplorerCtrlClick = true;
             MiniExplorerBookmarks = true;
+            MiniExplorerTopBar = true;
+            MiniExplorerConsole = 40;
 
             GridTransparency = 50;
             GridColumns = 16;
@@ -174,6 +179,10 @@ namespace WinPanel
                 if (int.TryParse(ini.Read("MiniExplorerY"), out mexy)) s.MiniExplorerY = mexy;
                 bool mebm;
                 if (bool.TryParse(ini.Read("MiniExplorerBookmarks"), out mebm)) s.MiniExplorerBookmarks = mebm;
+                bool mtb;
+                if (bool.TryParse(ini.Read("MiniExplorerTopBar"), out mtb)) s.MiniExplorerTopBar = mtb;
+                int mcon;
+                if (int.TryParse(ini.Read("MiniExplorerConsole"), out mcon)) s.MiniExplorerConsole = mcon;
 
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
@@ -222,6 +231,8 @@ namespace WinPanel
                 ini.Write("MiniExplorerX", MiniExplorerX.ToString());
                 ini.Write("MiniExplorerY", MiniExplorerY.ToString());
                 ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
+                ini.Write("MiniExplorerTopBar", MiniExplorerTopBar.ToString());
+                ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
