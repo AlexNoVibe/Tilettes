@@ -585,7 +585,7 @@ namespace WinPanel
 
             using (Pen gridPen = new Pen(gridColor))
             {
-                gridPen.DashStyle = DashStyle.Dash;
+                gridPen.DashPattern = new float[] { 4, 8 };
                 for (int i = 0; i <= cols; i++)
                 {
                     e.Graphics.DrawLine(gridPen, i * cellWidth, 0, i * cellWidth, panel.Height);
@@ -967,9 +967,14 @@ namespace WinPanel
                         int cx = padding + c * miniWidth + (miniWidth - miniSize)/2;
                         int cy = padding + r * miniHeight + (miniHeight - miniSize)/2;
 
-                        if (childImg != null)
+                        if (childImg != null && miniSize > 0)
                         {
-                            e.Graphics.DrawImage(childImg, new Rectangle(cx, cy, miniSize, miniSize));
+                            var destRect = new Rectangle(cx, cy, miniSize, miniSize);
+                            using (var attrs = new System.Drawing.Imaging.ImageAttributes())
+                            {
+                                attrs.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
+                                e.Graphics.DrawImage(childImg, destRect, 0, 0, childImg.Width, childImg.Height, GraphicsUnit.Pixel, attrs);
+                            }
                         }
                     }
                 }
@@ -991,7 +996,12 @@ namespace WinPanel
                     {
                         int ix = (this.Width - iconSize) / 2;
                         int iy = (this.Height - 30 - iconSize) / 2;
-                        e.Graphics.DrawImage(IconImage, new Rectangle(ix, iy, iconSize, iconSize));
+                        var destRect = new Rectangle(ix, iy, iconSize, iconSize);
+                        using (var attrs = new System.Drawing.Imaging.ImageAttributes())
+                        {
+                            attrs.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
+                            e.Graphics.DrawImage(IconImage, destRect, 0, 0, IconImage.Width, IconImage.Height, GraphicsUnit.Pixel, attrs);
+                        }
                     }
                 }
             }
