@@ -24,6 +24,7 @@ namespace WinPanel
         private static extern bool ReleaseCapture();
 
         private Settings settings;
+        private string settingsPath;
         private Color bgColor, panelColor, hoverColor, textColor, dimColor, accentColor, listColor, consoleBg;
 
         // navigation state
@@ -33,7 +34,8 @@ namespace WinPanel
 
         // controls
         private Label titleLbl, statusLbl;
-        private Button btnBack, btnFwd, btnUp, btnRefresh, btnEditPath, btnBmAdd;
+        private Label lblConsole, hintLbl, promptLbl, bmHeader;
+        private Button btnBack, btnFwd, btnUp, btnRefresh, btnEditPath, btnBmAdd, btnToggleBm;
         private Button btnConsoleWin, btnConsoleRestart, btnConsoleClear, btnSaveCmd, btnRunCmd;
         private Panel crumbHost;
         private FlowLayoutPanel crumbFlow;
@@ -52,6 +54,7 @@ namespace WinPanel
         // bookmarks
         private List<ExplorerBookmark> bookmarks;
         private string bookmarksPath;
+        private bool bookmarksVisible = true;
         private readonly HashSet<string> expandedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private class Row { public ExplorerBookmark Bm; public int Depth; }
         private readonly List<Row> bmRows = new List<Row>();
@@ -62,10 +65,14 @@ namespace WinPanel
         private readonly List<string> cmdHistory = new List<string>();
         private int cmdHistoryPos = 0;
         private const string Sentinel = "__WPMARK__";
+        private readonly Queue<string> sentEcho = new Queue<string>();
+        private volatile bool skipBanner = true;
 
-        public MiniExplorerForm(string startPath, Settings st)
+        public MiniExplorerForm(string startPath, Settings st, string stPath)
         {
             settings = st != null ? st : new Settings();
+            settingsPath = stPath != null ? stPath : "settings.ini";
+            bookmarksVisible = settings.MiniExplorerBookmarks;
             bool light = settings.IsLightTheme;
             bgColor = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
             panelColor = light ? Color.FromArgb(212, 212, 216) : Color.FromArgb(45, 45, 48);
@@ -78,10 +85,37 @@ namespace WinPanel
 
             this.Text = "Mini Explorer";
             this.FormBorderStyle = FormBorderStyle.None;
-            this.StartPosition = FormStartPosition.CenterScreen;
+            this.StartPosition = FormStartPosition.Manual;
             this.ShowInTaskbar = true;
             this.KeyPreview = true;
-            this.ClientSize = new Size(940, 640);
+
+            Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+            int winW, winH, winX, winY;
+            if (settings.MiniExplorerW >= 760 && settings.MiniExplorerH >= 520)
+            {
+                winW = Math.Min(settings.MiniExplorerW, wa.Width - 20);
+                winH = Math.Min(settings.MiniExplorerH, wa.Height - 20);
+                winX = settings.MiniExplorerX;
+                winY = settings.MiniExplorerY;
+                if (winX < wa.Left - 50 || winX > wa.Right - 200) winX = wa.Left + (wa.Width - winW) / 2;
+                if (winY < wa.Top - 10 || winY > wa.Bottom - 120) winY = wa.Top + (wa.Height - winH) / 2;
+            }
+            else
+            {
+                winW = (int)(wa.Width * 0.78);
+                winH = (int)(wa.Height * 0.78);
+                if (winW < 980) winW = Math.Min(980, wa.Width - 20);
+                if (winH < 660) winH = Math.Min(660, wa.Height - 20);
+                if (winW > 1600) winW = 1600;
+                if (winH > 1000) winH = 1000;
+                if (winW > wa.Width - 20) winW = wa.Width - 20;
+                if (winH > wa.Height - 20) winH = wa.Height - 20;
+                winX = wa.Left + (wa.Width - winW) / 2;
+                winY = wa.Top + (wa.Height - winH) / 2;
+            }
+            this.ClientSize = new Size(winW, winH);
+            this.Location = new Point(winX, winY);
+            this.MinimumSize = new Size(760, 520);
             this.BackColor = bgColor;
             this.ForeColor = textColor;
             this.Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize);
@@ -109,14 +143,25 @@ namespace WinPanel
             this.Controls.Add(titleBar);
 
             // ---------- toolbar: navigation + breadcrumb + status ----------
-            btnBack = NavButton("←", 8);
-            btnFwd = NavButton("→", 46);
-            btnUp = NavButton("↑", 84);
-            btnRefresh = NavButton("↻", 122);
+            btnToggleBm = NavButton("≡", 8);
+            btnToggleBm.Click += (s, e) =>
+            {
+                bookmarksVisible = !bookmarksVisible;
+                settings.MiniExplorerBookmarks = bookmarksVisible;
+                LayoutAll();
+                SaveWindowState();
+                try { fileList.Focus(); } catch { }
+            };
+            tip.SetToolTip(btnToggleBm, "Show / hide bookmarks panel");
+            btnBack = NavButton("←", 44);
+            btnFwd = NavButton("→", 82);
+            btnUp = NavButton("↑", 120);
+            btnRefresh = NavButton("↻", 158);
             btnBack.Click += (s, e) => GoBack();
             btnFwd.Click += (s, e) => GoForward();
             btnUp.Click += (s, e) => GoUp();
             btnRefresh.Click += (s, e) => LoadDir();
+            this.Controls.Add(btnToggleBm);
             this.Controls.Add(btnBack);
             this.Controls.Add(btnFwd);
             this.Controls.Add(btnUp);
@@ -150,7 +195,7 @@ namespace WinPanel
             this.Controls.Add(statusLbl);
 
             // ---------- bookmarks panel ----------
-            var bmHeader = new Label { Text = "BOOKMARKS", Left = 10, Top = 70, Width = 150, Height = 16, ForeColor = dimColor };
+            bmHeader = new Label { Text = "BOOKMARKS", Left = 10, Top = 70, Width = 150, Height = 16, ForeColor = dimColor };
             this.Controls.Add(bmHeader);
             btnBmAdd = FlatButton("+", 184, 66, 24, 20);
             btnBmAdd.Click += (s, e) => ShowBookmarksAddMenu();
@@ -199,7 +244,7 @@ namespace WinPanel
             this.Controls.Add(fileList);
 
             // ---------- console ----------
-            var lblConsole = new Label { Text = "Console", Left = 10, Top = 440, Width = 120, ForeColor = textColor };
+            lblConsole = new Label { Text = "Console", Left = 10, Top = 440, Width = 120, ForeColor = textColor };
             this.Controls.Add(lblConsole);
             btnConsoleWin = FlatButton("New window", 832, 437, 100, 22);
             btnConsoleWin.Click += (s, e) => OpenRealConsole();
@@ -228,7 +273,7 @@ namespace WinPanel
             };
             this.Controls.Add(consoleOut);
 
-            var promptLbl = new Label { Text = "›", Left = 8, Top = 594, Width = 16, ForeColor = accentColor };
+            promptLbl = new Label { Text = "›", Left = 8, Top = 594, Width = 16, ForeColor = accentColor };
             this.Controls.Add(promptLbl);
             consoleIn = new TextBox { Left = 26, Top = 590, Width = 772, Height = 24, BackColor = listColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             consoleIn.KeyDown += ConsoleIn_KeyDown;
@@ -240,7 +285,7 @@ namespace WinPanel
             btnRunCmd.Click += (s, e) => RunConsoleInput();
             this.Controls.Add(btnRunCmd);
 
-            var hint = new Label
+            hintLbl = new Label
             {
                 Text = "Ctrl+L or Edit - edit path · F5 - refresh · Backspace - up · Enter - open · double-click - open",
                 Left = 8,
@@ -249,7 +294,7 @@ namespace WinPanel
                 Height = 16,
                 ForeColor = dimColor
             };
-            this.Controls.Add(hint);
+            this.Controls.Add(hintLbl);
 
             // ---------- bookmarks data ----------
             bookmarksPath = Path.Combine(Application.StartupPath, "bookmarks.xml");
@@ -269,7 +314,9 @@ namespace WinPanel
                 }
                 iconCache.Clear();
             };
-            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+            this.FormClosing += (s, e) => { SaveWindowState(); };
+            LayoutAll();
+            UpdateRegion();
 
             Navigate(startPath);
             if (currentPath.Length == 0)
@@ -277,6 +324,134 @@ namespace WinPanel
                 try { Navigate(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)); } catch { }
             }
             if (currentPath.Length == 0) Navigate("C:\\");
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (this.IsHandleCreated)
+            {
+                UpdateRegion();
+                LayoutAll();
+            }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_NCHITTEST = 0x84;
+            if (m.Msg == WM_NCHITTEST)
+            {
+                base.WndProc(ref m);
+                if ((int)m.Result != 1) return;
+                int lp = m.LParam.ToInt32();
+                int sx = (short)(lp & 0xFFFF);
+                int sy = (short)((lp >> 16) & 0xFFFF);
+                Point cp = PointToClient(new Point(sx, sy));
+                const int grip = 6;
+                bool left = cp.X < grip;
+                bool right = cp.X >= ClientSize.Width - grip;
+                bool top = cp.Y < grip;
+                bool bottom = cp.Y >= ClientSize.Height - grip;
+                if (top && left) m.Result = (IntPtr)13;
+                else if (top && right) m.Result = (IntPtr)14;
+                else if (bottom && left) m.Result = (IntPtr)16;
+                else if (bottom && right) m.Result = (IntPtr)17;
+                else if (left) m.Result = (IntPtr)10;
+                else if (right) m.Result = (IntPtr)11;
+                else if (top) m.Result = (IntPtr)12;
+                else if (bottom) m.Result = (IntPtr)15;
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        private void UpdateRegion()
+        {
+            try
+            {
+                if (this.Region != null) this.Region.Dispose();
+                this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 12, 12));
+            }
+            catch { }
+        }
+
+        private void SaveWindowState()
+        {
+            try
+            {
+                if (settings == null) return;
+                settings.MiniExplorerW = this.Width;
+                settings.MiniExplorerH = this.Height;
+                settings.MiniExplorerX = this.Location.X;
+                settings.MiniExplorerY = this.Location.Y;
+                settings.MiniExplorerBookmarks = bookmarksVisible;
+                settings.Save(settingsPath);
+            }
+            catch { }
+        }
+
+        // Layout is proportional so the window can be resized: the console takes
+        // about 40% of the height, the file list fills the rest.
+        private void LayoutAll()
+        {
+            if (this.IsDisposed || btnBack == null || fileList == null) return;
+            int W = this.ClientSize.Width;
+            int H = this.ClientSize.Height;
+            int top = 30;
+            int rightEdge = W - 8;
+
+            btnToggleBm.SetBounds(8, top + 2, 28, 26);
+            btnBack.SetBounds(44, top + 2, 28, 26);
+            btnFwd.SetBounds(82, top + 2, 28, 26);
+            btnUp.SetBounds(120, top + 2, 28, 26);
+            btnRefresh.SetBounds(158, top + 2, 28, 26);
+
+            statusLbl.SetBounds(rightEdge - 120, top + 7, 120, 18);
+            int editX = rightEdge - 120 - 6 - 44;
+            btnEditPath.SetBounds(editX, top + 2, 44, 26);
+            int crumbsX = 194;
+            int crumbsW = Math.Max(120, editX - 6 - crumbsX);
+            crumbHost.SetBounds(crumbsX, top + 1, crumbsW, 30);
+            pathEdit.SetBounds(crumbsX, top + 2, crumbsW, 24);
+
+            int listTop = top + 58;
+            int contentH = H - top;
+            int consArea = (int)(contentH * 0.40);
+            if (consArea < 170) consArea = Math.Min(170, contentH / 2);
+            int consTop = H - consArea;
+            if (consTop < listTop + 90) consTop = listTop + 90;
+            int listH = consTop - 8 - listTop;
+            if (listH < 80) listH = 80;
+
+            bmHeader.SetBounds(10, top + 40, 150, 16);
+            btnBmAdd.SetBounds(184, top + 36, 24, 20);
+            bookmarksList.SetBounds(8, listTop, 200, listH);
+            bmHeader.Visible = bookmarksVisible;
+            btnBmAdd.Visible = bookmarksVisible;
+            bookmarksList.Visible = bookmarksVisible;
+
+            int fx = bookmarksVisible ? 216 : 8;
+            fileList.SetBounds(fx, listTop, W - fx - 8, listH);
+
+            lblConsole.SetBounds(10, consTop + 6, 120, 18);
+            btnConsoleWin.SetBounds(rightEdge - 100, consTop + 3, 100, 22);
+            btnConsoleRestart.SetBounds(rightEdge - 100 - 6 - 74, consTop + 3, 74, 22);
+            btnConsoleClear.SetBounds(rightEdge - 100 - 6 - 74 - 6 - 64, consTop + 3, 64, 22);
+
+            int ipTop = H - 46;
+            int outTop = consTop + 28;
+            int outH = ipTop - 6 - outTop;
+            if (outH < 40) outH = 40;
+            consoleOut.SetBounds(8, outTop, W - 16, outH);
+
+            promptLbl.SetBounds(8, ipTop + 4, 16, 18);
+            int runX = rightEdge - 56;
+            int saveX = runX - 6 - 64;
+            consoleIn.SetBounds(26, ipTop, Math.Max(80, saveX - 6 - 26), 24);
+            btnSaveCmd.SetBounds(saveX, ipTop, 64, 24);
+            btnRunCmd.SetBounds(runX, ipTop, 56, 24);
+
+            hintLbl.SetBounds(8, H - 20, W - 16, 16);
         }
 
         private Font ConsoleFont()
@@ -892,7 +1067,8 @@ namespace WinPanel
             else
             {
                 TextRenderer.DrawText(g, "›", boldFont, new Point(x, ty), accentColor);
-                TextRenderer.DrawText(g, b.Name, this.Font, new Point(x + 14, ty), textColor);
+                string label = !string.IsNullOrEmpty(b.Value) ? b.Value : b.Name;
+                TextRenderer.DrawText(g, label, this.Font, new Point(x + 14, ty), textColor);
             }
         }
 
@@ -948,6 +1124,7 @@ namespace WinPanel
                 m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(b));
             }
             m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
             m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
             m.Show(bookmarksList, e.Location);
         }
@@ -956,6 +1133,7 @@ namespace WinPanel
         {
             var m = new ContextMenu();
             m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
             m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
             m.Show(btnBmAdd, new Point(0, btnBmAdd.Height));
         }
@@ -1028,12 +1206,14 @@ namespace WinPanel
 
         private void SaveCommandBookmark(string cmd)
         {
-            if (cmd == null) return;
-            cmd = cmd.Trim();
-            if (cmd.Length == 0) return;
-            string name = Prompt.ShowDialog("Command name:", "Save command", cmd);
-            if (string.IsNullOrWhiteSpace(name)) return;
-            string group = Prompt.ShowDialog("Group name (empty = top level):", "Save command", "");
+            cmd = cmd == null ? "" : cmd.Trim();
+            if (cmd.Length == 0)
+            {
+                cmd = Prompt.ShowDialog("Command:", "Add command", "");
+                if (string.IsNullOrWhiteSpace(cmd)) return;
+                cmd = cmd.Trim();
+            }
+            string group = Prompt.ShowDialog("Group (empty = top level):", "Add command", "");
             ExplorerBookmark target = null;
             if (!string.IsNullOrWhiteSpace(group))
             {
@@ -1051,7 +1231,7 @@ namespace WinPanel
             }
             var nb = new ExplorerBookmark();
             nb.Kind = "cmd";
-            nb.Name = name.Trim();
+            nb.Name = cmd;
             nb.Value = cmd;
             if (target != null) target.Children.Add(nb);
             else bookmarks.Add(nb);
@@ -1073,6 +1253,8 @@ namespace WinPanel
         private void StartShell()
         {
             StopShell();
+            skipBanner = true;
+            lock (sentEcho) { sentEcho.Clear(); }
             try
             {
                 var psi = new ProcessStartInfo("cmd.exe");
@@ -1123,16 +1305,42 @@ namespace WinPanel
 
         private void ReadLoop(StreamReader r)
         {
+            bool holdBlank = false;
             try
             {
                 string line;
                 while ((line = r.ReadLine()) != null)
                 {
                     string l = line;
+                    if (skipBanner)
+                    {
+                        if (l.Trim().Length == 0 ||
+                            l.StartsWith("Microsoft Windows [Version", StringComparison.OrdinalIgnoreCase) ||
+                            l.StartsWith("(c)", StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        skipBanner = false;
+                    }
+                    if (l.Trim().Length == 0)
+                    {
+                        if (!holdBlank) holdBlank = true;
+                        else Ui(delegate { AppendConsole("", textColor); });
+                        continue;
+                    }
+                    if (IsEchoOfSent(l))
+                    {
+                        holdBlank = false;
+                        continue;
+                    }
                     if (l.IndexOf(Sentinel, StringComparison.Ordinal) >= 0)
                     {
+                        holdBlank = false;
                         Ui(delegate { AppendConsole(PromptText(), accentColor); });
                         continue;
+                    }
+                    if (holdBlank)
+                    {
+                        holdBlank = false;
+                        Ui(delegate { AppendConsole("", textColor); });
                     }
                     Ui(delegate { AppendConsole(l, textColor); });
                 }
@@ -1140,9 +1348,41 @@ namespace WinPanel
             catch { }
         }
 
+        // The shell echoes every input line back with its prompt ("C:\dir>command").
+        // Those echo lines are matched against the queue of lines we actually sent
+        // and dropped, so the console shows only real output.
+        private bool IsEchoOfSent(string line)
+        {
+            string expect = null;
+            lock (sentEcho)
+            {
+                if (sentEcho.Count > 0) expect = sentEcho.Peek();
+            }
+            if (expect == null || expect.Length == 0) return false;
+            if (line.Length <= expect.Length) return false;
+            if (!line.EndsWith(expect, StringComparison.OrdinalIgnoreCase)) return false;
+            string head = line.Substring(0, line.Length - expect.Length);
+            if (!head.EndsWith(">")) return false;
+            lock (sentEcho)
+            {
+                if (sentEcho.Count > 0) sentEcho.Dequeue();
+            }
+            return true;
+        }
+
         private void SendCmd(string text)
         {
-            try { if (shellIn != null) shellIn.WriteLine(text); } catch { }
+            try
+            {
+                if (shellIn == null) return;
+                lock (sentEcho)
+                {
+                    if (sentEcho.Count > 64) sentEcho.Dequeue();
+                    sentEcho.Enqueue(text);
+                }
+                shellIn.WriteLine(text);
+            }
+            catch { }
         }
 
         private string PromptText()

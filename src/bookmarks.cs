@@ -82,10 +82,10 @@ namespace WinPanel
             var docker = new ExplorerBookmark();
             docker.Kind = "group";
             docker.Name = "Docker";
-            docker.Children.Add(Command("Running containers", "docker ps"));
-            docker.Children.Add(Command("All containers", "docker ps -a"));
-            docker.Children.Add(Command("Compose up (detached)", "docker compose up -d"));
-            docker.Children.Add(Command("Compose logs (last 100)", "docker compose logs -f --tail 100"));
+            docker.Children.Add(Command("docker ps", "docker ps"));
+            docker.Children.Add(Command("docker ps -a", "docker ps -a"));
+            docker.Children.Add(Command("docker compose up -d", "docker compose up -d"));
+            docker.Children.Add(Command("docker compose logs --tail 100 -f", "docker compose logs --tail 100 -f"));
 
             var list = new List<ExplorerBookmark>();
             list.Add(docker);

@@ -1634,7 +1634,7 @@ namespace WinPanel
             try
             {
                 if (miniExplorer == null || miniExplorer.IsDisposed)
-                    miniExplorer = new MiniExplorerForm(item.Path, settings);
+                    miniExplorer = new MiniExplorerForm(item.Path, settings, settingsPath);
                 else
                     miniExplorer.NavigateExternal(item.Path);
                 if (!miniExplorer.Visible) miniExplorer.Show(this);

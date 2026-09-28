@@ -23,6 +23,14 @@ namespace WinPanel
         // Ctrl+Click on a folder opens the mini explorer window
         public bool MiniExplorerCtrlClick { get; set; }
 
+        // Mini explorer window state (0 = open at the default large size)
+        public int MiniExplorerW { get; set; }
+        public int MiniExplorerH { get; set; }
+        public int MiniExplorerX { get; set; }
+        public int MiniExplorerY { get; set; }
+        // Bookmarks side panel visibility in the mini explorer
+        public bool MiniExplorerBookmarks { get; set; }
+
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
@@ -56,6 +64,7 @@ namespace WinPanel
             GridVisible = true;
             HotkeyShow = "Ctrl+J";
             MiniExplorerCtrlClick = true;
+            MiniExplorerBookmarks = true;
 
             GridTransparency = 50;
             GridColumns = 16;
@@ -158,6 +167,14 @@ namespace WinPanel
                 bool mx;
                 if (bool.TryParse(ini.Read("MiniExplorerCtrlClick"), out mx)) s.MiniExplorerCtrlClick = mx;
 
+                int mexw, mexh, mexx, mexy;
+                if (int.TryParse(ini.Read("MiniExplorerW"), out mexw)) s.MiniExplorerW = mexw;
+                if (int.TryParse(ini.Read("MiniExplorerH"), out mexh)) s.MiniExplorerH = mexh;
+                if (int.TryParse(ini.Read("MiniExplorerX"), out mexx)) s.MiniExplorerX = mexx;
+                if (int.TryParse(ini.Read("MiniExplorerY"), out mexy)) s.MiniExplorerY = mexy;
+                bool mebm;
+                if (bool.TryParse(ini.Read("MiniExplorerBookmarks"), out mebm)) s.MiniExplorerBookmarks = mebm;
+
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
@@ -200,6 +217,11 @@ namespace WinPanel
                 ini.Write("GridVisible", GridVisible.ToString());
                 ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+J" : HotkeyShow);
                 ini.Write("MiniExplorerCtrlClick", MiniExplorerCtrlClick.ToString());
+                ini.Write("MiniExplorerW", MiniExplorerW.ToString());
+                ini.Write("MiniExplorerH", MiniExplorerH.ToString());
+                ini.Write("MiniExplorerX", MiniExplorerX.ToString());
+                ini.Write("MiniExplorerY", MiniExplorerY.ToString());
+                ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
