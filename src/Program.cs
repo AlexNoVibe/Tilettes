@@ -30,6 +30,9 @@ namespace WinPanel
         private Control draggingTile;
         private ShortcutItem draggingItem;
 
+        // Edit mode state
+        private bool isEditMode = false;
+
         // State for folder navigation
         private Dictionary<TabData, Stack<ShortcutItem>> tabNavigations = new Dictionary<TabData, Stack<ShortcutItem>>();
 
@@ -183,6 +186,26 @@ namespace WinPanel
             settingsBtn.Click += (s, e) => OpenSettings();
             tabBar.Controls.Add(settingsBtn);
 
+            var editBtn = new Button
+            {
+                Text = "✏️",
+                Width = 35,
+                Height = 35,
+                Dock = DockStyle.Right,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = isEditMode ? panelColor : bgColor,
+                ForeColor = textColor,
+                Cursor = Cursors.Hand,
+                Font = new Font("Segoe UI", 12f)
+            };
+            editBtn.FlatAppearance.BorderSize = 0;
+            editBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+            editBtn.Click += (s, e) => {
+                isEditMode = !isEditMode;
+                editBtn.BackColor = isEditMode ? panelColor : bgColor;
+            };
+            tabBar.Controls.Add(editBtn);
+
             foreach (var tabData in records.Tabs)
             {
                 if (!tabNavigations.ContainsKey(tabData)) tabNavigations[tabData] = new Stack<ShortcutItem>();
@@ -200,6 +223,10 @@ namespace WinPanel
                 layoutPanel.DragDrop += LayoutPanel_DragDrop;
 
                 var panelMenu = new ContextMenu();
+                panelMenu.Popup += (s, e) =>
+                {
+                    panelMenu.MenuItems[0].Enabled = isEditMode;
+                };
                 panelMenu.MenuItems.Add("Create Folder", (s, e) => CreateFolder(layoutPanel, tabData));
                 panelMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
                 layoutPanel.ContextMenu = panelMenu;
@@ -230,12 +257,24 @@ namespace WinPanel
                     records.Save(recordsPath);
                     RenderCurrentFolder(layoutPanel, tabData);
                 });
+                tabMenu.MenuItems.Add("Rename Tab", (s, e) => {
+                    string newName = Prompt.ShowDialog("New Tab Name", "Rename Tab", tabData.Name);
+                    if (!string.IsNullOrWhiteSpace(newName))
+                    {
+                        tabData.Name = newName;
+                        records.Save(recordsPath);
+                        tabBtn.Text = newName;
+                    }
+                });
                 tabMenu.MenuItems.Add("Remove Tab", (s, e) => {
                     if (records.Tabs.Count > 1) {
-                        records.Tabs.Remove(tabData);
-                        tabNavigations.Remove(tabData);
-                        records.Save(recordsPath);
-                        LoadTabs();
+                        var res = MessageBox.Show("Are you sure you want to delete this tab?", "Delete Tab", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        if (res == DialogResult.Yes) {
+                            records.Tabs.Remove(tabData);
+                            tabNavigations.Remove(tabData);
+                            records.Save(recordsPath);
+                            LoadTabs();
+                        }
                     } else {
                         MessageBox.Show("Cannot remove the last tab.");
                     }
@@ -247,7 +286,7 @@ namespace WinPanel
                     foreach (Control c in contentPanel.Controls) c.Visible = false;
                     foreach (Control c in tabBar.Controls)
                     {
-                        if (c == settingsBtn) continue;
+                        if (c == settingsBtn || c == editBtn) continue;
                         c.BackColor = bgColor;
                         c.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
                         Button b = c as Button;
@@ -398,6 +437,11 @@ namespace WinPanel
 
         private void LayoutPanel_DragEnter(object sender, DragEventArgs e)
         {
+            if (!isEditMode)
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
                 e.Effect = DragDropEffects.Copy;
             else
@@ -561,6 +605,7 @@ namespace WinPanel
                 }
                 else if (e.Button == MouseButtons.Right)
                 {
+                    if (!isEditMode) return;
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
                     {
@@ -588,6 +633,7 @@ namespace WinPanel
             {
                 if (isDragging && draggingTile == tile)
                 {
+                    if (!isEditMode) return;
                     if (Math.Abs(e.X - dragStartPoint.X) > 3 || Math.Abs(e.Y - dragStartPoint.Y) > 3)
                     {
                         dragFired = true;
