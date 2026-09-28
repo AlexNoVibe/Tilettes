@@ -954,10 +954,11 @@ namespace WinPanel
                     int maxIcons = Math.Min(9, ChildIcons.Count);
                     int cols = maxIcons > 4 ? 3 : 2;
                     int rows = (int)Math.Ceiling(maxIcons / (float)cols);
-                    int padding = 10;
+                    int padding = 5;
+                    int textSpace = this.Height > 40 ? 30 : 0;
                     int miniWidth = (this.Width - padding * 2) / cols;
-                    int miniHeight = ((this.Height - 30) - padding * 2) / rows;
-                    int miniSize = Math.Min(miniWidth, miniHeight) - 2;
+                    int miniHeight = ((this.Height - textSpace) - padding * 2) / rows;
+                    int miniSize = Math.Max(1, Math.Min(miniWidth, miniHeight) - 2);
 
                     for (int i = 0; i < maxIcons; i++)
                     {
@@ -967,7 +968,7 @@ namespace WinPanel
                         int cx = padding + c * miniWidth + (miniWidth - miniSize)/2;
                         int cy = padding + r * miniHeight + (miniHeight - miniSize)/2;
 
-                        if (childImg != null && miniSize > 0)
+                        if (childImg != null)
                         {
                             var destRect = new Rectangle(cx, cy, miniSize, miniSize);
                             using (var attrs = new System.Drawing.Imaging.ImageAttributes())
@@ -991,17 +992,16 @@ namespace WinPanel
 
                 if (IconImage != null)
                 {
-                    int iconSize = Math.Min(this.Width, this.Height - 30) - 10;
-                    if (iconSize > 0)
+                    int textSpace = this.Height > 40 ? 30 : 0;
+                    int iconSize = Math.Max(1, Math.Min(this.Width, this.Height - textSpace) - 10);
+                    
+                    int ix = (this.Width - iconSize) / 2;
+                    int iy = (this.Height - textSpace - iconSize) / 2;
+                    var destRect = new Rectangle(ix, iy, iconSize, iconSize);
+                    using (var attrs = new System.Drawing.Imaging.ImageAttributes())
                     {
-                        int ix = (this.Width - iconSize) / 2;
-                        int iy = (this.Height - 30 - iconSize) / 2;
-                        var destRect = new Rectangle(ix, iy, iconSize, iconSize);
-                        using (var attrs = new System.Drawing.Imaging.ImageAttributes())
-                        {
-                            attrs.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
-                            e.Graphics.DrawImage(IconImage, destRect, 0, 0, IconImage.Width, IconImage.Height, GraphicsUnit.Pixel, attrs);
-                        }
+                        attrs.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
+                        e.Graphics.DrawImage(IconImage, destRect, 0, 0, IconImage.Width, IconImage.Height, GraphicsUnit.Pixel, attrs);
                     }
                 }
             }
