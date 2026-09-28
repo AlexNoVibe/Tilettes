@@ -177,6 +177,7 @@ namespace WinPanel
         public static void ShowContextMenu(string path, int x, int y, IntPtr handle, bool editMode,
             bool canMoveOutOfFolder, Action onMoveOutOfFolder,
             Action onOpenContainingFolder,
+            Action onOpenMiniExplorer,
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
             Action onRemove, Action onRename, Action onChangeIcon)
         {
@@ -204,6 +205,8 @@ namespace WinPanel
 
                     // Our items go on top so they are shown before the Explorer items.
                     uint pos = 0;
+                    if (onOpenMiniExplorer != null)
+                        InsertCustomItem(hMenu, pos++, customIdStart + 9, "Open in Mini Explorer", marker);
                     InsertCustomItem(hMenu, pos++, customIdStart + 7, "Open containing folder", marker);
                     if (editMode && canMoveOutOfFolder)
                         InsertCustomItem(hMenu, pos++, customIdStart + 8, "Move out of folder", marker);
@@ -252,6 +255,7 @@ namespace WinPanel
                     }
                     else if (cmd == customIdStart + 7) { if (onOpenContainingFolder != null) onOpenContainingFolder(); }
                     else if (cmd == customIdStart + 8) { if (onMoveOutOfFolder != null) onMoveOutOfFolder(); }
+                    else if (cmd == customIdStart + 9) { if (onOpenMiniExplorer != null) onOpenMiniExplorer(); }
                     else if (cmd == customIdStart) { if (onSize1 != null) onSize1(); }
                     else if (cmd == customIdStart + 1) { if (onSize2 != null) onSize2(); }
                     else if (cmd == customIdStart + 2) { if (onSize3 != null) onSize3(); }

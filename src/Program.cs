@@ -1436,11 +1436,14 @@ namespace WinPanel
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
                     {
+                        bool canMini = !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path);
+                        if (!isEditMode && !canMini) return;
                         var fMenu = new ContextMenu();
-                        fMenu.MenuItems.Add("Open in Mini Explorer", (s2, e2) => OpenMiniExplorer(item));
+                        if (canMini)
+                            fMenu.MenuItems.Add("Open in Mini Explorer", (s2, e2) => OpenMiniExplorer(item));
                         if (isEditMode)
                         {
-                            fMenu.MenuItems.Add("-");
+                            if (canMini) fMenu.MenuItems.Add("-");
                             if (tabNavigations[tabData].Count > 0)
                                 fMenu.MenuItems.Add("Move out of folder", (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
                             var fSizeMenu = fMenu.MenuItems.Add("Size");
@@ -1462,6 +1465,7 @@ namespace WinPanel
                             tabNavigations[tabData].Count > 0,
                             () => MoveItemOutOfFolder(panel, tabData, item),
                             () => OpenContainingFolder(item),
+                            (!string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path)) ? new Action(delegate() { OpenMiniExplorer(item); }) : null,
                             () => ChangeIconSize(item, tile, panel, tabData, 1),
                             () => ChangeIconSize(item, tile, panel, tabData, 2),
                             () => ChangeIconSize(item, tile, panel, tabData, 3),
@@ -1541,13 +1545,14 @@ namespace WinPanel
                     }
                     else
                     {
-                        if (item.IsFolder)
+                        bool ctrlClick = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+                        if (ctrlClick && settings.MiniExplorerCtrlClick && !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path))
                         {
-                            if ((Control.ModifierKeys & Keys.Control) == Keys.Control && settings.MiniExplorerCtrlClick && Directory.Exists(item.Path))
-                            {
-                                OpenMiniExplorer(item);
-                            }
-                            else if (settings.OpenFoldersInPopup)
+                            OpenMiniExplorer(item);
+                        }
+                        else if (item.IsFolder)
+                        {
+                            if (settings.OpenFoldersInPopup)
                             {
                                 OpenFolderPopup(item, tile, panel, tabData);
                             }
