@@ -1,0 +1,117 @@
+commit 23e480fb1ac6af3aa11aba0799c80a8aa46aa511
+Author: AI Bot <bot@example.com>
+Date:   Mon Sep 28 13:08:15 2026 +0300
+
+    Refactor to borderless UI and themes
+
+diff --git a/UI_SPEC.md b/UI_SPEC.md
+index 235ea93..f286291 100644
+--- a/UI_SPEC.md
++++ b/UI_SPEC.md
+@@ -3,9 +3,9 @@
+ ## 1. ╨У╨╗╨░╨▓╨╜╨░╤П ╨┐╨░╨╜╨╡╨╗╤М (╨Ъ╨╜╨╛╨┐╨║╨╕ ╤Г╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╤П ╨╕ ╨Ю╨║╨╜╨╛)
+ - [x] ╨Ъ╨╜╨╛╨┐╨║╨░ "╨Э╨░╤Б╤В╤А╨╛╨╣╨║╨╕" (тЪЩя╕П)
+ - [x] ╨Ъ╨╜╨╛╨┐╨║╨░ "╨а╨░╨╖╤А╨╡╤И╨╕╤В╤М ╤А╨╡╨┤╨░╨║╤В╨╕╤А╨╛╨▓╨░╨╜╨╕╨╡" (тЬПя╕П)
+-- [x] **╨Ъ╨░╤Б╤В╨╛╨╝╨╜╤Л╨╣ Titlebar (╨Ч╨░╨│╨╛╨╗╨╛╨▓╨╛╨║ ╨╛╨║╨╜╨░)**: ╨г╨▒╤А╨░╤В╤М ╤Б╤В╨░╨╜╨┤╨░╤А╤В╨╜╤Л╨╣ ╨╖╨░╨│╨╛╨╗╨╛╨▓╨╛╨║ Windows, ╤Б╨╗╨╕╤В╤М ╨╡╨│╨╛ ╤Б ╨╛╨║╨╜╨╛╨╝, ╤Г╨▒╤А╨░╤В╤М ╨╜╨░╨┤╨┐╨╕╤Б╤М. ╨Ф╨╛╨▒╨░╨▓╨╕╤В╤М ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╤В╨░╤Б╨║╨░╤В╤М ╨╛╨║╨╜╨╛ ╨╖╨░ ╨▓╨╡╤А╤Е╨╜╤О╤О ╤З╨░╤Б╤В╤М.
++- [x] **╨Ъ╨░╤Б╤В╨╛╨╝╨╜╤Л╨╣ Titlebar (╨Ч╨░╨│╨╛╨╗╨╛╨▓╨╛╨║ ╨╛╨║╨╜╨░)**: ╨г╨▒╤А╨░╤В╤М ╤Б╤В╨░╨╜╨┤╨░╤А╤В╨╜╤Л╨╣ ╨╖╨░╨│╨╛╨╗╨╛╨▓╨╛╨║ Windows, ╤Б╨╗╨╕╤В╤М ╨╡╨│╨╛ ╤Б ╨╛╨║╨╜╨╛╨╝.
+ - [x] **╨Ч╨░╨║╤А╤Г╨│╨╗╨╡╨╜╨╕╨╡ ╨╛╨║╨╛╨╜**: ╨У╨╗╨░╨▓╨╜╨╛╨╡ ╨╛╨║╨╜╨╛ ╨╕ ╨╛╨║╨╜╨╛ ╨╜╨░╤Б╤В╤А╨╛╨╡╨║ ╨┤╨╛╨╗╨╢╨╜╤Л ╨╕╨╝╨╡╤В╤М ╨╖╨░╨║╤А╤Г╨│╨╗╨╡╨╜╨╜╤Л╨╡ ╤Г╨│╨╗╤Л.
+-- [x] **╨Ю╤В╤А╨╕╤Б╨╛╨▓╨║╨░ ╤Б╨╡╤В╨║╨╕**: ╨Я╤Г╨╜╨║╤В╨╕╤А╨╜╨░╤П (╨┐╤А╨╡╤А╤Л╨▓╨░╤О╤Й╨░╤П╤Б╤П) ╨╗╨╕╨╜╨╕╤П ╨┤╨╗╤П ╤Б╨╡╤В╨║╨╕, ╨░ ╨╜╨╡ ╤Б╨┐╨╗╨╛╤И╨╜╨░╤П.
++- [x] **╨Ю╤В╤А╨╕╤Б╨╛╨▓╨║╨░ ╤Б╨╡╤В╨║╨╕**: ╨Я╤Г╨╜╨║╤В╨╕╤А╨╜╨░╤П ╨╗╨╕╨╜╨╕╤П (╤Б ╤Г╨▓╨╡╨╗╨╕╤З╨╡╨╜╨╜╤Л╨╝ ╨╕╨╜╤В╨╡╤А╨▓╨░╨╗╨╛╨╝ ╨┐╤Г╨╜╨║╤В╨╕╤А╨╛╨▓).
+ 
+ ## 2. ╨Ю╨▒╤Й╨╕╨╡ ╨╜╨░╤Б╤В╤А╨╛╨╣╨║╨╕ (╨Ф╨╕╨░╨╗╨╛╨│╨╛╨▓╨╛╨╡ ╨╛╨║╨╜╨╛)
+ - [x] ╨и╨╕╤А╨╕╨╜╨░ ╨╕ ╨▓╤Л╤Б╨╛╤В╨░ ╨╛╨║╨╜╨░ ╨┐╤А╨╕ ╨╖╨░╨┐╤Г╤Б╨║╨╡, ╤Б╤В╨░╤А╤В╨╛╨▓╨░╤П ╨┐╨╛╨╖╨╕╤Ж╨╕╤П ╨╛╨║╨╜╨░ (X, Y).
+@@ -19,8 +19,8 @@
+ ## 3. ╨Т╨║╨╗╨░╨┤╨║╨╕ ╨╕ ╨Я╨░╨┐╨║╨╕
+ - [x] ╨Т╨║╨╗╨░╨┤╨║╨╕: ╨г╨┤╨░╨╗╨╕╤В╤М, ╨Я╨╡╤А╨╡╨╕╨╝╨╡╨╜╨╛╨▓╨░╤В╤М, ╨Я╨╡╤А╨╡╨║╨╗╤О╤З╨╕╤В╤М ╤А╨░╨╖╨╝╨╡╤В╨║╤Г (Free / Grid).
+ - [x] ╨Я╨░╨┐╨║╨╕: ╨б╨╛╨╖╨┤╨░╤В╤М ╨▓╨╜╤Г╤В╤А╨╡╨╜╨╜╤О╤О ╨┐╨░╨┐╨║╤Г.
+-- [x] **╨Ы╨╛╨│╨╕╨║╨░ ╨┐╨░╨┐╨╛╨║**: ╨Т╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨┤╨╛╨▒╨░╨▓╨╗╤П╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л ╨▓╨╜╤Г╤В╤А╤М ╨┐╨░╨┐╨╛╨║ (Drag & Drop ╨▓╨╜╤Г╤В╤А╤М ╨╛╤В╨║╤А╤Л╤В╨╛╨╣ ╨┐╨░╨┐╨║╨╕ ╨╕╨╗╨╕ ╨┐╨╛╨▓╨╡╤А╤Е ╨╕╨║╨╛╨╜╨║╨╕ ╨┐╨░╨┐╨║╨╕).
++- [x] **╨Ы╨╛╨│╨╕╨║╨░ ╨┐╨░╨┐╨╛╨║**: ╨Т╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨┤╨╛╨▒╨░╨▓╨╗╤П╤В╤М ╤Н╨╗╨╡╨╝╨╡╨╜╤В╤Л ╨▓╨╜╤Г╤В╤А╤М ╨┐╨░╨┐╨╛╨║.
+ 
+ ## 4. ╨п╤А╨╗╤Л╨║╨╕ / ╨Я╨╗╨╕╤В╨║╨╕
+ - [x] ╨Т╤Л╨▒╨╛╤А ╤А╨░╨╖╨╝╨╡╤А╨░ (1x1, 2x2, 3x3, 4x4), ╨Я╨╡╤А╨╡╨╕╨╝╨╡╨╜╨╛╨▓╨░╤В╤М, ╨Ш╨╖╨╝╨╡╨╜╨╕╤В╤М ╨╕╨║╨╛╨╜╨║╤Г, ╨г╨┤╨░╨╗╨╕╤В╤М.
+-- [x] **╨Ф╨╕╨╖╨░╨╣╨╜ ╨╕╨║╨╛╨╜╨╛╨║ (Android-style)**: ╨г╨▒╤А╨░╤В╤М ╨╝╨░╤Б╤Б╨╕╨▓╨╜╤Л╨╣ ╨╜╨╡╨║╤А╨░╤Б╨╕╨▓╤Л╨╣ ╤Б╨╡╤А╤Л╨╣ ╤Д╨╛╨╜. ╨Ш╨╖╨▓╨╗╨╡╨║╨░╤В╤М ╨╕╨║╨╛╨╜╨║╨╕ ╨▓ ╨▓╤Л╤Б╨╛╨║╨╛╨╝ ╤А╨░╨╖╤А╨╡╤И╨╡╨╜╨╕╨╕ (Extra Large) ╨╕ ╤А╨╕╤Б╨╛╨▓╨░╤В╤М ╨╕╤Е ╨║╤А╨░╤Б╨╕╨▓╨╛ (╤Б ╨┐╤А╨╛╨╖╤А╨░╤З╨╜╤Л╨╝ ╤Д╨╛╨╜╨╛╨╝ ╨┐╨╗╨╕╤В╨║╨╕ ╨╕╨╗╨╕ ╨░╨║╨║╤Г╤А╨░╤В╨╜╤Л╨╝ ╤Б╨║╨▓╨╕╤А╨║╨╗╨╛╨╝), ╤З╤В╨╛╨▒╤Л ╨╛╨╜╨╕ ╨▓╤Л╨│╨╗╤П╨┤╨╡╨╗╨╕ ╨║╨░╨║ ╨╖╨╜╨░╤З╨║╨╕ ╨╜╨░ Android.
++- [x] **╨Ф╨╕╨╖╨░╨╣╨╜ ╨╕╨║╨╛╨╜╨╛╨║ (Android-style)**: ╨Я╤А╨╛╨╖╤А╨░╤З╨╜╤Л╨╣ ╤Д╨╛╨╜ ╨┐╨╗╨╕╤В╨║╨╕, ╨▒╨╛╨╗╤М╤И╨░╤П ╨╕╨║╨╛╨╜╨║╨░. ╨Ш╤Б╨┐╤А╨░╨▓╨╗╨╡╨╜╨╛ ╨┐╤А╨╛╨┐╨░╨┤╨░╨╜╨╕╨╡ ╨╕╨║╨╛╨╜╨╛╨║.
+diff --git a/src/Program.cs b/src/Program.cs
+index f407e7d..cb3532c 100644
+--- a/src/Program.cs
++++ b/src/Program.cs
+@@ -133,6 +133,7 @@ namespace WinPanel
+                     this.Width = settings.WindowWidth;
+                     this.Height = settings.WindowHeight;
+                     this.Location = new Point(settings.WindowX, settings.WindowY);
++                    ApplyThemeColors();
+                     LoadTabs();
+                 }
+             }
+@@ -154,6 +155,10 @@ namespace WinPanel
+                 hoverColor = Color.FromArgb(62, 62, 66);
+                 textColor = Color.White;
+             }
++            this.BackColor = bgColor;
++            this.ForeColor = textColor;
++            if (tabBar != null) tabBar.BackColor = bgColor;
++            if (contentPanel != null) contentPanel.BackColor = bgColor;
+         }
+ 
+         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+@@ -514,7 +519,7 @@ namespace WinPanel
+                 var tc = c as TileControl;
+                 if (tc != null && tc.Item.IsFolder)
+                 {
+-                    if (tc.Bounds.Contains(displayPt))
++                    if (tc.Bounds.Contains(pt))
+                     {
+                         targetFolder = tc.Item;
+                         break;
+@@ -757,17 +762,44 @@ namespace WinPanel
+                     if (dragFired)
+                     {
+                         if (!isEditMode) return;
+-                        if (tabData.IsGridLayout)
++
++                        var ptClient = panel.PointToClient(Cursor.Position);
++                        ShortcutItem targetFolder = null;
++                        foreach (Control c in panel.Controls)
++                        {
++                            var otherTile = c as TileControl;
++                            if (otherTile != null && otherTile != tile && otherTile.Item.IsFolder)
++                            {
++                                if (otherTile.Bounds.Contains(ptClient))
++                                {
++                                    targetFolder = otherTile.Item;
++                                    break;
++                                }
++                            }
++                        }
++
++                        if (targetFolder != null)
+                         {
+-                            int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
+-                            int row = Math.Max(0, Math.Min(16 - s, (tile.Top + cellHeight/2) / cellHeight));
+-                            item.GridX = col;
+-                            item.GridY = row;
++                            var navStack = tabNavigations[tabData];
++                            var currentList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
++                            currentList.Remove(item);
++                            if (targetFolder.Children == null) targetFolder.Children = new List<ShortcutItem>();
++                            targetFolder.Children.Add(item);
+                         }
+                         else
+                         {
+-                            item.X = tile.Left;
+-                            item.Y = tile.Top;
++                            if (tabData.IsGridLayout)
++                            {
++                                int col = Math.Max(0, Math.Min(cols - s, (tile.Left + cellWidth/2) / cellWidth));
++                                int row = Math.Max(0, Math.Min(rows - s, (tile.Top + cellHeight/2) / cellHeight));
++                                item.GridX = col;
++                                item.GridY = row;
++                            }
++                            else
++                            {
++                                item.X = tile.Left - panel.DisplayRectangle.X;
++                                item.Y = tile.Top - panel.DisplayRectangle.Y;
++                            }
+                         }
+                         records.Save(recordsPath);
+                         RenderCurrentFolder(panel, tabData);

@@ -221,17 +221,17 @@ namespace WinPanel
             bool isFirst = true;
 
             // Window Buttons
-            var closeBtn = new Button { Text = "✕", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            var closeBtn = new Button { Text = "тЬХ", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
             closeBtn.FlatAppearance.BorderSize = 0; closeBtn.FlatAppearance.MouseOverBackColor = Color.Red;
             closeBtn.Click += (s, e) => this.Close();
             tabBar.Controls.Add(closeBtn);
 
-            var maxBtn = new Button { Text = "🗖", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            var maxBtn = new Button { Text = "ЁЯЧЦ", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
             maxBtn.FlatAppearance.BorderSize = 0; maxBtn.FlatAppearance.MouseOverBackColor = hoverColor;
             maxBtn.Click += (s, e) => this.WindowState = this.WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
             tabBar.Controls.Add(maxBtn);
 
-            var minBtn = new Button { Text = "🗕", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            var minBtn = new Button { Text = "ЁЯЧХ", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
             minBtn.FlatAppearance.BorderSize = 0; minBtn.FlatAppearance.MouseOverBackColor = hoverColor;
             minBtn.Click += (s, e) => this.WindowState = FormWindowState.Minimized;
             tabBar.Controls.Add(minBtn);
@@ -239,7 +239,7 @@ namespace WinPanel
             // Settings button
             var settingsBtn = new Button
             {
-                Text = "⚙️",
+                Text = "тЪЩя╕П",
                 Width = 35,
                 Height = 35,
                 Dock = DockStyle.Right,
@@ -256,7 +256,7 @@ namespace WinPanel
 
             var editBtn = new Button
             {
-                Text = "✅",
+                Text = "тЬПя╕П",
                 Width = 35,
                 Height = 35,
                 Dock = DockStyle.Right,
@@ -585,7 +585,7 @@ namespace WinPanel
 
             using (Pen gridPen = new Pen(gridColor))
             {
-                gridPen.DashPattern = new float[] { 4, 8 };
+                gridPen.DashStyle = DashStyle.Dash;
                 for (int i = 0; i <= cols; i++)
                 {
                     e.Graphics.DrawLine(gridPen, i * cellWidth, 0, i * cellWidth, panel.Height);
@@ -954,11 +954,10 @@ namespace WinPanel
                     int maxIcons = Math.Min(9, ChildIcons.Count);
                     int cols = maxIcons > 4 ? 3 : 2;
                     int rows = (int)Math.Ceiling(maxIcons / (float)cols);
-                    int padding = 5;
-                    int textSpace = this.Height > 40 ? 30 : 0;
+                    int padding = 10;
                     int miniWidth = (this.Width - padding * 2) / cols;
-                    int miniHeight = ((this.Height - textSpace) - padding * 2) / rows;
-                    int miniSize = Math.Max(1, Math.Min(miniWidth, miniHeight) - 2);
+                    int miniHeight = ((this.Height - 30) - padding * 2) / rows;
+                    int miniSize = Math.Min(miniWidth, miniHeight) - 2;
 
                     for (int i = 0; i < maxIcons; i++)
                     {
@@ -977,19 +976,23 @@ namespace WinPanel
             }
             else
             {
-                using (var brush = new SolidBrush(IsHovered ? hoverColor : bgColor))
+                if (IsHovered)
                 {
-                    e.Graphics.FillPath(brush, path);
+                    using (var brush = new SolidBrush(Color.FromArgb(30, 255, 255, 255)))
+                    {
+                        e.Graphics.FillPath(brush, path);
+                    }
                 }
 
                 if (IconImage != null)
                 {
-                    int textSpace = this.Height > 40 ? 30 : 0;
-                    int iconSize = Math.Max(1, Math.Min(this.Width, this.Height - textSpace) - 10);
-                    
-                    int ix = (this.Width - iconSize) / 2;
-                    int iy = (this.Height - textSpace - iconSize) / 2;
-                    e.Graphics.DrawImage(IconImage, new Rectangle(ix, iy, iconSize, iconSize));
+                    int iconSize = Math.Min(this.Width, this.Height - 30) - 10;
+                    if (iconSize > 0)
+                    {
+                        int ix = (this.Width - iconSize) / 2;
+                        int iy = (this.Height - 30 - iconSize) / 2;
+                        e.Graphics.DrawImage(IconImage, new Rectangle(ix, iy, iconSize, iconSize));
+                    }
                 }
             }
 
@@ -1083,10 +1086,6 @@ namespace WinPanel
         public enum IconSize { Large = 0, Small = 1 }
         public enum FolderType { Closed = 0, Open = 1 }
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-        private static extern bool DestroyIcon(IntPtr hIcon);
-
         public static Icon GetFolderIcon(IconSize size, FolderType folderType)
         {
             uint flags = SHGFI_ICON | SHGFI_USEFILEATTRIBUTES;
@@ -1099,9 +1098,7 @@ namespace WinPanel
 
             if (shfi.hIcon != IntPtr.Zero)
             {
-                Icon icon = (Icon)Icon.FromHandle(shfi.hIcon).Clone();
-                DestroyIcon(shfi.hIcon);
-                return icon;
+                return (Icon)Icon.FromHandle(shfi.hIcon).Clone();
             }
             return null;
         }
