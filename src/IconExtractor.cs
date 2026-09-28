@@ -117,6 +117,16 @@ namespace WinPanel
         return null;
     }
 
+        // Loads an icon (.ico/.exe) or an image file (.png/.jpg/.bmp) as an Image.
+        public static Image LoadAny(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            string lower = path.ToLowerInvariant();
+            if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
+                return GetIcon(path, true);
+            return Image.FromFile(path);
+        }
+
         // Shell icons often carry large fully transparent margins (some apps have no 256px
         // frame, leaving a tiny glyph in the corner of the jumbo canvas). Crop to the visible
         // glyph so tiles can scale it up instead of showing a small icon with dead space.

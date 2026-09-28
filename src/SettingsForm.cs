@@ -186,6 +186,15 @@ namespace WinPanel
                 out numFontUiSize, out btnFontUiColor, out cmbFontUi);
             y += 34;
 
+            var lblTypes = new Label { Text = "File types:", Left = 20, Top = y, Width = 92 };
+            var btnTypeIcons = new Button { Text = "Icons by type...", Left = 115, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnTypeIcons.FlatAppearance.BorderSize = 0;
+            btnTypeIcons.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.Icons, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
+            var btnTypeOpen = new Button { Text = "Open with by type...", Left = 260, Top = y - 3, Width = 150, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnTypeOpen.FlatAppearance.BorderSize = 0;
+            btnTypeOpen.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.OpenWith, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
+            y += 36;
+
             btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
@@ -232,6 +241,9 @@ namespace WinPanel
             this.Controls.Add(chkLightTheme);
             this.Controls.Add(lblHotkey);
             this.Controls.Add(cmbHotkey);
+            this.Controls.Add(lblTypes);
+            this.Controls.Add(btnTypeIcons);
+            this.Controls.Add(btnTypeOpen);
             this.Controls.Add(btnBackup);
             this.Controls.Add(btnRestore);
             this.Controls.Add(btnSave);

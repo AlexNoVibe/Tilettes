@@ -91,6 +91,9 @@ namespace WinPanel
             // so they are not lost when the originals are moved or deleted.
             ConsolidateAllRecords();
 
+            // File-type rules (icons and "open with" per extension).
+            FileTypes.Load(FileTypes.DefaultFilePath);
+
             isEditMode = settings.EditMode;
 
             ApplyThemeColors();
@@ -449,12 +452,14 @@ namespace WinPanel
 
         private static Image LoadIconForItem(ShortcutItem item)
         {
+            // 1) direct icon of the item (Change Icon)
             if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
-            {
-                if (item.CustomIconPath.ToLower().EndsWith(".exe") || item.CustomIconPath.ToLower().EndsWith(".ico"))
-                    return IconExtractor.GetIcon(item.CustomIconPath, true);
-                return Image.FromFile(item.CustomIconPath);
-            }
+                return IconExtractor.LoadAny(item.CustomIconPath);
+            // 2) icon assigned to the file type
+            string typeIcon = FileTypes.GetIconForPath(item.Path);
+            if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
+                return IconExtractor.LoadAny(typeIcon);
+            // 3) standard shell icon
             return IconExtractor.GetIcon(item.Path, true);
         }
 
@@ -482,7 +487,21 @@ namespace WinPanel
             }
             else
             {
-                try { img = IconExtractor.GetIcon(child.Path, true); } catch { }
+                try
+                {
+                    // 1) direct icon of the child, 2) file type icon, 3) standard icon
+                    if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
+                        img = IconExtractor.LoadAny(child.CustomIconPath);
+                    else
+                    {
+                        string typeIcon = FileTypes.GetIconForPath(child.Path);
+                        if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
+                            img = IconExtractor.LoadAny(typeIcon);
+                        else
+                            img = IconExtractor.GetIcon(child.Path, true);
+                    }
+                }
+                catch { }
             }
             if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
             var old = tile.ChildIcons[index];
@@ -507,7 +526,27 @@ namespace WinPanel
         {
             if (string.IsNullOrEmpty(path)) return;
             if (SuppressDoubleLaunch("item:" + path)) return;
-            StartDetached(path, null);
+
+            // File-type rule: open with the program assigned to this extension (if any).
+            string target = path;
+            string args = null;
+            try
+            {
+                var rule = FileTypes.GetRuleForPath(path);
+                if (rule != null && !string.IsNullOrEmpty(rule.OpenWith) && File.Exists(rule.OpenWith) && File.Exists(path))
+                {
+                    string ext = Path.GetExtension(path).ToLowerInvariant();
+                    if (ext != ".lnk") // shortcuts keep their own target semantics
+                    {
+                        target = rule.OpenWith;
+                        args = "\"" + path + "\"";
+                        if (!string.IsNullOrEmpty(rule.OpenArgs)) args = rule.OpenArgs + " " + args;
+                    }
+                }
+            }
+            catch { }
+
+            StartDetached(target, args);
         }
 
         // Launches on its own STA thread so the panel stays responsive even when the system
@@ -565,31 +604,53 @@ namespace WinPanel
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return path;
                 string lower = path.ToLowerInvariant();
                 if (!lower.EndsWith(".lnk") && !lower.EndsWith(".ico")) return path;
-                string appDir = Application.StartupPath.TrimEnd('\\');
-                if (path.StartsWith(appDir + "\\", StringComparison.OrdinalIgnoreCase)) return path;
-                string destDir = Path.Combine(appDir, "ico");
-                if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir);
-                string fileName = Path.GetFileName(path);
-                string dest = Path.Combine(destDir, fileName);
-                if (File.Exists(dest))
-                {
-                    if (FilesEqual(path, dest)) return dest;
-                    string baseName = Path.GetFileNameWithoutExtension(fileName);
-                    string origExt = Path.GetExtension(fileName);
-                    for (int i = 2; i < 100; i++)
-                    {
-                        string cand = Path.Combine(destDir, baseName + " (" + i + ")" + origExt);
-                        if (!File.Exists(cand)) { dest = cand; break; }
-                        if (FilesEqual(path, cand)) return cand;
-                    }
-                }
-                File.Copy(path, dest);
-                return dest;
+                return CopyIntoIcoFolder(path);
             }
             catch
             {
                 return path;
             }
+        }
+
+        // Icon image files picked for file-type rules are kept in the panel's ico folder too.
+        internal static string ConsolidateIconFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return path;
+                string lower = path.ToLowerInvariant();
+                if (!lower.EndsWith(".ico") && !lower.EndsWith(".png") && !lower.EndsWith(".jpg") &&
+                    !lower.EndsWith(".jpeg") && !lower.EndsWith(".bmp")) return path;
+                return CopyIntoIcoFolder(path);
+            }
+            catch
+            {
+                return path;
+            }
+        }
+
+        private static string CopyIntoIcoFolder(string path)
+        {
+            string appDir = Application.StartupPath.TrimEnd('\\');
+            if (path.StartsWith(appDir + "\\", StringComparison.OrdinalIgnoreCase)) return path;
+            string destDir = Path.Combine(appDir, "ico");
+            if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir);
+            string fileName = Path.GetFileName(path);
+            string dest = Path.Combine(destDir, fileName);
+            if (File.Exists(dest))
+            {
+                if (FilesEqual(path, dest)) return dest;
+                string baseName = Path.GetFileNameWithoutExtension(fileName);
+                string origExt = Path.GetExtension(fileName);
+                for (int i = 2; i < 100; i++)
+                {
+                    string cand = Path.Combine(destDir, baseName + " (" + i + ")" + origExt);
+                    if (!File.Exists(cand)) { dest = cand; break; }
+                    if (FilesEqual(path, cand)) return cand;
+                }
+            }
+            File.Copy(path, dest);
+            return dest;
         }
 
         private static bool FilesEqual(string a, string b)
