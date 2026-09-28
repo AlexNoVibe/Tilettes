@@ -29,6 +29,7 @@ namespace WinPanel
         private ListBox panelSearchList;
         private Label panelSearchStatus;
         private bool panelSearchActive;
+        private int panelSearchGen;
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private string settingsPath = "settings.ini";
@@ -556,13 +557,96 @@ namespace WinPanel
                 if (activeTabData == null || activeLayoutPanel == null) return;
                 var variants = SearchCore.Variants(q);
                 if (variants.Count == 0) { HidePanelSearch(); return; }
-                var found = new List<KeyValuePair<int, ShortcutItem>>();
-                CollectItemsMeta(activeTabData.Items, variants, found);
-                found.Sort(delegate(KeyValuePair<int, ShortcutItem> a, KeyValuePair<int, ShortcutItem> b)
+
+                // Build a flat snapshot of the items and run the actual matching on a
+                // background thread: with thousands of entries the UI never freezes.
+                var all = new List<ShortcutItem>();
+                CollectAllItems(activeTabData.Items, all);
+                int gen = ++panelSearchGen;
+
+                panelSearchStatus.Text = Loc.IsRu ? "Поиск…" : "Searching…";
+                panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
+                panelSearchOverlay.Bounds = contentPanel.Bounds;
+                panelSearchOverlay.Visible = true;
+                panelSearchOverlay.BringToFront();
+                panelSearchActive = true;
+
+                var vv = variants;
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
-                    if (b.Key != a.Key) return b.Key - a.Key;
-                    return string.Compare(a.Value.Name, b.Value.Name, StringComparison.OrdinalIgnoreCase);
+                    List<KeyValuePair<int, ShortcutItem>> found;
+                    try { found = SearchItemsWorker(all, vv); }
+                    catch { found = new List<KeyValuePair<int, ShortcutItem>>(); }
+                    try
+                    {
+                        this.BeginInvoke((MethodInvoker)delegate()
+                        {
+                            if (this.IsDisposed || gen != panelSearchGen) return;
+                            found.Sort(delegate(KeyValuePair<int, ShortcutItem> a, KeyValuePair<int, ShortcutItem> b)
+                            {
+                                if (b.Key != a.Key) return b.Key - a.Key;
+                                return string.Compare(a.Value.Name, b.Value.Name, StringComparison.OrdinalIgnoreCase);
+                            });
+                            ApplySearchResults(found);
+                        });
+                    }
+                    catch { }
                 });
+            }
+            catch { }
+        }
+
+        private static void CollectAllItems(List<ShortcutItem> items, List<ShortcutItem> outList)
+        {
+            foreach (var it in items)
+            {
+                outList.Add(it);
+                if (it.Children != null && it.Children.Count > 0) CollectAllItems(it.Children, outList);
+            }
+        }
+
+        // Runs on a background thread. Uses the character-mask prefilter so that
+        // only plausible candidates reach the (more expensive) scoring step.
+        private static List<KeyValuePair<int, ShortcutItem>> SearchItemsWorker(List<ShortcutItem> items, List<string> variants)
+        {
+            var found = new List<KeyValuePair<int, ShortcutItem>>();
+            int vn = variants.Count;
+            var vA = new ulong[vn];
+            var vB = new ulong[vn];
+            var vAllow = new int[vn];
+            for (int k = 0; k < vn; k++)
+            {
+                SearchCore.MakeMask(variants[k], out vA[k], out vB[k]);
+                vAllow[k] = Math.Max(1, variants[k].Length / 4);
+            }
+
+            foreach (var it in items)
+            {
+                ulong iA, iB;
+                try { PanelSearch.GetMask(it, out iA, out iB); }
+                catch { continue; }
+                string[] metas;
+                try { metas = PanelSearch.GetMetas(it); }
+                catch { continue; }
+                int best = -1;
+                for (int k = 0; k < vn; k++)
+                {
+                    if (SearchCore.MissingBits(vA[k], iA, vB[k], iB) > vAllow[k]) continue;
+                    for (int i = 0; i < metas.Length; i++)
+                    {
+                        int s = SearchCore.ScoreVariant(metas[i], variants[k]);
+                        if (s > best) best = s;
+                    }
+                }
+                if (best >= 0) found.Add(new KeyValuePair<int, ShortcutItem>(best, it));
+            }
+            return found;
+        }
+
+        private void ApplySearchResults(List<KeyValuePair<int, ShortcutItem>> found)
+        {
+            try
+            {
                 panelSearchResults.Clear();
                 int n = Math.Min(200, found.Count);
                 for (int i = 0; i < n; i++) panelSearchResults.Add(found[i].Value);
@@ -574,33 +658,13 @@ namespace WinPanel
                 panelSearchList.Invalidate();
                 panelSearchStatus.Text = (Loc.IsRu ? "Найдено: " : "Found: ") + panelSearchResults.Count +
                     (Loc.IsRu ? "   ·   Enter — открыть, Esc — закрыть" : "   ·   Enter to open, Esc to close");
-                panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
-                panelSearchOverlay.Bounds = contentPanel.Bounds;
-                panelSearchOverlay.Visible = true;
-                panelSearchOverlay.BringToFront();
-                panelSearchActive = true;
             }
             catch { }
         }
 
-        private void CollectItemsMeta(List<ShortcutItem> items, List<string> variants, List<KeyValuePair<int, ShortcutItem>> found)
-        {
-            foreach (var it in items)
-            {
-                var metas = PanelSearch.GetMetas(it);
-                int best = -1;
-                for (int i = 0; i < metas.Length; i++)
-                {
-                    int s = SearchCore.Score(metas[i], variants);
-                    if (s > best) best = s;
-                }
-                if (best >= 0) found.Add(new KeyValuePair<int, ShortcutItem>(best, it));
-                if (it.Children != null && it.Children.Count > 0) CollectItemsMeta(it.Children, variants, found);
-            }
-        }
-
         private void HidePanelSearch()
         {
+            panelSearchGen++;
             if (panelSearchOverlay != null) panelSearchOverlay.Visible = false;
             panelSearchActive = false;
             if (panelSearchResults != null) panelSearchResults.Clear();

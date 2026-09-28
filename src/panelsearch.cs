@@ -9,16 +9,24 @@ namespace WinPanel
     // display name, file / exe name, folder names, full path, shortcut target
     // and version info of the target program (FileDescription, ProductName,
     // CompanyName, OriginalFilename). Everything the shell can give us cheaply.
+    // Thread-safe: searches may run on a background thread.
     public static class PanelSearch
     {
-        private static readonly Dictionary<ShortcutItem, string[]> cache = new Dictionary<ShortcutItem, string[]>();
-        private static readonly Dictionary<ShortcutItem, string> cacheName = new Dictionary<ShortcutItem, string>();
+        private class MetaEntry
+        {
+            public string Name;
+            public string[] Metas;
+            public ulong MaskA;
+            public ulong MaskB;
+        }
+
+        private static readonly object Gate = new object();
+        private static readonly Dictionary<ShortcutItem, MetaEntry> cache = new Dictionary<ShortcutItem, MetaEntry>();
 
         public static void Invalidate(ShortcutItem item)
         {
             if (item == null) return;
-            cache.Remove(item);
-            cacheName.Remove(item);
+            lock (Gate) { cache.Remove(item); }
         }
 
         // Short summary shown at the right side of a search result row.
@@ -40,12 +48,26 @@ namespace WinPanel
 
         public static string[] GetMetas(ShortcutItem it)
         {
-            string[] cached;
-            string cachedNm;
-            if (cache.TryGetValue(it, out cached) && cacheName.TryGetValue(it, out cachedNm) &&
-                string.Equals(cachedNm, it.Name, StringComparison.Ordinal))
-                return cached;
+            return GetEntry(it).Metas;
+        }
 
+        public static void GetMask(ShortcutItem it, out ulong maskA, out ulong maskB)
+        {
+            var e = GetEntry(it);
+            maskA = e.MaskA;
+            maskB = e.MaskB;
+        }
+
+        private static MetaEntry GetEntry(ShortcutItem it)
+        {
+            lock (Gate)
+            {
+                MetaEntry e;
+                if (cache.TryGetValue(it, out e) && string.Equals(e.Name, it.Name, StringComparison.Ordinal))
+                    return e;
+            }
+
+            // Build outside the lock: version info reads may touch the disk.
             var list = new List<string>();
             Add(list, it.Name);
 
@@ -99,10 +121,22 @@ namespace WinPanel
                 catch { }
             }
 
-            string[] res = list.ToArray();
-            cache[it] = res;
-            cacheName[it] = it.Name;
-            return res;
+            var entry = new MetaEntry();
+            entry.Name = it.Name;
+            entry.Metas = list.ToArray();
+            ulong a = 0, b = 0;
+            foreach (var m in entry.Metas)
+            {
+                ulong ma, mb;
+                SearchCore.MakeMask(m, out ma, out mb);
+                a |= ma;
+                b |= mb;
+            }
+            entry.MaskA = a;
+            entry.MaskB = b;
+
+            lock (Gate) { cache[it] = entry; }
+            return entry;
         }
 
         private static void Add(List<string> list, string s)

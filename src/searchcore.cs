@@ -12,6 +12,10 @@ namespace WinPanel
         public string FullPath;
         public bool IsDir;
         public long Size;
+        // Precomputed for fast search: lowercase name and character bitmasks
+        public string NameLower;
+        public ulong MaskA; // a-z + 0-9
+        public ulong MaskB; // cyrillic а-я + ё
     }
 
     // Background file index and fuzzy search that also understands the wrong
@@ -105,7 +109,9 @@ namespace WinPanel
                                 foreach (var b in badNames) if (nm == b) { skip = true; break; }
                                 if (!skip)
                                 {
-                                    buf.Add(new SearchItem { Name = di.Name, Dir = dir, FullPath = d, IsDir = true });
+                                    var si = new SearchItem { Name = di.Name, Dir = dir, FullPath = d, IsDir = true };
+                                    Prepare(si);
+                                    buf.Add(si);
                                     try
                                     {
                                         if ((di.Attributes & FileAttributes.ReparsePoint) == 0) queue.Enqueue(d);
@@ -124,7 +130,9 @@ namespace WinPanel
                             try
                             {
                                 var fi = new FileInfo(f);
-                                buf.Add(new SearchItem { Name = fi.Name, Dir = dir, FullPath = f, IsDir = false, Size = fi.Length });
+                                var si = new SearchItem { Name = fi.Name, Dir = dir, FullPath = f, IsDir = false, Size = fi.Length };
+                                Prepare(si);
+                                buf.Add(si);
                             }
                             catch { }
                             count++;
@@ -157,6 +165,39 @@ namespace WinPanel
                 Scanned[key] = count;
             }
             buf.Clear();
+        }
+
+        // ---------- fast prefilter: character bitmasks ----------
+
+        public static void MakeMask(string s, out ulong maskA, out ulong maskB)
+        {
+            maskA = 0; maskB = 0;
+            if (string.IsNullOrEmpty(s)) return;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c >= 'a' && c <= 'z') maskA |= 1UL << (c - 'a');
+                else if (c >= '0' && c <= '9') maskA |= 1UL << (26 + (c - '0'));
+                else if (c >= 'а' && c <= 'я') maskB |= 1UL << (c - 'а');
+                else if (c == 'ё') maskB |= 1UL << 32;
+            }
+        }
+
+        // Characters of `need` missing in `have` (population count of the difference).
+        public static int MissingBits(ulong needA, ulong haveA, ulong needB, ulong haveB)
+        {
+            ulong missA = needA & ~haveA;
+            ulong missB = needB & ~haveB;
+            int n = 0;
+            while (missA != 0) { missA &= missA - 1; n++; }
+            while (missB != 0) { missB &= missB - 1; n++; }
+            return n;
+        }
+
+        private static void Prepare(SearchItem it)
+        {
+            it.NameLower = (it.Name ?? "").ToLowerInvariant();
+            MakeMask(it.NameLower, out it.MaskA, out it.MaskB);
         }
 
         // ---------- fuzzy + keyboard layout matching ----------
@@ -208,44 +249,87 @@ namespace WinPanel
             return best;
         }
 
+        public static int ScoreVariant(string textLower, string variant)
+        {
+            return ScoreOne(textLower, variant);
+        }
+
         private static int ScoreOne(string name, string v)
         {
             if (v.Length == 0) return -1;
             if (name.StartsWith(v, StringComparison.Ordinal)) return 1000 - name.Length;
             int idx = name.IndexOf(v, StringComparison.Ordinal);
             if (idx >= 0) return 700 - idx * 2 - name.Length;
-            // Fuzzy subsequence
-            int pi = 0, gaps = 0, last = -1;
-            for (int i = 0; i < name.Length && pi < v.Length; i++)
+
+            // Relaxed fuzzy pass: typos (substitutions) and wide gaps are welcome;
+            // only targets not much longer than the query participate (keeps paths out).
+            int lenDiff = name.Length - v.Length;
+            if (lenDiff < 0 || lenDiff > 16) return -1;
+            int allow = Math.Max(1, v.Length / 4);
+            int cost = ApproxSubsequence(name, v, allow);
+            if (cost < 0) return -1;
+            return 400 - cost * 40 - lenDiff * 3;
+        }
+
+        // Minimal substitutions needed to match v as a subsequence of name,
+        // bounded by the allowance (-1 when it cannot fit).
+        private static int ApproxSubsequence(string name, string v, int allow)
+        {
+            int m = v.Length;
+            if (m == 0) return 0;
+            const int INF = 1000;
+            var prev = new int[m + 1];
+            var cur = new int[m + 1];
+            for (int j = 1; j <= m; j++) prev[j] = INF;
+            prev[0] = 0;
+            int best = INF;
+            for (int i = 0; i < name.Length; i++)
             {
-                if (name[i] == v[pi])
+                char c = name[i];
+                for (int j = 0; j <= m; j++) cur[j] = prev[j];
+                int jmax = Math.Min(m, i + 1);
+                for (int j = 1; j <= jmax; j++)
                 {
-                    if (last >= 0 && i - last > 1) gaps += i - last - 1;
-                    last = i;
-                    pi++;
+                    int p = prev[j - 1];
+                    if (p < INF)
+                    {
+                        int missCost = 0;
+                        if (c != v[j - 1])
+                        {
+                            // Digits count double: codes like perf0250 vs perf0261 are
+                            // different names, while letter typos stay cheap.
+                            bool digit = (c >= '0' && c <= '9') || (v[j - 1] >= '0' && v[j - 1] <= '9');
+                            missCost = digit ? 2 : 1;
+                        }
+                        int cand = p + missCost;
+                        if (cand < cur[j]) cur[j] = cand;
+                    }
                 }
+                var tmp = prev; prev = cur; cur = tmp;
+                if (prev[m] < best) best = prev[m];
+                if (best == 0) break;
             }
-            if (pi == v.Length && (name.Length - v.Length) <= 12 && gaps <= 6)
-                return 400 - gaps * 3 - Math.Max(0, name.Length - v.Length);
-            return -1;
+            return best <= allow ? best : -1;
         }
 
         // Searches a snapshot of the given index list. Safe to call while the
         // background builder is still appending (the list is locked while read).
+        // A cheap character-mask prefilter skips most of the candidates first.
         public static List<SearchItem> Run(string query, List<SearchItem> source, int limit)
         {
             var res = new List<SearchItem>();
             if (source == null) return res;
-            query = query.Trim();
-            if (query.Length == 0) return res;
-
-            string q = query.ToLowerInvariant();
-            string v2 = Translate(q, true).ToLowerInvariant();
-            string v3 = Translate(q, false).ToLowerInvariant();
-            var variants = new List<string>();
-            variants.Add(q);
-            if (v2 != q) variants.Add(v2);
-            if (v3 != q && v3 != v2) variants.Add(v3);
+            var variants = Variants(query);
+            int vn = variants.Count;
+            if (vn == 0) return res;
+            var vA = new ulong[vn];
+            var vB = new ulong[vn];
+            var vAllow = new int[vn];
+            for (int k = 0; k < vn; k++)
+            {
+                MakeMask(variants[k], out vA[k], out vB[k]);
+                vAllow[k] = Math.Max(1, variants[k].Length / 4);
+            }
 
             var scored = new List<KeyValuePair<int, SearchItem>>();
             lock (Gate)
@@ -253,10 +337,14 @@ namespace WinPanel
                 for (int i = 0; i < source.Count; i++)
                 {
                     var it = source[i];
-                    string nm = (it.Name ?? "").ToLowerInvariant();
+                    string nm = it.NameLower;
+                    if (nm == null) nm = (it.Name ?? "").ToLowerInvariant();
+                    ulong iA = it.MaskA, iB = it.MaskB;
+                    if (iA == 0 && iB == 0 && nm.Length > 0) MakeMask(nm, out iA, out iB);
                     int best = -1;
-                    for (int k = 0; k < variants.Count; k++)
+                    for (int k = 0; k < vn; k++)
                     {
+                        if (MissingBits(vA[k], iA, vB[k], iB) > vAllow[k]) continue;
                         int s = ScoreOne(nm, variants[k]);
                         if (s > best) best = s;
                     }
