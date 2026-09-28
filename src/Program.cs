@@ -256,7 +256,7 @@ namespace WinPanel
 
             var editBtn = new Button
             {
-                Text = "✏️",
+                Text = "✅",
                 Width = 35,
                 Height = 35,
                 Dock = DockStyle.Right,

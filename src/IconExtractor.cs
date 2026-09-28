@@ -74,6 +74,17 @@ namespace WinPanel
         private const int SHIL_EXTRALARGE = 2;
         private const int ILD_TRANSPARENT = 1;
 
+        private static Bitmap ToBitmapRobust(Icon icon)
+        {
+            if (icon == null) return null;
+            Bitmap bmp = new Bitmap(icon.Width, icon.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(bmp)) {
+                g.Clear(Color.Transparent);
+                g.DrawIcon(icon, new Rectangle(0, 0, icon.Width, icon.Height));
+            }
+            return bmp;
+        }
+
         public static Image GetIcon(string path, bool large)
         {
             SHFILEINFO shinfo = new SHFILEINFO();
@@ -92,7 +103,7 @@ namespace WinPanel
                     {
                         Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
                         DestroyIcon(hIcon);
-                        var bmp = icon.ToBitmap();
+                        var bmp = ToBitmapRobust(icon);
                         icon.Dispose();
                         return bmp;
                     }
@@ -106,11 +117,19 @@ namespace WinPanel
             {
                 Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
                 DestroyIcon(shinfo.hIcon);
-                var bmp = icon.ToBitmap();
+                var bmp = ToBitmapRobust(icon);
                 icon.Dispose();
                 return bmp;
             }
-            return null;
+            
+            try 
+            { 
+                using (Icon fbIcon = System.Drawing.Icon.ExtractAssociatedIcon(path)) 
+                {
+                    return ToBitmapRobust(fbIcon);
+                }
+            } 
+            catch { return null; }
         }
     }
 }
