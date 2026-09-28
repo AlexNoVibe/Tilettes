@@ -88,22 +88,22 @@ namespace WinPanel
             var caption = new Label
             {
                 Left = 16,
-                Top = 38,
+                Top = 36,
                 Width = 566,
-                Height = 42,
+                Height = 60,
                 ForeColor = dimColor,
                 Text = mode == Mode.Icons
-                    ? "Priority on tiles: item icon (Change Icon) > icon of the file type (set here) > standard Windows icon.\nChosen icons are copied into the panel's \"ico\" folder."
-                    : "Files of these types are opened by the chosen program (the file path is passed to it).\nOther types open the standard Windows way. Shortcuts (.lnk) are not re-mapped."
+                    ? "Priority on tiles: item icon (Change Icon) > file type icon (set here) > standard Windows icon.\nPatterns: .txt - extension; readme.* or *.bak - mask; group: .jpg / .jpeg / .png.\nChosen icons are copied into the panel's \"ico\" folder."
+                    : "Files of these types are opened by the chosen program (the file path is passed to it). Other types open the standard way.\nPatterns: .txt - extension; readme.* or *.bak - mask; group: .jpg / .jpeg / .png.\nShortcuts (.lnk) are not re-mapped."
             };
             this.Controls.Add(caption);
 
             list = new ListBox
             {
                 Left = 16,
-                Top = 86,
+                Top = 98,
                 Width = 568,
-                Height = 292,
+                Height = 282,
                 BackColor = bgColor,
                 ForeColor = textColor,
                 BorderStyle = BorderStyle.FixedSingle,
@@ -122,9 +122,14 @@ namespace WinPanel
             var btnClear = MakeButton(mode == Mode.Icons ? "Remove icon" : "Open standard", 262, 392, 160);
             btnClear.Click += (s, e) => ClearSelected();
 
-            var btnCancel = MakeButton("Cancel", 298, 428, 90);
+            var btnImport = MakeButton("Import...", 16, 428, 110);
+            btnImport.Click += (s, e) => ImportRules();
+            var btnExport = MakeButton("Export...", 134, 428, 110);
+            btnExport.Click += (s, e) => ExportRules();
+
+            var btnCancel = MakeButton("Cancel", 376, 428, 90);
             btnCancel.DialogResult = DialogResult.Cancel;
-            var btnOk = MakeButton("OK", 396, 428, 90);
+            var btnOk = MakeButton("OK", 474, 428, 90);
             btnOk.Click += (s, e) =>
             {
                 FileTypes.ReplaceAll(work);
@@ -236,7 +241,7 @@ namespace WinPanel
 
         private FileTypeRule FindInWork(string ext)
         {
-            string norm = FileTypes.NormalizeExtension(ext);
+            string norm = FileTypes.NormalizePatternText(ext);
             if (norm == null) return null;
             foreach (var r in work)
                 if (string.Equals(r.Extension, norm, StringComparison.OrdinalIgnoreCase)) return r;
@@ -245,9 +250,14 @@ namespace WinPanel
 
         private void AddNew()
         {
-            string ext = Prompt.ShowDialog("File extension (for example .txt):", "Add file type", ".");
-            string norm = FileTypes.NormalizeExtension(ext);
-            if (norm == null || norm == ".") return;
+            string ext = Prompt.ShowDialog("File type pattern (e.g. .txt, readme.*, .jpg / .png):", "Add file type", ".");
+            string norm = FileTypes.NormalizePatternText(ext);
+            if (norm == null)
+            {
+                if (!string.IsNullOrWhiteSpace(ext) && ext.Trim() != ".")
+                    MessageBox.Show(this, "Invalid pattern. Examples: .txt, readme.*, .jpg / .png", "Add file type");
+                return;
+            }
             var rule = FindInWork(norm);
             bool created = false;
             if (rule == null)
@@ -299,6 +309,57 @@ namespace WinPanel
             else r.OpenWith = null;
             if (IsEmpty(r)) work.Remove(r);
             Reload();
+        }
+
+        // ---------- import / export ----------
+
+        private void ImportRules()
+        {
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Title = "Import file type rules";
+                ofd.Filter = "WinPanel rules (*.xml)|*.xml|All files (*.*)|*.*";
+                if (ofd.ShowDialog(this) != DialogResult.OK) return;
+                var imported = FileTypes.ImportFrom(ofd.FileName);
+                if (imported == null)
+                {
+                    MessageBox.Show(this, "Could not read the rules file.", "Import");
+                    return;
+                }
+                foreach (var r in imported) MergeIntoWork(r);
+                Reload();
+            }
+        }
+
+        private void ExportRules()
+        {
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Title = "Export file type rules";
+                sfd.Filter = "WinPanel rules (*.xml)|*.xml|All files (*.*)|*.*";
+                sfd.FileName = "winpanel-filetypes.xml";
+                if (sfd.ShowDialog(this) != DialogResult.OK) return;
+                FileTypes.ExportTo(sfd.FileName, work);
+            }
+        }
+
+        private void MergeIntoWork(FileTypeRule r)
+        {
+            var existing = FindInWork(r.Extension);
+            if (existing == null)
+            {
+                work.Add(new FileTypeRule
+                {
+                    Extension = r.Extension,
+                    IconPath = r.IconPath,
+                    OpenWith = r.OpenWith,
+                    OpenArgs = r.OpenArgs
+                });
+                return;
+            }
+            if (!string.IsNullOrEmpty(r.IconPath)) existing.IconPath = r.IconPath;
+            if (!string.IsNullOrEmpty(r.OpenWith)) existing.OpenWith = r.OpenWith;
+            if (!string.IsNullOrEmpty(r.OpenArgs)) existing.OpenArgs = r.OpenArgs;
         }
     }
 }
