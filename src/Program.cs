@@ -971,7 +971,7 @@ namespace WinPanel
                         if (childImg != null)
                         {
                             var destRect = new Rectangle(cx, cy, miniSize, miniSize);
-                            e.Graphics.DrawImage(childImg, destRect);
+                            e.Graphics.DrawImage(childImg, destRect, 0, 0, childImg.Width, childImg.Height, GraphicsUnit.Pixel);
                         }
                     }
                 }
@@ -994,7 +994,7 @@ namespace WinPanel
                     int ix = (this.Width - iconSize) / 2;
                     int iy = (this.Height - textSpace - iconSize) / 2;
                     var destRect = new Rectangle(ix, iy, iconSize, iconSize);
-                    e.Graphics.DrawImage(IconImage, destRect);
+                    e.Graphics.DrawImage(IconImage, destRect, 0, 0, IconImage.Width, IconImage.Height, GraphicsUnit.Pixel);
                 }
             }
 
