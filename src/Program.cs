@@ -162,6 +162,7 @@ namespace WinPanel
                 }
                 c.Dispose();
             }
+            foreach (Control c in tabBar.Controls) c.Dispose();
             tabBar.Controls.Clear();
             contentPanel.Controls.Clear();
             
@@ -252,21 +253,7 @@ namespace WinPanel
                 tabBtn.FlatAppearance.MouseDownBackColor = panelColor;
                 
                 var tabMenu = new ContextMenu();
-                tabMenu.MenuItems.Add("Toggle Layout (Grid/Free)", (s, e) => {
-                    tabData.IsGridLayout = !tabData.IsGridLayout;
-                    records.Save(recordsPath);
-                    RenderCurrentFolder(layoutPanel, tabData);
-                });
-                tabMenu.MenuItems.Add("Rename Tab", (s, e) => {
-                    string newName = Prompt.ShowDialog("New Tab Name", "Rename Tab", tabData.Name);
-                    if (!string.IsNullOrWhiteSpace(newName))
-                    {
-                        tabData.Name = newName;
-                        records.Save(recordsPath);
-                        tabBtn.Text = newName;
-                    }
-                });
-                tabMenu.MenuItems.Add("Remove Tab", (s, e) => {
+                tabMenu.MenuItems.Add("Delete Tab", (s, e) => {
                     if (records.Tabs.Count > 1) {
                         var res = MessageBox.Show("Are you sure you want to delete this tab?", "Delete Tab", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                         if (res == DialogResult.Yes) {
@@ -278,6 +265,20 @@ namespace WinPanel
                     } else {
                         MessageBox.Show("Cannot remove the last tab.");
                     }
+                });
+                tabMenu.MenuItems.Add("Rename Tab", (s, e) => {
+                    string newName = Prompt.ShowDialog("New Tab Name", "Rename Tab", tabData.Name);
+                    if (!string.IsNullOrWhiteSpace(newName))
+                    {
+                        tabData.Name = newName;
+                        records.Save(recordsPath);
+                        tabBtn.Text = newName;
+                    }
+                });
+                tabMenu.MenuItems.Add("Toggle Layout (Free / Grid 16x20)", (s, e) => {
+                    tabData.IsGridLayout = !tabData.IsGridLayout;
+                    records.Save(recordsPath);
+                    RenderCurrentFolder(layoutPanel, tabData);
                 });
                 tabBtn.ContextMenu = tabMenu;
 
@@ -633,11 +634,11 @@ namespace WinPanel
             {
                 if (isDragging && draggingTile == tile)
                 {
-                    if (!isEditMode) return;
                     if (Math.Abs(e.X - dragStartPoint.X) > 3 || Math.Abs(e.Y - dragStartPoint.Y) > 3)
                     {
                         dragFired = true;
                     }
+                    if (!isEditMode) return;
                     if (dragFired)
                     {
                         tile.Left = tile.Left + e.X - dragStartPoint.X;
@@ -653,6 +654,7 @@ namespace WinPanel
                     isDragging = false;
                     if (dragFired)
                     {
+                        if (!isEditMode) return;
                         if (tabData.IsGridLayout)
                         {
                             int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
