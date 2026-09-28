@@ -49,6 +49,12 @@ namespace WinPanel
         private TextBox pathEdit, consoleIn;
         private ListBox bookmarksList, fileList;
         private RichTextBox consoleOut;
+        private TextBox searchBox;
+        private Button btnScopeFolder, btnScopeAll;
+        private System.Windows.Forms.Timer searchTimer;
+        private List<SearchItem> searchItems;
+        private bool searchMode;
+        private string searchScope = "folder";
 
         // file list data
         private class DirEntry { public string Name; public string FullPath; public bool IsDir; public long Size; }
@@ -172,7 +178,7 @@ namespace WinPanel
                 SaveWindowState();
                 try { fileList.Focus(); } catch { }
             };
-            tip.SetToolTip(btnToggleBm, "Show / hide bookmarks panel");
+            tip.SetToolTip(btnToggleBm, Loc.S("Show / hide bookmarks panel"));
             btnTopBar = NavButton("\u2630", 44);
             btnTopBar.Click += (s, e) =>
             {
@@ -182,7 +188,7 @@ namespace WinPanel
                 SaveWindowState();
                 try { fileList.Focus(); } catch { }
             };
-            tip.SetToolTip(btnTopBar, "Show / hide top bookmarks bar");
+            tip.SetToolTip(btnTopBar, Loc.S("Show / hide top bookmarks bar"));
             btnBack = NavButton("←", 82);
             btnFwd = NavButton("→", 120);
             btnUp = NavButton("↑", 158);
@@ -218,9 +224,40 @@ namespace WinPanel
             pathEdit.KeyDown += PathEdit_KeyDown;
             this.Controls.Add(pathEdit);
 
-            btnEditPath = FlatButton("Edit", 762, 32, 44, 26);
+            btnEditPath = FlatButton(Loc.S("Edit"), 762, 32, 44, 26);
             btnEditPath.Click += (s, e) => BeginPathEdit();
             this.Controls.Add(btnEditPath);
+
+            // Search: results replace the file list; scope = current folder or everywhere.
+            btnScopeFolder = FlatButton(Loc.S("Folder", "Папка"), 600, 32, 52, 26);
+            btnScopeFolder.Click += (s, e) => SetSearchScope("folder");
+            this.Controls.Add(btnScopeFolder);
+            btnScopeAll = FlatButton(Loc.S("All", "Везде"), 654, 32, 52, 26);
+            btnScopeAll.Click += (s, e) => SetSearchScope("all");
+            this.Controls.Add(btnScopeAll);
+
+            searchBox = new TextBox { Left = 470, Top = 33, Width = 120, Height = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = listColor, ForeColor = textColor };
+            searchBox.TextChanged += (s, e) =>
+            {
+                if (searchBox.TextLength > 0)
+                {
+                    searchTimer.Stop();
+                    searchTimer.Interval = 250;
+                    searchTimer.Start();
+                }
+                else
+                {
+                    ExitSearch();
+                }
+            };
+            searchBox.KeyDown += SearchBox_KeyDown;
+            this.Controls.Add(searchBox);
+            tip.SetToolTip(searchBox, Loc.S("Search files (fuzzy, any keyboard layout)", "Поиск файлов (fuzzy, любая раскладка)"));
+
+            searchTimer = new System.Windows.Forms.Timer();
+            searchTimer.Interval = 250;
+            searchTimer.Tick += (s, e) => { searchTimer.Stop(); RunSearch(false); };
+            UpdateScopeButtons();
 
             statusLbl = new Label { Left = 812, Top = 37, Width = 120, Height = 18, ForeColor = dimColor, TextAlign = ContentAlignment.MiddleRight, AutoEllipsis = true };
             this.Controls.Add(statusLbl);
@@ -286,6 +323,7 @@ namespace WinPanel
             fileList.DrawItem += FileList_DrawItem;
             fileList.DoubleClick += (s, e) => OpenSelectedEntry();
             fileList.KeyDown += FileList_KeyDown;
+            fileList.KeyPress += FileList_KeyPress;
             fileList.MouseDown += FileList_MouseDown;
             fileList.MouseMove += FileList_MouseMove;
             fileList.MouseLeave += (s, e) => { if (hoverFile != -1) { hoverFile = -1; fileList.Invalidate(); } };
@@ -297,7 +335,7 @@ namespace WinPanel
             splitter.MouseMove += Splitter_MouseMove;
             splitter.MouseUp += Splitter_MouseUp;
             splitter.Paint += Splitter_Paint;
-            tip.SetToolTip(splitter, "Drag to resize the console");
+            tip.SetToolTip(splitter, Loc.S("Drag to resize the console"));
             this.Controls.Add(splitter);
 
             // ---------- console ----------
@@ -338,7 +376,7 @@ namespace WinPanel
             btnSaveCmd = FlatButton("+ Save", 806, 590, 64, 24);
             btnSaveCmd.Click += (s, e) => SaveCommandBookmark(consoleIn.Text);
             this.Controls.Add(btnSaveCmd);
-            btnRunCmd = FlatButton("Run", 876, 590, 56, 24);
+            btnRunCmd = FlatButton(Loc.S("Run", "Выполнить"), 876, 590, 56, 24);
             btnRunCmd.Click += (s, e) => RunConsoleInput();
             this.Controls.Add(btnRunCmd);
 
@@ -372,6 +410,7 @@ namespace WinPanel
                 iconCache.Clear();
             };
             this.FormClosing += (s, e) => { SaveWindowState(); };
+            Loc.Walk(this);
             LayoutAll();
             UpdateRegion();
 
@@ -502,11 +541,17 @@ namespace WinPanel
             btnUp.SetBounds(158, top + 2, 28, 26);
             btnRefresh.SetBounds(196, top + 2, 28, 26);
 
-            statusLbl.SetBounds(rightEdge - 120, top + 7, 120, 18);
-            int editX = rightEdge - 120 - 6 - 44;
+            statusLbl.SetBounds(rightEdge - 96, top + 7, 96, 18);
+            int editX = rightEdge - 96 - 6 - 44;
             btnEditPath.SetBounds(editX, top + 2, 44, 26);
+            int searchW = Math.Min(200, Math.Max(130, W / 7));
+            int searchX = editX - 6 - searchW;
+            searchBox.SetBounds(searchX, top + 3, searchW, 24);
+            int scopeX = searchX - 6 - 52;
+            btnScopeAll.SetBounds(scopeX, top + 2, 52, 26);
+            btnScopeFolder.SetBounds(scopeX - 2 - 52, top + 2, 52, 26);
             int crumbsX = 232;
-            int crumbsW = Math.Max(120, editX - 6 - crumbsX);
+            int crumbsW = Math.Max(80, scopeX - 2 - 52 - 6 - crumbsX);
             crumbHost.SetBounds(crumbsX, top + 1, crumbsW, 30);
             pathEdit.SetBounds(crumbsX, top + 2, crumbsW, 24);
 
@@ -611,7 +656,7 @@ namespace WinPanel
             var kids = g.Children != null ? g.Children : new List<ExplorerBookmark>();
             if (kids.Count == 0)
             {
-                var dead = m.MenuItems.Add("(empty)");
+                var dead = m.MenuItems.Add(Loc.S("(empty)"));
                 dead.Enabled = false;
             }
             foreach (var c in kids)
@@ -628,29 +673,29 @@ namespace WinPanel
                 });
             }
             m.MenuItems.Add("-");
-            m.MenuItems.Add("Rename...", (s2, e2) => RenameBookmark(g));
-            m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(g));
+            m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(g));
+            m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(g));
             m.Show(anchor, new Point(0, anchor.Height));
         }
 
         private void ShowTopBarMenu()
         {
             var m = new ContextMenu();
-            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
-            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
-            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add(Loc.S("Add command..."), (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add(Loc.S("Add group..."), (s2, e2) => AddGroup());
             m.Show(topBarHost, new Point(8, topBarHost.Height));
         }
 
         private void ShowTopBarItemMenu(ExplorerBookmark b, Control anchor, Point loc)
         {
             var m = new ContextMenu();
-            m.MenuItems.Add("Rename...", (s2, e2) => RenameBookmark(b));
-            m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(b));
+            m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(b));
+            m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(b));
             m.MenuItems.Add("-");
-            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
-            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
-            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add(Loc.S("Add command..."), (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add(Loc.S("Add group..."), (s2, e2) => AddGroup());
             m.Show(anchor, loc);
         }
 
@@ -1001,6 +1046,13 @@ namespace WinPanel
             }
             if (e.KeyCode == Keys.Escape)
             {
+                if (searchMode)
+                {
+                    try { searchBox.Clear(); } catch { }
+                    ExitSearch();
+                    e.SuppressKeyPress = true;
+                    return;
+                }
                 if (pathEdit.Visible)
                 {
                     HidePathEdit();
@@ -1040,6 +1092,12 @@ namespace WinPanel
 
         private void LoadDir()
         {
+            if (searchMode)
+            {
+                searchMode = false;
+                searchItems = null;
+                try { if (searchBox != null && searchBox.TextLength > 0) searchBox.Clear(); } catch { }
+            }
             entries.Clear();
             int dirs = 0, files = 0;
             bool truncated = false, denied = false;
@@ -1085,9 +1143,9 @@ namespace WinPanel
             fileList.EndUpdate();
             fileList.ClearSelected();
 
-            string stat = "folders: " + dirs + " · files: " + files;
-            if (truncated) stat += " · first 800";
-            if (denied) stat += " · access denied";
+            string stat = (Loc.IsRu ? "папок: " : "folders: ") + dirs + " · " + (Loc.IsRu ? "файлов: " : "files: ") + files;
+            if (truncated) stat += Loc.IsRu ? " · первые 800" : " · first 800";
+            if (denied) stat += Loc.IsRu ? " · нет доступа" : " · access denied";
             statusLbl.Text = stat;
             hoverFile = -1;
             fileList.Invalidate();
@@ -1105,6 +1163,11 @@ namespace WinPanel
         private void OpenSelectedEntry()
         {
             int i = fileList.SelectedIndex;
+            if (searchMode)
+            {
+                if (i >= 0 && searchItems != null && i < searchItems.Count) OpenSearchResult(i);
+                return;
+            }
             if (i < 0 || i >= entries.Count) return;
             OpenEntry(entries[i]);
         }
@@ -1124,31 +1187,32 @@ namespace WinPanel
         private void FileList_MouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Right) return;
+            if (searchMode) { ShowSearchMenu(e); return; }
             int i = fileList.IndexFromPoint(e.Location);
             var m = new ContextMenu();
             if (i >= 0 && i < entries.Count && i < fileList.Items.Count)
             {
                 var en = entries[i];
                 fileList.SelectedIndex = i;
-                m.MenuItems.Add("Open", (s2, e2) => OpenEntry(en));
+                m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenEntry(en));
                 if (en.IsDir)
                 {
-                    m.MenuItems.Add("Add to bookmarks", (s2, e2) => AddFolderBookmark(en.FullPath, en.Name));
-                    m.MenuItems.Add("Open in Explorer", (s2, e2) => OpenInExplorer(en.FullPath, false));
+                    m.MenuItems.Add(Loc.S("Add to bookmarks"), (s2, e2) => AddFolderBookmark(en.FullPath, en.Name));
+                    m.MenuItems.Add(Loc.S("Open in Explorer"), (s2, e2) => OpenInExplorer(en.FullPath, false));
                 }
                 else
                 {
-                    m.MenuItems.Add("Show in Explorer", (s2, e2) => OpenInExplorer(en.FullPath, true));
+                    m.MenuItems.Add(Loc.S("Show in Explorer"), (s2, e2) => OpenInExplorer(en.FullPath, true));
                 }
-                m.MenuItems.Add("Copy path", (s2, e2) => CopyText(en.FullPath));
+                m.MenuItems.Add(Loc.S("Copy path"), (s2, e2) => CopyText(en.FullPath));
             }
             else
             {
-                m.MenuItems.Add("Refresh", (s2, e2) => LoadDir());
-                m.MenuItems.Add("Copy folder path", (s2, e2) => CopyText(currentPath));
-                m.MenuItems.Add("Open in Explorer", (s2, e2) => OpenInExplorer(currentPath, false));
-                m.MenuItems.Add("Add current folder to bookmarks", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
-                m.MenuItems.Add("Open console window here", (s2, e2) => OpenRealConsole());
+                m.MenuItems.Add(Loc.S("Refresh"), (s2, e2) => LoadDir());
+                m.MenuItems.Add(Loc.S("Copy folder path"), (s2, e2) => CopyText(currentPath));
+                m.MenuItems.Add(Loc.S("Open in Explorer"), (s2, e2) => OpenInExplorer(currentPath, false));
+                m.MenuItems.Add(Loc.S("Add current folder to bookmarks"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+                m.MenuItems.Add(Loc.S("Open console window here"), (s2, e2) => OpenRealConsole());
             }
             m.Show(fileList, e.Location);
         }
@@ -1181,6 +1245,11 @@ namespace WinPanel
 
         private void FileList_DrawItem(object sender, DrawItemEventArgs e)
         {
+            if (searchMode)
+            {
+                DrawSearchItem(e);
+                return;
+            }
             if (e.Index < 0 || e.Index >= entries.Count) return;
             var en = entries[e.Index];
             var g = e.Graphics;
@@ -1246,6 +1315,173 @@ namespace WinPanel
             catch { }
             iconCache[key] = b16;
             return b16;
+        }
+
+        // ---------- search ----------
+
+        private void FileList_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (searchMode) return;
+            if (char.IsControl(e.KeyChar)) return;
+            e.Handled = true;
+            BeginSearchTyping(e.KeyChar);
+        }
+
+        private void BeginSearchTyping(char ch)
+        {
+            if (searchBox == null) return;
+            try { searchBox.Focus(); } catch { }
+            searchBox.Text = searchBox.Text + ch;
+            searchBox.SelectionStart = searchBox.Text.Length;
+        }
+
+        private void SearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.SuppressKeyPress = true;
+                try { searchBox.Clear(); } catch { }
+                try { fileList.Focus(); } catch { }
+            }
+            else if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                if (fileList.Items.Count > 0 && fileList.SelectedIndex < 0) fileList.SelectedIndex = 0;
+                OpenSelectedEntry();
+            }
+            else if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Up)
+            {
+                e.SuppressKeyPress = true;
+                if (fileList.Items.Count == 0) return;
+                int next = fileList.SelectedIndex + (e.KeyCode == Keys.Down ? 1 : -1);
+                if (next < 0) next = 0;
+                if (next >= fileList.Items.Count) next = fileList.Items.Count - 1;
+                fileList.SelectedIndex = next;
+                try { fileList.Focus(); } catch { }
+            }
+        }
+
+        private void SetSearchScope(string scope)
+        {
+            searchScope = scope;
+            UpdateScopeButtons();
+            if (searchBox != null && searchBox.TextLength > 0) RunSearch(false);
+        }
+
+        private void UpdateScopeButtons()
+        {
+            try
+            {
+                bool folder = searchScope != "all";
+                btnScopeFolder.BackColor = folder ? accentColor : panelColor;
+                btnScopeFolder.ForeColor = folder ? Color.White : textColor;
+                btnScopeAll.BackColor = folder ? panelColor : accentColor;
+                btnScopeAll.ForeColor = folder ? textColor : Color.White;
+            }
+            catch { }
+        }
+
+        private void RunSearch(bool typingUpdate)
+        {
+            try
+            {
+                if (searchBox == null || searchBox.IsDisposed) return;
+                string q = searchBox.Text.Trim();
+                if (q.Length == 0) { ExitSearch(); return; }
+                bool building;
+                int scanned;
+                List<SearchItem> src;
+                if (searchScope == "all")
+                    src = SearchCore.GetIndex(SearchCore.AllKey, out building, out scanned);
+                else
+                    src = SearchCore.GetIndex(currentPath, out building, out scanned);
+                var res = SearchCore.Run(q, src, 400);
+                searchItems = res;
+                searchMode = true;
+                fileList.BeginUpdate();
+                fileList.Items.Clear();
+                foreach (var r in res) fileList.Items.Add(r.Name);
+                fileList.EndUpdate();
+                fileList.ClearSelected();
+                if (fileList.Items.Count > 0) { try { fileList.TopIndex = 0; } catch { } }
+                statusLbl.Text = (Loc.IsRu ? "найдено: " : "found: ") + res.Count +
+                    (building ? (Loc.IsRu ? " · индексация: " : " · indexing: ") + scanned : "");
+                fileList.Invalidate();
+                if (building)
+                {
+                    searchTimer.Stop();
+                    searchTimer.Interval = 700;
+                    searchTimer.Start();
+                }
+            }
+            catch { }
+        }
+
+        private void ExitSearch()
+        {
+            bool was = searchMode;
+            searchMode = false;
+            searchItems = null;
+            try { searchTimer.Stop(); searchTimer.Interval = 250; } catch { }
+            if (was) LoadDir();
+        }
+
+        private void OpenSearchResult(int i)
+        {
+            if (searchItems == null || i < 0 || i >= searchItems.Count) return;
+            var it = searchItems[i];
+            if (it.IsDir)
+            {
+                try { searchBox.Clear(); } catch { }
+                ExitSearch();
+                Navigate(it.FullPath);
+            }
+            else
+            {
+                MainForm.LaunchItem(it.FullPath);
+            }
+        }
+
+        private void ShowSearchMenu(MouseEventArgs e)
+        {
+            int i = fileList.IndexFromPoint(e.Location);
+            if (i < 0 || searchItems == null || i >= searchItems.Count) return;
+            fileList.SelectedIndex = i;
+            var it = searchItems[i];
+            var m = new ContextMenu();
+            m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenSearchResult(i));
+            m.MenuItems.Add(Loc.S("Show in Explorer"), (s2, e2) => OpenInExplorer(it.FullPath, !it.IsDir));
+            m.MenuItems.Add(Loc.S("Copy path"), (s2, e2) => CopyText(it.FullPath));
+            m.Show(fileList, e.Location);
+        }
+
+        private void DrawSearchItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || searchItems == null || e.Index >= searchItems.Count) return;
+            var it = searchItems[e.Index];
+            var g = e.Graphics;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            bool hov = e.Index == hoverFile;
+            using (var back = new SolidBrush((sel || hov) ? hoverColor : listColor))
+                g.FillRectangle(back, e.Bounds);
+            try
+            {
+                string key = (it.IsDir ? "d:" : "f:") + it.FullPath.ToLowerInvariant();
+                var ic = GetCachedIcon(key, it.FullPath);
+                if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 6, e.Bounds.Top + 4, 16, 16));
+            }
+            catch { }
+            int ty = e.Bounds.Top + 5;
+            TextRenderer.DrawText(g, it.Name, this.Font, new Point(e.Bounds.Left + 28, ty), textColor);
+            string sub = it.Dir;
+            if (!string.IsNullOrEmpty(sub))
+            {
+                var nameSz = TextRenderer.MeasureText(it.Name, this.Font);
+                var subSz = TextRenderer.MeasureText(sub, this.Font);
+                int sx = e.Bounds.Right - subSz.Width - 10;
+                if (sx > e.Bounds.Left + 28 + nameSz.Width + 24)
+                    TextRenderer.DrawText(g, sub, this.Font, new Point(sx, ty), dimColor);
+            }
         }
 
         private static string FormatSize(long b)
@@ -1371,27 +1607,27 @@ namespace WinPanel
             {
                 bookmarksList.SelectedIndex = i;
                 var b = bmRows[i].Bm;
-                m.MenuItems.Add("Rename...", (s2, e2) => RenameBookmark(b));
-                m.MenuItems.Add("Remove", (s2, e2) => RemoveBookmark(b));
+                m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(b));
+                m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(b));
             }
-            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
-            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
-            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add(Loc.S("Add command..."), (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add(Loc.S("Add group..."), (s2, e2) => AddGroup());
             m.Show(bookmarksList, e.Location);
         }
 
         private void ShowBookmarksAddMenu()
         {
             var m = new ContextMenu();
-            m.MenuItems.Add("Add current folder", (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
-            m.MenuItems.Add("Add command...", (s2, e2) => SaveCommandBookmark(""));
-            m.MenuItems.Add("Add group...", (s2, e2) => AddGroup());
+            m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
+            m.MenuItems.Add(Loc.S("Add command..."), (s2, e2) => SaveCommandBookmark(""));
+            m.MenuItems.Add(Loc.S("Add group..."), (s2, e2) => AddGroup());
             m.Show(btnBmAdd, new Point(0, btnBmAdd.Height));
         }
 
         private void AddGroup()
         {
-            string name = Prompt.ShowDialog("Group name:", "Add bookmark group", "");
+            string name = Prompt.ShowDialog(Loc.S("Group name:", "Имя группы:"), Loc.S("Add bookmark group", "Добавить группу закладок"), "");
             if (string.IsNullOrWhiteSpace(name)) return;
             var g = new ExplorerBookmark();
             g.Kind = "group";
@@ -1405,7 +1641,7 @@ namespace WinPanel
         private void AddFolderBookmark(string path, string defaultName)
         {
             if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return;
-            string name = Prompt.ShowDialog("Bookmark name:", "Add folder bookmark", defaultName);
+            string name = Prompt.ShowDialog(Loc.S("Bookmark name:", "Имя закладки:"), Loc.S("Add folder bookmark", "Добавить закладку на папку"), defaultName);
             if (string.IsNullOrWhiteSpace(name)) return;
             var b = new ExplorerBookmark();
             b.Kind = "folder";
@@ -1418,7 +1654,7 @@ namespace WinPanel
 
         private void RenameBookmark(ExplorerBookmark b)
         {
-            string name = Prompt.ShowDialog("New name:", "Rename bookmark", b.Name);
+            string name = Prompt.ShowDialog(Loc.S("New name:", "Новое имя:"), Loc.S("Rename bookmark", "Переименовать закладку"), b.Name);
             if (string.IsNullOrWhiteSpace(name)) return;
             if (b.Kind == "group" && expandedGroups.Contains(b.Name))
             {
@@ -1436,7 +1672,7 @@ namespace WinPanel
             string msg = (b.Kind == "group" && kids > 0)
                 ? "Remove group \"" + b.Name + "\" with " + kids + " entries?"
                 : "Remove \"" + b.Name + "\"?";
-            if (MessageBox.Show(this, msg, "Bookmarks", MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+            if (MessageBox.Show(this, msg, Loc.S("Bookmarks", "Закладки"), MessageBoxButtons.YesNo) != DialogResult.Yes) return;
             RemoveFromList(bookmarks, b);
             SaveBookmarks();
             RebuildBookmarks();
@@ -1460,11 +1696,11 @@ namespace WinPanel
             cmd = cmd == null ? "" : cmd.Trim();
             if (cmd.Length == 0)
             {
-                cmd = Prompt.ShowDialog("Command:", "Add command", "");
+                cmd = Prompt.ShowDialog(Loc.S("Command:", "Команда:"), Loc.S("Add command", "Добавить команду"), "");
                 if (string.IsNullOrWhiteSpace(cmd)) return;
                 cmd = cmd.Trim();
             }
-            string group = Prompt.ShowDialog("Group (empty = top level):", "Add command", "");
+            string group = Prompt.ShowDialog(Loc.S("Group (empty = top level):", "Группа (пусто = верхний уровень):"), Loc.S("Add command", "Добавить команду"), "");
             ExplorerBookmark target = null;
             if (!string.IsNullOrWhiteSpace(group))
             {
@@ -1532,7 +1768,7 @@ namespace WinPanel
                 t2.Start();
 
                 shell.EnableRaisingEvents = true;
-                shell.Exited += (s, e) => Ui(delegate { AppendConsole("[console process exited - press Restart]", dimColor); });
+                shell.Exited += (s, e) => Ui(delegate { AppendConsole(Loc.S("[console process exited - press Restart]", "[процесс консоли завершён — нажмите «Перезапуск»]"), dimColor); });
 
                 if (Directory.Exists(currentPath)) SendCmd("cd /d \"" + currentPath + "\"");
                 AppendConsole("WinPanel console · " + currentPath, dimColor);

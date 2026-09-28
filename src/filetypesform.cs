@@ -141,6 +141,7 @@ namespace WinPanel
             this.CancelButton = btnCancel;
 
             Reload();
+            Loc.Walk(this);
 
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
             this.FormClosed += (s, e) =>

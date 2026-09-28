@@ -16,6 +16,12 @@ namespace WinPanel
         private Settings settings;
         private Records records;
         private MiniExplorerForm miniExplorer;
+        private System.Windows.Forms.Timer folderIdleTimer;
+        private DateTime lastActivityUtc = DateTime.UtcNow;
+        private Button activeTabBtn;
+        private Panel activeLayoutPanel;
+        private TabData activeTabData;
+        private readonly Dictionary<Button, TabData> tabDataByButton = new Dictionary<Button, TabData>();
         private string settingsPath = "settings.ini";
         private string recordsPath = "records.xml";
         private Panel topPanel;
@@ -88,6 +94,20 @@ namespace WinPanel
             records = Records.Load(recordsPath);
             CurrentSettings = settings;
 
+            // UI language, autostart entry and the "start hidden" mode
+            // (used when Windows starts the app with the --minimized argument).
+            Loc.Lang = string.IsNullOrEmpty(settings.Language) ? "ru" : settings.Language;
+            try { AutoStart.Apply(settings.AutoStart, settings.AutoStartMinimized); } catch { }
+            bool startHidden = false;
+            try
+            {
+                foreach (var a in Environment.GetCommandLineArgs())
+                    if (string.Equals(a, "--minimized", StringComparison.OrdinalIgnoreCase)) startHidden = true;
+            }
+            catch { }
+            if (startHidden && settings.AutoStartMinimized)
+                this.Shown += (s, e) => { try { this.Hide(); } catch { } };
+
             // Copy user shortcuts/icons that live outside the panel folder into <exe>\ico
             // so they are not lost when the originals are moved or deleted.
             ConsolidateAllRecords();
@@ -153,11 +173,19 @@ namespace WinPanel
             trayIcon.DoubleClick += (s, e) => RestoreWindow();
 
             var trayMenu = new ContextMenu();
-            trayMenu.MenuItems.Add("Restore", (s, e) => RestoreWindow());
-            trayMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
-            trayMenu.MenuItems.Add("Exit", (s, e) => { Application.Exit(); });
+            trayMenu.MenuItems.Add(Loc.S("Restore"), (s, e) => RestoreWindow());
+            trayMenu.MenuItems.Add(Loc.S("Settings"), (s, e) => OpenSettings());
+            trayMenu.MenuItems.Add(Loc.S("Exit"), (s, e) => { Application.Exit(); });
             trayIcon.ContextMenu = trayMenu;
-            trayIcon.Visible = true;
+            trayIcon.Visible = settings.TrayIconAlways;
+
+            // Folder auto-exit: when the user is inside a folder and no mouse/keyboard
+            // activity happens for N seconds, the panel goes back (see FolderIdleTick).
+            folderIdleTimer = new System.Windows.Forms.Timer();
+            folderIdleTimer.Interval = 1000;
+            folderIdleTimer.Tick += (s, e) => FolderIdleTick();
+            folderIdleTimer.Start();
+            Application.AddMessageFilter(new ActivityFilter(this));
 
             this.FormClosing += MainForm_FormClosing;
             this.FormClosed += (s, e) =>
@@ -213,6 +241,11 @@ namespace WinPanel
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HotkeyId)
+            {
+                RestoreWindow();
+                return;
+            }
+            if (m.Msg == SingleInstance.ShowMessage)
             {
                 RestoreWindow();
                 return;
@@ -323,6 +356,10 @@ namespace WinPanel
                     mainFont = Settings.MakeFont(settings.FontUiName, settings.FontUiSize);
                     this.Font = mainFont;
                     ApplyHotkey();
+                    Loc.Lang = string.IsNullOrEmpty(settings.Language) ? "ru" : settings.Language;
+                    try { AutoStart.Apply(settings.AutoStart, settings.AutoStartMinimized); } catch { }
+                    try { trayIcon.Visible = settings.TrayIconAlways; } catch { }
+                    Loc.Walk(this);
                     LoadTabs();
                 }
             }
@@ -368,6 +405,7 @@ namespace WinPanel
                 {
                     e.Cancel = true;
                     this.Hide();
+                    try { trayIcon.Visible = true; } catch { }
                 }
                 else
                 {
@@ -382,6 +420,51 @@ namespace WinPanel
             this.Show();
             this.WindowState = FormWindowState.Normal;
             this.Activate();
+            try { if (trayIcon != null) trayIcon.Visible = settings.TrayIconAlways; } catch { }
+        }
+
+        // ---- folder auto-exit on inactivity ----
+
+        internal void TouchActivity()
+        {
+            lastActivityUtc = DateTime.UtcNow;
+        }
+
+        private void FolderIdleTick()
+        {
+            try
+            {
+                if (settings == null) return;
+                int secs = settings.FolderAutoExitSeconds;
+                if (secs <= 0) return;
+                if (settings.OpenFoldersInPopup) return;
+                if (activeTabData == null || activeLayoutPanel == null) return;
+                var navStack = tabNavigations[activeTabData];
+                if (navStack.Count == 0) return;
+                if ((DateTime.UtcNow - lastActivityUtc).TotalSeconds < secs) return;
+                navStack.Pop();
+                RenderCurrentFolder(activeLayoutPanel, activeTabData);
+                lastActivityUtc = DateTime.UtcNow;
+            }
+            catch { }
+        }
+
+        // Counts any mouse/keyboard message of our own windows as "activity".
+        private class ActivityFilter : IMessageFilter
+        {
+            private MainForm form;
+            public ActivityFilter(MainForm f) { form = f; }
+            public bool PreFilterMessage(ref Message m)
+            {
+                int msg = m.Msg;
+                if (msg == 0x0200 || msg == 0x0201 || msg == 0x0202 || msg == 0x0204 || msg == 0x0205 ||
+                    msg == 0x0207 || msg == 0x0208 || msg == 0x020A ||
+                    msg == 0x0100 || msg == 0x0101 || msg == 0x0102 || msg == 0x0104 || msg == 0x0105)
+                {
+                    form.TouchActivity();
+                }
+                return false;
+            }
         }
 
         // (Re)registers the global "show window" hotkey from settings.
@@ -903,6 +986,7 @@ namespace WinPanel
                 tabBtn.ContextMenu = tabMenu;
 
                 tabByButton[tabBtn] = tabData;
+                tabDataByButton[tabBtn] = tabData;
                 layoutPanels[tabBtn] = layoutPanel;
                 buttons.Add(tabBtn);
 
@@ -930,7 +1014,7 @@ namespace WinPanel
             tabBar.Controls.Add(addTabBtn);
             addTabRef = addTabBtn;
             addTabBtn.Click += (s, e) => {
-                string name = Prompt.ShowDialog("New Tab Name", "Add Tab");
+                string name = Prompt.ShowDialog(Loc.S("New Tab Name", "Имя новой вкладки"), Loc.S("Add Tab", "Добавить вкладку"));
                 if (!string.IsNullOrWhiteSpace(name))
                 {
                     var newTab = new TabData { Name = name, IsGridLayout = true, Row = 0 };
@@ -945,8 +1029,18 @@ namespace WinPanel
             topPanel.MouseDown += (s, e) => DragWindow(e);
             rightPanel.MouseDown += (s, e) => DragWindow(e);
 
-            // Activate the first tab
-            if (buttons.Count > 0) ActivateTab(buttons[0], layoutPanels, buttons);
+            // Activate the remembered tab when it still exists, otherwise the first one.
+            Button startBtn = null;
+            if (settings.KeepActiveTab && !string.IsNullOrEmpty(settings.ActiveTab))
+            {
+                foreach (var b in buttons)
+                {
+                    TabData td;
+                    if (tabByButton.TryGetValue(b, out td) && td.Name == settings.ActiveTab) { startBtn = b; break; }
+                }
+            }
+            if (startBtn == null && buttons.Count > 0) startBtn = buttons[0];
+            if (startBtn != null) ActivateTab(startBtn, layoutPanels, buttons);
 
             // Render tiles for every tab (kept in hidden panels)
             foreach (var tabData in records.Tabs)
@@ -975,6 +1069,19 @@ namespace WinPanel
             tabBtn.Font = tabFontActive;
             tabBtn.FlatAppearance.MouseOverBackColor = panelColor;
             layoutPanels[tabBtn].Visible = true;
+
+            activeTabBtn = tabBtn;
+            activeLayoutPanel = layoutPanels[tabBtn];
+            TabData td;
+            if (tabDataByButton.TryGetValue(tabBtn, out td))
+            {
+                activeTabData = td;
+                if (settings.KeepActiveTab && !string.Equals(settings.ActiveTab, td.Name, StringComparison.Ordinal))
+                {
+                    settings.ActiveTab = td.Name;
+                    try { settings.Save(settingsPath); } catch { }
+                }
+            }
         }
 
         // Drag a tab button to reorder it inside its row or move it to another row.
@@ -1440,20 +1547,20 @@ namespace WinPanel
                         if (!isEditMode && !canMini) return;
                         var fMenu = new ContextMenu();
                         if (canMini)
-                            fMenu.MenuItems.Add("Open in Mini Explorer", (s2, e2) => OpenMiniExplorer(item));
+                            fMenu.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenMiniExplorer(item));
                         if (isEditMode)
                         {
                             if (canMini) fMenu.MenuItems.Add("-");
                             if (tabNavigations[tabData].Count > 0)
-                                fMenu.MenuItems.Add("Move out of folder", (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
-                            var fSizeMenu = fMenu.MenuItems.Add("Size");
+                                fMenu.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
+                            var fSizeMenu = fMenu.MenuItems.Add(Loc.S("Size"));
                             fSizeMenu.MenuItems.Add("1 x 1", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 1));
                             fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
                             fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
                             fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
-                            fMenu.MenuItems.Add("Rename", (s2, e2) => RenameItem(item, tile));
-                            fMenu.MenuItems.Add("Change Icon", (s2, e2) => ChangeItemIcon(item, tile));
-                            fMenu.MenuItems.Add("Remove", (s2, e2) => RemoveItem(panel, tile, item, tabData));
+                            fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
+                            fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
+                            fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
                         }
                         fMenu.Show(tile, e.Location);
                     }
@@ -1648,7 +1755,7 @@ namespace WinPanel
 
         private void RenameItem(ShortcutItem item, TileControl tile)
         {
-            string newName = Prompt.ShowDialog("New Name", "Rename", item.Name);
+            string newName = Prompt.ShowDialog(Loc.S("New Name", "Новое имя"), Loc.S("Rename", "Переименовать"), item.Name);
             if (!string.IsNullOrWhiteSpace(newName))
             {
                 item.Name = newName;
@@ -2362,7 +2469,7 @@ namespace WinPanel
             };
             Label textLabel = new Label() { Left = 20, Top = 20, Text = text, Width = 350 };
             TextBox textBox = new TextBox() { Left = 20, Top = 50, Width = 350, Text = defaultValue, BackColor = Color.FromArgb(30, 30, 30), ForeColor = Color.White };
-            Button confirmation = new Button() { Text = "Ok", Left = 270, Top = 80, Width = 100, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(62, 62, 66) };
+            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 270, Top = 80, Width = 100, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(62, 62, 66) };
             confirmation.FlatAppearance.BorderSize = 0;
 
             if (MainForm.CurrentSettings != null)
@@ -2554,6 +2661,11 @@ namespace WinPanel
         [STAThread]
         static void Main()
         {
+            if (!SingleInstance.Start())
+            {
+                SingleInstance.NotifyExisting();
+                return;
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());

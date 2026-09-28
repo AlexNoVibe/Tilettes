@@ -206,10 +206,10 @@ namespace WinPanel
                     // Our items go on top so they are shown before the Explorer items.
                     uint pos = 0;
                     if (onOpenMiniExplorer != null)
-                        InsertCustomItem(hMenu, pos++, customIdStart + 9, "Open in Mini Explorer", marker);
-                    InsertCustomItem(hMenu, pos++, customIdStart + 7, "Open containing folder", marker);
+                        InsertCustomItem(hMenu, pos++, customIdStart + 9, Loc.S("Open in Mini Explorer"), marker);
+                    InsertCustomItem(hMenu, pos++, customIdStart + 7, Loc.S("Open containing folder"), marker);
                     if (editMode && canMoveOutOfFolder)
-                        InsertCustomItem(hMenu, pos++, customIdStart + 8, "Move out of folder", marker);
+                        InsertCustomItem(hMenu, pos++, customIdStart + 8, Loc.S("Move out of folder"), marker);
                     InsertSeparator(hMenu, pos++);
 
                     if (editMode)
@@ -228,14 +228,14 @@ namespace WinPanel
                         sizeItem.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE | MIIM_SUBMENU | MIIM_BITMAP;
                         sizeItem.fType = MFT_STRING;
                         sizeItem.wID = customIdStart + 10;
-                        sizeItem.dwTypeData = "Size";
+                        sizeItem.dwTypeData = Loc.S("Size");
                         sizeItem.hSubMenu = sizeMenu;
                         sizeItem.hbmpItem = marker;
                         InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref sizeItem);
 
-                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 4, "Rename", marker);
-                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 5, "Change Icon", marker);
-                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 6, "Remove from Panel", marker);
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 4, Loc.S("Rename"), marker);
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 5, Loc.S("Change Icon"), marker);
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 6, Loc.S("Remove from Panel"), marker);
                     }
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);

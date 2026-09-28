@@ -29,6 +29,9 @@ namespace WinPanel
         private CheckBox chkMiniExplorer;
 
         private NumericUpDown numIconScale;
+        private NumericUpDown numFolderExit;
+        private ComboBox cmbLang;
+        private CheckBox chkAutoStart, chkAutoStartMin, chkTrayAlways, chkKeepTab;
 
         private NumericUpDown numFontItemsSize;
         private Button btnFontItemsColor;
@@ -90,8 +93,8 @@ namespace WinPanel
             }
 
             this.Text = "Settings";
-            this.Width = 430;
-            this.Height = 690;
+            this.Width = 470;
+            this.Height = 770;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -155,14 +158,15 @@ namespace WinPanel
             numIconScale = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 400, Minimum = 25, Value = Math.Max(25, Math.Min(400, settings.IconScale)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
-            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = y, Width = 300, Checked = settings.MinimizeToTray, ForeColor = textColor };
-            y += 26;
-
             var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
-            cmbFolders = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
-            cmbFolders.Items.Add("Same window");
-            cmbFolders.Items.Add("Popup window");
+            cmbFolders = new ComboBox { Left = 150, Top = y - 2, Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbFolders.Items.Add(Loc.S("Same window"));
+            cmbFolders.Items.Add(Loc.S("Popup window"));
             cmbFolders.SelectedIndex = settings.OpenFoldersInPopup ? 1 : 0;
+            numFolderExit = new NumericUpDown { Left = 296, Top = y - 2, Width = 56, Maximum = 600, Minimum = 0, Value = Math.Max(0, Math.Min(600, settings.FolderAutoExitSeconds)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblExit = new Label { Text = Loc.S("sec idle", "сек простоя"), Left = 358, Top = y, Width = 105 };
+            var exitTip = new ToolTip();
+            exitTip.SetToolTip(numFolderExit, Loc.S("Return from a folder after this many seconds without activity (0 = off)", "Выходить из папки после стольких секунд без активности (0 = выкл)"));
             y += 30;
 
             chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 300, Checked = settings.IsLightTheme, ForeColor = textColor };
@@ -196,8 +200,25 @@ namespace WinPanel
             btnTypeOpen.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.OpenWith, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
             y += 36;
 
-            chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 380, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
+            chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 420, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
+            y += 30;
+
+            var lblSection = new Label { Text = "Autostart & window", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
+            y += 24;
+            chkAutoStart = new CheckBox { Text = "Autostart with Windows", Left = 20, Top = y, Width = 205, Checked = settings.AutoStart, ForeColor = textColor };
+            chkAutoStartMin = new CheckBox { Text = "After autostart - go to tray", Left = 240, Top = y, Width = 225, Checked = settings.AutoStartMinimized, ForeColor = textColor };
             y += 26;
+            chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = y, Width = 215, Checked = settings.MinimizeToTray, ForeColor = textColor };
+            chkTrayAlways = new CheckBox { Text = "Always keep tray icon", Left = 240, Top = y, Width = 225, Checked = settings.TrayIconAlways, ForeColor = textColor };
+            y += 26;
+            chkKeepTab = new CheckBox { Text = "Remember active tab", Left = 20, Top = y, Width = 330, Checked = settings.KeepActiveTab, ForeColor = textColor };
+            y += 30;
+            var lblLang = new Label { Text = "Language:", Left = 20, Top = y, Width = 90 };
+            cmbLang = new ComboBox { Left = 110, Top = y - 2, Width = 130, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbLang.Items.Add("Русский");
+            cmbLang.Items.Add("English");
+            cmbLang.SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            y += 30;
 
             btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
@@ -244,6 +265,15 @@ namespace WinPanel
             this.Controls.Add(cmbFolders);
             this.Controls.Add(chkLightTheme);
             this.Controls.Add(chkMiniExplorer);
+            this.Controls.Add(numFolderExit);
+            this.Controls.Add(lblExit);
+            this.Controls.Add(lblSection);
+            this.Controls.Add(chkAutoStart);
+            this.Controls.Add(chkAutoStartMin);
+            this.Controls.Add(chkTrayAlways);
+            this.Controls.Add(chkKeepTab);
+            this.Controls.Add(lblLang);
+            this.Controls.Add(cmbLang);
             this.Controls.Add(lblHotkey);
             this.Controls.Add(cmbHotkey);
             this.Controls.Add(lblTypes);
@@ -269,6 +299,7 @@ namespace WinPanel
             numHeight.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numX.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numY.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            Loc.Walk(this);
             UpdateLiveLabel();
         }
 
@@ -411,6 +442,12 @@ namespace WinPanel
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.IsLightTheme = chkLightTheme.Checked;
+            settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
+            settings.Language = cmbLang.SelectedIndex == 1 ? "en" : "ru";
+            settings.AutoStart = chkAutoStart.Checked;
+            settings.AutoStartMinimized = chkAutoStartMin.Checked;
+            settings.TrayIconAlways = chkTrayAlways.Checked;
+            settings.KeepActiveTab = chkKeepTab.Checked;
 
             settings.IconScale = (int)numIconScale.Value;
 

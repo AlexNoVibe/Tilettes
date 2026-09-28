@@ -34,6 +34,20 @@ namespace WinPanel
         public bool MiniExplorerTopBar { get; set; }
         public int MiniExplorerConsole { get; set; }
 
+        // Folder auto-exit: while inside a folder (same-window mode), return back
+        // after this many seconds without any mouse/keyboard activity (0 = off)
+        public int FolderAutoExitSeconds { get; set; }
+
+        // UI language: "ru" or "en"
+        public string Language { get; set; }
+
+        // Autostart / window behaviour
+        public bool AutoStart { get; set; }
+        public bool AutoStartMinimized { get; set; }
+        public bool TrayIconAlways { get; set; }
+        public bool KeepActiveTab { get; set; }
+        public string ActiveTab { get; set; }
+
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
@@ -70,6 +84,13 @@ namespace WinPanel
             MiniExplorerBookmarks = true;
             MiniExplorerTopBar = true;
             MiniExplorerConsole = 40;
+            FolderAutoExitSeconds = 15;
+            Language = "ru";
+            AutoStart = false;
+            AutoStartMinimized = false;
+            TrayIconAlways = true;
+            KeepActiveTab = true;
+            ActiveTab = "";
 
             GridTransparency = 50;
             GridColumns = 16;
@@ -184,6 +205,18 @@ namespace WinPanel
                 int mcon;
                 if (int.TryParse(ini.Read("MiniExplorerConsole"), out mcon)) s.MiniExplorerConsole = mcon;
 
+                int faеx;
+                if (int.TryParse(ini.Read("FolderAutoExitSeconds"), out faеx)) s.FolderAutoExitSeconds = faеx;
+                string lang = ini.Read("Language");
+                if (lang == "ru" || lang == "en") s.Language = lang;
+                bool astr, astrm, tray, ktab;
+                if (bool.TryParse(ini.Read("AutoStart"), out astr)) s.AutoStart = astr;
+                if (bool.TryParse(ini.Read("AutoStartMinimized"), out astrm)) s.AutoStartMinimized = astrm;
+                if (bool.TryParse(ini.Read("TrayIconAlways"), out tray)) s.TrayIconAlways = tray;
+                if (bool.TryParse(ini.Read("KeepActiveTab"), out ktab)) s.KeepActiveTab = ktab;
+                string atab = ini.Read("ActiveTab");
+                if (atab != null) s.ActiveTab = atab;
+
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
@@ -233,6 +266,13 @@ namespace WinPanel
                 ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
                 ini.Write("MiniExplorerTopBar", MiniExplorerTopBar.ToString());
                 ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
+                ini.Write("FolderAutoExitSeconds", FolderAutoExitSeconds.ToString());
+                ini.Write("Language", string.IsNullOrEmpty(Language) ? "ru" : Language);
+                ini.Write("AutoStart", AutoStart.ToString());
+                ini.Write("AutoStartMinimized", AutoStartMinimized.ToString());
+                ini.Write("TrayIconAlways", TrayIconAlways.ToString());
+                ini.Write("KeepActiveTab", KeepActiveTab.ToString());
+                ini.Write("ActiveTab", ActiveTab == null ? "" : ActiveTab);
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
