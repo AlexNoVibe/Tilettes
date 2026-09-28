@@ -183,6 +183,31 @@ namespace WinPanel
             return sb.ToString();
         }
 
+        public static List<string> Variants(string query)
+        {
+            var variants = new List<string>();
+            string q = (query ?? "").Trim().ToLowerInvariant();
+            if (q.Length == 0) return variants;
+            string v2 = Translate(q, true).ToLowerInvariant();
+            string v3 = Translate(q, false).ToLowerInvariant();
+            variants.Add(q);
+            if (v2 != q) variants.Add(v2);
+            if (v3 != q && v3 != v2) variants.Add(v3);
+            return variants;
+        }
+
+        public static int Score(string textLower, List<string> variants)
+        {
+            if (string.IsNullOrEmpty(textLower) || variants == null) return -1;
+            int best = -1;
+            for (int i = 0; i < variants.Count; i++)
+            {
+                int s = ScoreOne(textLower, variants[i]);
+                if (s > best) best = s;
+            }
+            return best;
+        }
+
         private static int ScoreOne(string name, string v)
         {
             if (v.Length == 0) return -1;
@@ -200,7 +225,8 @@ namespace WinPanel
                     pi++;
                 }
             }
-            if (pi == v.Length) return 400 - gaps * 3 - Math.Max(0, name.Length - v.Length);
+            if (pi == v.Length && (name.Length - v.Length) <= 12 && gaps <= 6)
+                return 400 - gaps * 3 - Math.Max(0, name.Length - v.Length);
             return -1;
         }
 

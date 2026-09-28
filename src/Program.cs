@@ -22,6 +22,15 @@ namespace WinPanel
         private Panel activeLayoutPanel;
         private TabData activeTabData;
         private readonly Dictionary<Button, TabData> tabDataByButton = new Dictionary<Button, TabData>();
+        private TextBox panelSearchBox;
+        private System.Windows.Forms.Timer panelSearchTimer;
+        private Panel panelSearchOverlay;
+        private Panel panelSearchRow;
+        private ListBox panelSearchList;
+        private Label panelSearchStatus;
+        private bool panelSearchActive;
+        private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
+        private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private string settingsPath = "settings.ini";
         private string recordsPath = "records.xml";
         private Panel topPanel;
@@ -165,6 +174,71 @@ namespace WinPanel
             topPanel.Controls.Add(rightPanel);
 
             this.Resize += (s, e) => UpdateWindowRegion();
+
+            // ---- Panel search: the box sits in the top strip, results overlay the tiles ----
+            panelSearchTimer = new System.Windows.Forms.Timer();
+            panelSearchTimer.Interval = 220;
+            panelSearchTimer.Tick += (s, e) => { panelSearchTimer.Stop(); RunPanelSearch(); };
+
+            panelSearchOverlay = new Panel { Visible = false, BackColor = bgColor };
+            panelSearchList = new ListBox
+            {
+                Dock = DockStyle.Fill,
+                BackColor = bgColor,
+                ForeColor = textColor,
+                BorderStyle = BorderStyle.None,
+                DrawMode = DrawMode.OwnerDrawFixed,
+                ItemHeight = 26,
+                IntegralHeight = false
+            };
+            panelSearchList.DrawItem += PanelSearchList_DrawItem;
+            panelSearchList.DoubleClick += (s, e) => OpenPanelSearchResult(panelSearchList.SelectedIndex);
+            panelSearchList.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    int i = panelSearchList.SelectedIndex;
+                    if (i < 0 && panelSearchList.Items.Count > 0) i = 0;
+                    OpenPanelSearchResult(i);
+                    e.SuppressKeyPress = true;
+                }
+                else if (e.KeyCode == Keys.Escape) { ClearPanelSearch(); e.SuppressKeyPress = true; }
+            };
+            panelSearchStatus = new Label { Dock = DockStyle.Top, Height = 24, BackColor = bgColor };
+            panelSearchOverlay.Controls.Add(panelSearchList);
+            panelSearchOverlay.Controls.Add(panelSearchStatus);
+            this.Controls.Add(panelSearchOverlay);
+
+            // Type anywhere (except text inputs) to start the search; Esc clears it.
+            this.KeyPreview = true;
+            this.KeyPress += (s, e) =>
+            {
+                try
+                {
+                    if (char.IsControl(e.KeyChar)) return;
+                    if ((Control.ModifierKeys & (Keys.Control | Keys.Alt)) != 0) return;
+                    if (ActiveControl is TextBoxBase) return;
+                    if (panelSearchBox == null || !panelSearchBox.Visible) return;
+                    panelSearchBox.Focus();
+                    panelSearchBox.Text = panelSearchBox.Text + e.KeyChar;
+                    panelSearchBox.SelectionStart = panelSearchBox.Text.Length;
+                    e.Handled = true;
+                }
+                catch { }
+            };
+            this.KeyDown += (s, e) =>
+            {
+                try
+                {
+                    if (e.KeyCode == Keys.Escape && panelSearchActive) { ClearPanelSearch(); e.SuppressKeyPress = true; return; }
+                    if (e.Control && e.KeyCode == Keys.F)
+                    {
+                        if (panelSearchBox != null) { panelSearchBox.Focus(); panelSearchBox.SelectAll(); }
+                        e.SuppressKeyPress = true;
+                    }
+                }
+                catch { }
+            };
 
             trayIcon = new NotifyIcon();
             trayIcon.Text = "WinPanel";
@@ -464,6 +538,160 @@ namespace WinPanel
                     form.TouchActivity();
                 }
                 return false;
+            }
+        }
+
+        // ---- panel search ----
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "SendMessageW")]
+        private static extern IntPtr SendMessageStr(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+        private void RunPanelSearch()
+        {
+            try
+            {
+                if (panelSearchBox == null || panelSearchBox.IsDisposed) return;
+                string q = panelSearchBox.Text.Trim();
+                if (q.Length == 0) { HidePanelSearch(); return; }
+                if (activeTabData == null || activeLayoutPanel == null) return;
+                var variants = SearchCore.Variants(q);
+                if (variants.Count == 0) { HidePanelSearch(); return; }
+                var found = new List<KeyValuePair<int, ShortcutItem>>();
+                CollectItemsMeta(activeTabData.Items, variants, found);
+                found.Sort(delegate(KeyValuePair<int, ShortcutItem> a, KeyValuePair<int, ShortcutItem> b)
+                {
+                    if (b.Key != a.Key) return b.Key - a.Key;
+                    return string.Compare(a.Value.Name, b.Value.Name, StringComparison.OrdinalIgnoreCase);
+                });
+                panelSearchResults.Clear();
+                int n = Math.Min(200, found.Count);
+                for (int i = 0; i < n; i++) panelSearchResults.Add(found[i].Value);
+                panelSearchList.BeginUpdate();
+                panelSearchList.Items.Clear();
+                foreach (var it in panelSearchResults) panelSearchList.Items.Add(it.Name);
+                panelSearchList.EndUpdate();
+                panelSearchList.ClearSelected();
+                panelSearchList.Invalidate();
+                panelSearchStatus.Text = (Loc.IsRu ? "Найдено: " : "Found: ") + panelSearchResults.Count +
+                    (Loc.IsRu ? "   ·   Enter — открыть, Esc — закрыть" : "   ·   Enter to open, Esc to close");
+                panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
+                panelSearchOverlay.Bounds = contentPanel.Bounds;
+                panelSearchOverlay.Visible = true;
+                panelSearchOverlay.BringToFront();
+                panelSearchActive = true;
+            }
+            catch { }
+        }
+
+        private void CollectItemsMeta(List<ShortcutItem> items, List<string> variants, List<KeyValuePair<int, ShortcutItem>> found)
+        {
+            foreach (var it in items)
+            {
+                var metas = PanelSearch.GetMetas(it);
+                int best = -1;
+                for (int i = 0; i < metas.Length; i++)
+                {
+                    int s = SearchCore.Score(metas[i], variants);
+                    if (s > best) best = s;
+                }
+                if (best >= 0) found.Add(new KeyValuePair<int, ShortcutItem>(best, it));
+                if (it.Children != null && it.Children.Count > 0) CollectItemsMeta(it.Children, variants, found);
+            }
+        }
+
+        private void HidePanelSearch()
+        {
+            if (panelSearchOverlay != null) panelSearchOverlay.Visible = false;
+            panelSearchActive = false;
+            if (panelSearchResults != null) panelSearchResults.Clear();
+        }
+
+        private void ClearPanelSearch()
+        {
+            HidePanelSearch();
+            try { if (panelSearchBox != null) panelSearchBox.Clear(); } catch { }
+        }
+
+        private void OpenPanelSearchResult(int i)
+        {
+            if (i < 0 || i >= panelSearchResults.Count) return;
+            var it = panelSearchResults[i];
+            ClearPanelSearch();
+            if (it.IsFolder)
+            {
+                var nav = tabNavigations[activeTabData];
+                nav.Push(it);
+                RenderCurrentFolder(activeLayoutPanel, activeTabData);
+            }
+            else
+            {
+                LaunchItem(it.Path);
+            }
+        }
+
+        private void PanelSearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                ClearPanelSearch();
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Down)
+            {
+                try
+                {
+                    panelSearchList.Focus();
+                    if (panelSearchList.Items.Count > 0 && panelSearchList.SelectedIndex < 0) panelSearchList.SelectedIndex = 0;
+                }
+                catch { }
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void PanelSearchList_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= panelSearchResults.Count) return;
+            var it = panelSearchResults[e.Index];
+            var g = e.Graphics;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var back = new SolidBrush(sel ? hoverColor : bgColor))
+                g.FillRectangle(back, e.Bounds);
+            try
+            {
+                string key = ((it.IsFolder ? "d:" : "f:") + (it.Path ?? "")).ToLowerInvariant();
+                Bitmap ic;
+                if (!panelSearchIcons.TryGetValue(key, out ic))
+                {
+                    Image big = null;
+                    try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIcon(it.Path, false); }
+                    catch { }
+                    ic = null;
+                    if (big != null)
+                    {
+                        ic = new Bitmap(16, 16);
+                        using (var gg = Graphics.FromImage(ic))
+                        {
+                            gg.Clear(Color.Transparent);
+                            IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
+                        }
+                        big.Dispose();
+                    }
+                    panelSearchIcons[key] = ic;
+                }
+                if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, e.Bounds.Top + 5, 16, 16));
+            }
+            catch { }
+            int ty = e.Bounds.Top + 6;
+            TextRenderer.DrawText(g, it.Name, this.Font, new Point(e.Bounds.Left + 32, ty), textColor);
+            string sub = PanelSearch.GetSummary(it);
+            if (!string.IsNullOrEmpty(sub))
+            {
+                Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
+                var nameSz = TextRenderer.MeasureText(it.Name, this.Font);
+                var subSz = TextRenderer.MeasureText(sub, this.Font);
+                int sx = e.Bounds.Right - subSz.Width - 12;
+                if (sx > e.Bounds.Left + 32 + nameSz.Width + 20)
+                    TextRenderer.DrawText(g, sub, this.Font, new Point(sx, ty), subColor);
             }
         }
 
@@ -799,6 +1027,13 @@ namespace WinPanel
 
         private void LoadTabs()
         {
+            try { if (panelSearchActive) HidePanelSearch(); } catch { }
+            if (panelSearchRow != null)
+            {
+                try { topPanel.Controls.Remove(panelSearchRow); panelSearchRow.Dispose(); } catch { }
+                panelSearchRow = null;
+                panelSearchBox = null;
+            }
             DisposeControlTree(contentPanel);
             DisposeControlTree(tabBar);
             DisposeControlTree(rightPanel);
@@ -808,7 +1043,7 @@ namespace WinPanel
 
             int tabRows = 1;
             foreach (var tab in records.Tabs) tabRows = Math.Max(tabRows, tab.Row + 1);
-            topPanel.Height = Math.Max(tabRows * 35, 62);
+            topPanel.Height = Math.Max(tabRows * 35, 62) + 31;
 
             // ---- Right stack: row 1 = min / max / close, row 2 = settings / edit ----
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
@@ -1029,6 +1264,31 @@ namespace WinPanel
             topPanel.MouseDown += (s, e) => DragWindow(e);
             rightPanel.MouseDown += (s, e) => DragWindow(e);
 
+            // ---- Search bar for the saved items (bottom row of the top strip) ----
+            var searchRow = new Panel { Dock = DockStyle.Bottom, Height = 31, BackColor = bgColor };
+            var sBox = new TextBox { Left = 8, Top = 5, Width = 280, BorderStyle = BorderStyle.FixedSingle, BackColor = panelColor, ForeColor = textColor };
+            sBox.TextChanged += (s, e) => { if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); } };
+            sBox.KeyDown += PanelSearchBox_KeyDown;
+            searchRow.Controls.Add(sBox);
+            var sHint = new Label
+            {
+                Left = 296,
+                Top = 9,
+                Width = 520,
+                ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155),
+                Text = Loc.S("Search saved items: name, exe, folder, description...", "Поиск по сохранённым: имя, exe, папка, описание...")
+            };
+            searchRow.Controls.Add(sHint);
+            topPanel.Controls.Add(searchRow);
+            panelSearchRow = searchRow;
+            panelSearchBox = sBox;
+            try
+            {
+                var h = sBox.Handle;
+                SendMessageStr(h, 0x1501, (IntPtr)1, Loc.S("Search...", "Поиск..."));
+            }
+            catch { }
+
             // Activate the remembered tab when it still exists, otherwise the first one.
             Button startBtn = null;
             if (settings.KeepActiveTab && !string.IsNullOrEmpty(settings.ActiveTab))
@@ -1053,6 +1313,7 @@ namespace WinPanel
 
         private void ActivateTab(Button tabBtn, Dictionary<Button, Panel> layoutPanels, List<Button> buttons)
         {
+            try { if (panelSearchActive) ClearPanelSearch(); } catch { }
             foreach (var kv in layoutPanels) kv.Value.Visible = false;
             Font tabFont = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize);
             Font tabFontActive = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize, System.Drawing.FontStyle.Bold);
