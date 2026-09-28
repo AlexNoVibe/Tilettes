@@ -18,10 +18,10 @@ namespace WinPanel
         private NotifyIcon trayIcon;
 
         // Colors for modern dark theme
-        private Color bgColor = Color.FromArgb(30, 30, 30); // #1E1E1E
-        private Color panelColor = Color.FromArgb(45, 45, 48); // #2D2D30
-        private Color hoverColor = Color.FromArgb(62, 62, 66);
-        private Color textColor = Color.White;
+        private Color bgColor;
+        private Color panelColor;
+        private Color hoverColor;
+        private Color textColor;
         private Font mainFont = new Font("Segoe UI", 9f);
 
         // State for dragging
@@ -36,16 +36,36 @@ namespace WinPanel
         // State for folder navigation
         private Dictionary<TabData, Stack<ShortcutItem>> tabNavigations = new Dictionary<TabData, Stack<ShortcutItem>>();
 
+        [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        private static extern IntPtr CreateRoundRectRgn
+        (
+            int nLeftRect,
+            int nTopRect,
+            int nRightRect,
+            int nBottomRect,
+            int nWidthEllipse,
+            int nHeightEllipse
+        );
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool ReleaseCapture();
+
         public MainForm()
         {
             settings = Settings.Load(settingsPath);
             records = Records.Load(recordsPath);
+            
+            ApplyThemeColors();
 
             this.Text = "WinPanel";
             this.Width = settings.WindowWidth;
             this.Height = settings.WindowHeight;
             this.StartPosition = FormStartPosition.Manual;
             this.Location = new Point(settings.WindowX, settings.WindowY);
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
             
             this.BackColor = bgColor;
             this.ForeColor = textColor;
@@ -118,6 +138,24 @@ namespace WinPanel
             }
         }
 
+        private void ApplyThemeColors()
+        {
+            if (settings.IsLightTheme)
+            {
+                bgColor = Color.FromArgb(240, 240, 240);
+                panelColor = Color.FromArgb(220, 220, 220);
+                hoverColor = Color.FromArgb(200, 200, 200);
+                textColor = Color.Black;
+            }
+            else
+            {
+                bgColor = Color.FromArgb(30, 30, 30);
+                panelColor = Color.FromArgb(45, 45, 48);
+                hoverColor = Color.FromArgb(62, 62, 66);
+                textColor = Color.White;
+            }
+        }
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (e.CloseReason == CloseReason.UserClosing)
@@ -144,6 +182,14 @@ namespace WinPanel
 
         private void LoadTabs()
         {
+            tabBar.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, 0xA1, 0x2, 0);
+                }
+            };
             foreach (Control c in contentPanel.Controls)
             {
                 var pnl = c as Panel;
@@ -168,6 +214,22 @@ namespace WinPanel
             
             int xOffset = 0;
             bool isFirst = true;
+
+            // Window Buttons
+            var closeBtn = new Button { Text = "✕", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            closeBtn.FlatAppearance.BorderSize = 0; closeBtn.FlatAppearance.MouseOverBackColor = Color.Red;
+            closeBtn.Click += (s, e) => this.Close();
+            tabBar.Controls.Add(closeBtn);
+
+            var maxBtn = new Button { Text = "🗖", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            maxBtn.FlatAppearance.BorderSize = 0; maxBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+            maxBtn.Click += (s, e) => this.WindowState = this.WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+            tabBar.Controls.Add(maxBtn);
+
+            var minBtn = new Button { Text = "🗕", Width = 35, Height = 35, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, BackColor = bgColor, ForeColor = textColor, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 10f) };
+            minBtn.FlatAppearance.BorderSize = 0; minBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+            minBtn.Click += (s, e) => this.WindowState = FormWindowState.Minimized;
+            tabBar.Controls.Add(minBtn);
 
             // Settings button
             var settingsBtn = new Button
@@ -222,6 +284,8 @@ namespace WinPanel
                 };
                 layoutPanel.DragEnter += LayoutPanel_DragEnter;
                 layoutPanel.DragDrop += LayoutPanel_DragDrop;
+                layoutPanel.Paint += LayoutPanel_Paint;
+                layoutPanel.Resize += (s, e) => ((Panel)s).Invalidate();
 
                 var panelMenu = new ContextMenu();
                 panelMenu.Popup += (s, e) =>
@@ -275,7 +339,7 @@ namespace WinPanel
                         tabBtn.Text = newName;
                     }
                 });
-                tabMenu.MenuItems.Add("Toggle Layout (Free / Grid 16x20)", (s, e) => {
+                tabMenu.MenuItems.Add("Toggle Layout (Free / Grid 16x16)", (s, e) => {
                     tabData.IsGridLayout = !tabData.IsGridLayout;
                     records.Save(recordsPath);
                     RenderCurrentFolder(layoutPanel, tabData);
@@ -373,27 +437,7 @@ namespace WinPanel
                 layoutPanel.Controls.Add(backBtn);
             }
 
-            // Layout button overlay inside the panel
-            var layoutBtn = new Button
-            {
-                Text = tabData.IsGridLayout ? "Layout: Grid (16x20)" : "Layout: Free",
-                Location = new Point(layoutPanel.Width - 150, 10),
-                Width = 130,
-                Height = 30,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = bgColor,
-                ForeColor = Color.LightGray,
-                Cursor = Cursors.Hand,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
-            };
-            layoutBtn.FlatAppearance.BorderSize = 1;
-            layoutBtn.FlatAppearance.BorderColor = Color.Gray;
-            layoutBtn.Click += (s, e) => {
-                tabData.IsGridLayout = !tabData.IsGridLayout;
-                records.Save(recordsPath);
-                RenderCurrentFolder(layoutPanel, tabData);
-            };
-            layoutPanel.Controls.Add(layoutBtn);
+
 
             foreach (var item in itemsToRender)
             {
@@ -419,16 +463,18 @@ namespace WinPanel
                     IsFolder = true,
                     X = pt.X,
                     Y = pt.Y,
-                    Size = 2
+                    Size = settings.DefaultItemSize
                 };
                 if (tabData.IsGridLayout)
                 {
-                    int cellWidth = layoutPanel.Width / 16;
-                    int cellHeight = layoutPanel.Height / 20;
+                    int cols = Math.Max(1, settings.GridColumns);
+                    int rows = Math.Max(1, settings.GridRows);
+                    int cellWidth = layoutPanel.Width / cols;
+                    int cellHeight = layoutPanel.Height / rows;
                     if (cellWidth < 10) cellWidth = 20;
                     if (cellHeight < 10) cellHeight = 20;
-                    folder.GridX = Math.Max(0, Math.Min(16 - 2, folder.X / cellWidth));
-                    folder.GridY = Math.Max(0, Math.Min(20 - 2, folder.Y / cellHeight));
+                    folder.GridX = Math.Max(0, Math.Min(cols - folder.Size, folder.X / cellWidth));
+                    folder.GridY = Math.Max(0, Math.Min(rows - folder.Size, folder.Y / cellHeight));
                 }
                 targetList.Add(folder);
                 records.Save(recordsPath);
@@ -456,10 +502,25 @@ namespace WinPanel
             var tabData = (TabData)layoutPanel.Tag;
 
             var pt = layoutPanel.PointToClient(new Point(e.X, e.Y));
-            pt.X -= layoutPanel.DisplayRectangle.X;
-            pt.Y -= layoutPanel.DisplayRectangle.Y;
+            var displayPt = new Point(pt.X - layoutPanel.DisplayRectangle.X, pt.Y - layoutPanel.DisplayRectangle.Y);
+            
             var navStack = tabNavigations[tabData];
-            var targetList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
+            var currentFolder = navStack.Count > 0 ? navStack.Peek() : null;
+            var targetList = currentFolder != null ? currentFolder.Children : tabData.Items;
+
+            ShortcutItem targetFolder = null;
+            foreach (Control c in layoutPanel.Controls)
+            {
+                var tc = c as TileControl;
+                if (tc != null && tc.Item.IsFolder)
+                {
+                    if (tc.Bounds.Contains(displayPt))
+                    {
+                        targetFolder = tc.Item;
+                        break;
+                    }
+                }
+            }
 
             int offset = 0;
             foreach (var file in files)
@@ -468,38 +529,80 @@ namespace WinPanel
                 {
                     Path = file,
                     Name = Path.GetFileNameWithoutExtension(file),
-                    X = pt.X + offset,
-                    Y = pt.Y + offset,
-                    Size = 2
+                    X = displayPt.X + offset,
+                    Y = displayPt.Y + offset,
+                    Size = settings.DefaultItemSize
                 };
-                if (tabData.IsGridLayout)
-                {
-                    int cellWidth = layoutPanel.Width / 16;
-                    int cellHeight = layoutPanel.Height / 20;
-                    if (cellWidth < 10) cellWidth = 20;
-                    if (cellHeight < 10) cellHeight = 20;
-                    shortcut.GridX = Math.Max(0, Math.Min(16 - 2, shortcut.X / cellWidth));
-                    shortcut.GridY = Math.Max(0, Math.Min(20 - 2, shortcut.Y / cellHeight));
-                }
                 if (string.IsNullOrEmpty(shortcut.Name)) shortcut.Name = Path.GetFileName(file);
                 
-                targetList.Add(shortcut);
-                AddShortcutControl(layoutPanel, shortcut, tabData);
+                if (targetFolder != null)
+                {
+                    if (targetFolder.Children == null) targetFolder.Children = new List<ShortcutItem>();
+                    targetFolder.Children.Add(shortcut);
+                }
+                else
+                {
+                    if (tabData.IsGridLayout)
+                    {
+                        int cols = Math.Max(1, settings.GridColumns);
+                        int rows = Math.Max(1, settings.GridRows);
+                        int cellWidth = layoutPanel.Width / cols;
+                        int cellHeight = layoutPanel.Height / rows;
+                        if (cellWidth < 10) cellWidth = 20;
+                        if (cellHeight < 10) cellHeight = 20;
+                        shortcut.GridX = Math.Max(0, Math.Min(cols - shortcut.Size, shortcut.X / cellWidth));
+                        shortcut.GridY = Math.Max(0, Math.Min(rows - shortcut.Size, shortcut.Y / cellHeight));
+                    }
+                    targetList.Add(shortcut);
+                }
                 offset += 20; // stagger drops
             }
             records.Save(recordsPath);
-            RenderCurrentFolder(layoutPanel, tabData); // Re-render to apply snapping
+            RenderCurrentFolder(layoutPanel, tabData);
+        }
+
+        private void LayoutPanel_Paint(object sender, PaintEventArgs e)
+        {
+            var panel = sender as Panel;
+            if (panel == null) return;
+            var tabData = panel.Tag as TabData;
+            if (tabData == null || !tabData.IsGridLayout) return;
+
+            int cols = Math.Max(1, settings.GridColumns);
+            int rows = Math.Max(1, settings.GridRows);
+
+            float cellWidth = panel.Width / (float)cols;
+            float cellHeight = panel.Height / (float)rows;
+
+            Color gridColor = settings.IsLightTheme 
+                ? Color.FromArgb(settings.GridTransparency, 0, 0, 0)
+                : Color.FromArgb(settings.GridTransparency, 255, 255, 255);
+
+            using (Pen gridPen = new Pen(gridColor))
+            {
+                gridPen.DashStyle = DashStyle.Dash;
+                for (int i = 0; i <= cols; i++)
+                {
+                    e.Graphics.DrawLine(gridPen, i * cellWidth, 0, i * cellWidth, panel.Height);
+                }
+                for (int i = 0; i <= rows; i++)
+                {
+                    e.Graphics.DrawLine(gridPen, 0, i * cellHeight, panel.Width, i * cellHeight);
+                }
+            }
         }
 
         private void AddShortcutControl(Panel panel, ShortcutItem item, TabData tabData)
         {
-            int cellWidth = panel.Width / 16;
-            int cellHeight = panel.Height / 20;
+            int cols = Math.Max(1, settings.GridColumns);
+            int rows = Math.Max(1, settings.GridRows);
+            int cellWidth = panel.Width / cols;
+            int cellHeight = panel.Height / rows;
             if (cellWidth < 10) cellWidth = 20;
             if (cellHeight < 10) cellHeight = 20;
 
             int s = item.Size;
-            if (s <= 0 || s > 4) s = 2; // Default 2x2
+            if (s <= 0 || s > 4) s = settings.DefaultItemSize;
 
             int tileWidth, tileHeight, xPos, yPos;
             
@@ -508,18 +611,17 @@ namespace WinPanel
                 tileWidth = s * cellWidth;
                 tileHeight = s * cellHeight;
                 
-                if (item.GridX == -1) item.GridX = Math.Max(0, Math.Min(16 - s, item.X / cellWidth));
-                if (item.GridY == -1) item.GridY = Math.Max(0, Math.Min(20 - s, item.Y / cellHeight));
+                if (item.GridX == -1) item.GridX = Math.Max(0, Math.Min(cols - s, item.X / cellWidth));
+                if (item.GridY == -1) item.GridY = Math.Max(0, Math.Min(rows - s, item.Y / cellHeight));
 
-                int col = Math.Max(0, Math.Min(16 - s, item.GridX));
-                int row = Math.Max(0, Math.Min(20 - s, item.GridY));
+                int col = Math.Max(0, Math.Min(cols - s, item.GridX));
+                int row = Math.Max(0, Math.Min(rows - s, item.GridY));
                 
                 xPos = col * cellWidth;
                 yPos = row * cellHeight;
             }
             else
             {
-                // Free layout: base size on 40x40 unit
                 tileWidth = s * 40;
                 tileHeight = s * 40;
                 xPos = item.X;
@@ -658,7 +760,7 @@ namespace WinPanel
                         if (tabData.IsGridLayout)
                         {
                             int col = Math.Max(0, Math.Min(16 - s, (tile.Left + cellWidth/2) / cellWidth));
-                            int row = Math.Max(0, Math.Min(20 - s, (tile.Top + cellHeight/2) / cellHeight));
+                            int row = Math.Max(0, Math.Min(16 - s, (tile.Top + cellHeight/2) / cellHeight));
                             item.GridX = col;
                             item.GridY = row;
                         }
@@ -802,13 +904,17 @@ namespace WinPanel
             int radius = 15;
             var path = GetRoundRectangle(rect, radius);
 
-            Color currentBg = IsHovered ? hoverColor : bgColor;
-
             if (Item.IsFolder)
             {
-                using (var brush = new SolidBrush(Color.FromArgb(128, currentBg)))
+                using (var brush = new SolidBrush(Color.FromArgb(50, 128, 128, 128)))
                 {
                     e.Graphics.FillPath(brush, path);
+                }
+
+                if (IsHovered)
+                {
+                    using (var hoverBrush = new SolidBrush(Color.FromArgb(30, 255, 255, 255)))
+                        e.Graphics.FillPath(hoverBrush, path);
                 }
 
                 if (ChildIcons != null && ChildIcons.Count > 0)
@@ -818,8 +924,8 @@ namespace WinPanel
                     int rows = (int)Math.Ceiling(maxIcons / (float)cols);
                     int padding = 10;
                     int miniWidth = (this.Width - padding * 2) / cols;
-                    int miniHeight = ((this.Height - 25) - padding * 2) / rows;
-                    int miniSize = Math.Min(miniWidth, miniHeight) - 4;
+                    int miniHeight = ((this.Height - 30) - padding * 2) / rows;
+                    int miniSize = Math.Min(miniWidth, miniHeight) - 2;
 
                     for (int i = 0; i < maxIcons; i++)
                     {
@@ -838,24 +944,30 @@ namespace WinPanel
             }
             else
             {
-                using (var brush = new SolidBrush(currentBg))
+                if (IsHovered)
                 {
-                    e.Graphics.FillPath(brush, path);
+                    using (var brush = new SolidBrush(Color.FromArgb(30, 255, 255, 255)))
+                    {
+                        e.Graphics.FillPath(brush, path);
+                    }
                 }
 
                 if (IconImage != null)
                 {
-                    int iconSize = Math.Min(this.Width, this.Height - 25) - 20;
+                    int iconSize = Math.Min(this.Width, this.Height - 30) - 10;
                     if (iconSize > 0)
                     {
                         int ix = (this.Width - iconSize) / 2;
-                        int iy = (this.Height - 25 - iconSize) / 2;
+                        int iy = (this.Height - 30 - iconSize) / 2;
                         e.Graphics.DrawImage(IconImage, new Rectangle(ix, iy, iconSize, iconSize));
                     }
                 }
             }
 
-            using (var brush = new SolidBrush(Color.White))
+            // Get text color from parent form's ForeColor if possible, or fallback to White/Black based on theme.
+            // Since we can't easily access settings here, we just use Parent's ForeColor.
+            Color tColor = this.Parent != null ? this.Parent.ForeColor : Color.White;
+            using (var brush = new SolidBrush(tColor))
             using (var font = new Font("Segoe UI", 9f))
             {
                 var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };

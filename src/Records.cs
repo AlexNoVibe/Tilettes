@@ -30,7 +30,7 @@ namespace WinPanel
     public class TabData
     {
         public string Name { get; set; }
-        public bool IsGridLayout { get; set; } // True = 16x20 Grid, False = Free layout
+        public bool IsGridLayout { get; set; } // True = 16x16 Grid, False = Free layout
         public List<ShortcutItem> Items { get; set; }
 
         public TabData()
