@@ -57,6 +57,8 @@ namespace WinPanel
         public bool SearchInMeta { get; set; }        // exe name, product, company
         public bool SearchInPaths { get; set; }       // full path text
         public bool SearchInDesc { get; set; }        // FileDescription / shortcut description
+        // Include the mirrored Start Menu tab ("Пуск") in panel search results.
+        public bool SearchInStart { get; set; }
         public int SearchBoxFontSize { get; set; }
         public int SearchResultsFontSize { get; set; }
 
@@ -128,6 +130,7 @@ namespace WinPanel
             SearchInMeta = true;
             SearchInPaths = true;
             SearchInDesc = true;
+            SearchInStart = true;
             SearchBoxFontSize = 9;
             SearchResultsFontSize = 9;
 
@@ -270,10 +273,11 @@ namespace WinPanel
 
                 int sfz;
                 if (int.TryParse(ini.Read("SearchFuzzyLevel"), out sfz)) s.SearchFuzzyLevel = sfz;
-                bool sim, sip, sid;
+                bool sim, sip, sid, sist;
                 if (bool.TryParse(ini.Read("SearchInMeta"), out sim)) s.SearchInMeta = sim;
                 if (bool.TryParse(ini.Read("SearchInPaths"), out sip)) s.SearchInPaths = sip;
                 if (bool.TryParse(ini.Read("SearchInDesc"), out sid)) s.SearchInDesc = sid;
+                if (bool.TryParse(ini.Read("SearchInStart"), out sist)) s.SearchInStart = sist;
                 int sbfs, srfs;
                 if (int.TryParse(ini.Read("SearchBoxFontSize"), out sbfs)) s.SearchBoxFontSize = sbfs;
                 if (int.TryParse(ini.Read("SearchResultsFontSize"), out srfs)) s.SearchResultsFontSize = srfs;
@@ -352,6 +356,7 @@ namespace WinPanel
                 ini.Write("SearchInMeta", SearchInMeta.ToString());
                 ini.Write("SearchInPaths", SearchInPaths.ToString());
                 ini.Write("SearchInDesc", SearchInDesc.ToString());
+                ini.Write("SearchInStart", SearchInStart.ToString());
                 ini.Write("SearchBoxFontSize", SearchBoxFontSize.ToString());
                 ini.Write("SearchResultsFontSize", SearchResultsFontSize.ToString());
 

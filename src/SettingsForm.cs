@@ -31,7 +31,7 @@ namespace WinPanel
 
         private NumericUpDown numIconScale;
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
-        private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc;
+        private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc, chkSearchStart;
         private NumericUpDown numFolderExit;
         private ComboBox cmbLang;
         private CheckBox chkAutoStart, chkAutoStartMin, chkTrayAlways, chkKeepTab;
@@ -229,6 +229,8 @@ namespace WinPanel
             chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 530, Checked = settings.SearchInPaths, ForeColor = textColor };
             y += 24;
             chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 530, Checked = settings.SearchInDesc, ForeColor = textColor };
+            y += 24;
+            chkSearchStart = new CheckBox { Text = Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"), Left = 20, Top = y, Width = 530, Checked = settings.SearchInStart, ForeColor = textColor };
             y += 26;
             chkSaveHistory = new CheckBox
             {
@@ -265,6 +267,7 @@ namespace WinPanel
             this.Controls.Add(chkSearchMeta);
             this.Controls.Add(chkSearchPaths);
             this.Controls.Add(chkSearchDesc);
+            this.Controls.Add(chkSearchStart);
             this.Controls.Add(lblSearchFonts);
             this.Controls.Add(numSearchBoxFont);
             this.Controls.Add(lblSearchBoxFont);
@@ -597,6 +600,7 @@ namespace WinPanel
             settings.SearchInMeta = chkSearchMeta.Checked;
             settings.SearchInPaths = chkSearchPaths.Checked;
             settings.SearchInDesc = chkSearchDesc.Checked;
+            settings.SearchInStart = chkSearchStart.Checked;
             settings.SearchBoxFontSize = (int)numSearchBoxFont.Value;
             settings.SearchResultsFontSize = (int)numSearchResultsFont.Value;
             settings.FolderAutoExitSeconds = (int)numFolderExit.Value;

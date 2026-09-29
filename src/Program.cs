@@ -30,6 +30,10 @@ namespace WinPanel
         private Label panelSearchStatus;
         private bool panelSearchActive;
         private int panelSearchGen;
+        // Quick search settings: toggles to the right of the box, shown while the
+        // box has text. State lives in Settings (persisted to settings.ini).
+        private Panel panelSearchSettingsRow;
+        private readonly Dictionary<Button, Action> searchToggleRestylers = new Dictionary<Button, Action>();
         // Snapshot of the "Search" settings used by the background worker thread
         // (plain fields: the worker cannot touch the settings object safely).
         private static int fuzzyLevel = 2;
@@ -895,9 +899,15 @@ namespace WinPanel
                 if (variants.Count == 0) { HidePanelSearch(); return; }
 
                 // Search spans every tab, so the mirrored Start Menu tab is reachable
-                // from anywhere (its whole purpose is to feed the search).
+                // from anywhere (its whole purpose is to feed the search) — unless the
+                // user switched "Пуск" off in the quick search settings.
                 var all = new List<ShortcutItem>();
-                foreach (var tab in records.Tabs) CollectAllItems(tab.Items, all);
+                bool includeStart = settings.SearchInStart;
+                foreach (var tab in records.Tabs)
+                {
+                    if (!includeStart && IsStartTab(tab)) continue;
+                    CollectAllItems(tab.Items, all);
+                }
                 int gen = ++panelSearchGen;
                 fuzzyLevel = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 useMeta = settings.SearchInMeta; usePaths = settings.SearchInPaths; useDesc = settings.SearchInDesc;
@@ -992,6 +1002,129 @@ namespace WinPanel
                 outList.Add(it);
                 if (it.Children != null && it.Children.Count > 0) CollectAllItems(it.Children, outList);
             }
+        }
+
+        // The mirrored Start Menu tab: by kind, or by its canonical names for tabs
+        // created before the kind was stamped.
+        private static bool IsStartTab(TabData tab)
+        {
+            if (tab == null) return false;
+            if (tab.Kind == StartMenuSync.TabKind) return true;
+            return tab.Name == Loc.S("Start", "Пуск") || tab.Name == Loc.S("Start Menu", "Пуск");
+        }
+
+        // ---------- quick search settings (right of the search box) ----------
+
+        // Adds one toggle to the strip. `get` reports the state (raised vs dimmed),
+        // `flip` switches it; both go through Settings so the state survives
+        // restarts. `label` is re-evaluated on restyle (the fuzzy button shows the
+        // current level).
+        private void AddSearchToggle(Func<string> label, Func<bool> get, Action flip, string tooltip)
+        {
+            var b = new Button
+            {
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize),
+                Margin = new Padding(2, 0, 2, 0),
+                BackColor = bgColor,
+                ForeColor = textColor
+            };
+            b.FlatAppearance.BorderSize = 0;
+            b.FlatAppearance.MouseOverBackColor = hoverColor;
+            b.Text = label();
+            b.Height = 23;
+            b.Width = TextRenderer.MeasureText(b.Text, b.Font).Width + 14;
+            if (!string.IsNullOrEmpty(tooltip)) itemTip.SetToolTip(b, tooltip);
+            b.Click += delegate
+            {
+                try { flip(); } catch { }
+                try { settings.Save(settingsPath); } catch { }
+                StyleSearchToggles();
+                RerunPanelSearch();
+            };
+            panelSearchSettingsRow.Controls.Add(b);
+            searchToggleRestylers[b] = delegate
+            {
+                string text = label();
+                bool active;
+                try { active = get(); } catch { active = false; }
+                if (b.Text != text)
+                {
+                    b.Text = text;
+                    b.Width = TextRenderer.MeasureText(text, b.Font).Width + 14;
+                }
+                b.BackColor = active ? panelColor : bgColor;
+                b.ForeColor = active ? textColor
+                    : (settings.IsLightTheme ? Color.FromArgb(140, 140, 145) : Color.FromArgb(115, 115, 120));
+            };
+        }
+
+        private void StyleSearchToggles()
+        {
+            if (panelSearchSettingsRow == null) return;
+            foreach (var kv in searchToggleRestylers) kv.Value();
+        }
+
+        // Re-runs the search right away so a toggle click updates the results.
+        private void RerunPanelSearch()
+        {
+            try
+            {
+                if (panelSearchTimer != null) panelSearchTimer.Stop();
+                RunPanelSearch();
+            }
+            catch { }
+        }
+
+        // Builds the strip of quick search toggles; called from LoadTabs.
+        private void BuildSearchSettingsStrip(Panel searchRow, TextBox sBox)
+        {
+            panelSearchSettingsRow = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Padding = new Padding(0),
+                BackColor = bgColor,
+                Location = new Point(sBox.Right + 10, 4),
+                Visible = false
+            };
+            searchToggleRestylers.Clear();
+
+            Func<string> fuzzyLabel = delegate
+            {
+                int lvl = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
+                return lvl == 0 ? Loc.S("Exact", "Точно") : "~ " + lvl;
+            };
+            AddSearchToggle(fuzzyLabel,
+                delegate { return settings.SearchFuzzyLevel > 0; },
+                delegate { settings.SearchFuzzyLevel = (Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)) + 1) % 4; },
+                Loc.S("Match precision: exact or fuzzy (0-3)", "Точность совпадения: точное или нечёткое (0-3)"));
+
+            AddSearchToggle(delegate { return Loc.S("Metadata", "Метаданные"); },
+                delegate { return settings.SearchInMeta; },
+                delegate { settings.SearchInMeta = !settings.SearchInMeta; },
+                Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
+
+            AddSearchToggle(delegate { return Loc.S("Paths", "Пути"); },
+                delegate { return settings.SearchInPaths; },
+                delegate { settings.SearchInPaths = !settings.SearchInPaths; },
+                Loc.S("Search in full paths", "Искать в полных путях"));
+
+            AddSearchToggle(delegate { return Loc.S("Descriptions", "Описания"); },
+                delegate { return settings.SearchInDesc; },
+                delegate { settings.SearchInDesc = !settings.SearchInDesc; },
+                Loc.S("Search in item descriptions", "Искать в описаниях элементов"));
+
+            AddSearchToggle(delegate { return Loc.S("Start", "Пуск"); },
+                delegate { return settings.SearchInStart; },
+                delegate { settings.SearchInStart = !settings.SearchInStart; },
+                Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
+
+            StyleSearchToggles();
+            searchRow.Controls.Add(panelSearchSettingsRow);
         }
 
         // Runs on a background thread. Uses the character-mask prefilter so that
@@ -2050,9 +2183,15 @@ namespace WinPanel
                 if (bfs > 13) { sBox.Width = 380; searchRow.Height = Math.Max(31, bfs + 22); }
             }
             catch { }
-            sBox.TextChanged += (s, e) => { if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); } };
+            sBox.TextChanged += (s, e) =>
+            {
+                // Quick search settings appear while the box has text.
+                if (panelSearchSettingsRow != null) panelSearchSettingsRow.Visible = sBox.Text.Trim().Length > 0;
+                if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); }
+            };
             sBox.KeyDown += PanelSearchBox_KeyDown;
             searchRow.Controls.Add(sBox);
+            BuildSearchSettingsStrip(searchRow, sBox);
             topPanel.Controls.Add(searchRow);
             // Docking is applied in reverse collection order: rightPanel must stay
             // last so it docks first at full height. Otherwise searchRow takes the
