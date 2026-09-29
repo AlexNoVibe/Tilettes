@@ -551,16 +551,16 @@ namespace WinPanel
             btnRefresh.SetBounds(196, top + 2, 28, 26);
 
             // Top-right is reserved for search: [scope toggle][search box][status].
-            statusLbl.SetBounds(rightEdge - 110, top + 7, 106, 18);
+            statusLbl.SetBounds(rightEdge - 150, top + 7, 146, 18);
             int searchW = Math.Min(280, Math.Max(150, W / 5));
-            int searchX = rightEdge - 110 - 6 - searchW;
+            int searchX = rightEdge - 150 - 6 - searchW;
             searchBox.SetBounds(searchX, top + 3, searchW, 24);
             btnScope.SetBounds(searchX - 6 - 64, top + 2, 64, 26);
 
             // The breadcrumb path bar sits on its own row below the nav row.
             int crumbTop = top + 34;
-            btnEditPath.SetBounds(rightEdge - 50, crumbTop + 1, 44, 26);
-            int crumbW = Math.Max(80, rightEdge - 50 - 6 - 8);
+            btnEditPath.SetBounds(rightEdge - 72, crumbTop + 1, 66, 26);
+            int crumbW = Math.Max(80, rightEdge - 72 - 6 - 8);
             crumbHost.SetBounds(8, crumbTop, crumbW, 28);
             pathEdit.SetBounds(8, crumbTop + 2, crumbW, 24);
             int crumbBottom = crumbTop + 30;
