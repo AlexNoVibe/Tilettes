@@ -229,8 +229,8 @@ namespace WinPanel
             panelSearchOverlay.Controls.Add(panelSearchStatus);
             this.Controls.Add(panelSearchOverlay);
 
-            // Shared tooltip (0.3 s hover): item descriptions and full search paths.
-            itemTip = new ToolTip { InitialDelay = 300, ReshowDelay = 200, AutoPopDelay = 8000 };
+            // Shared tooltip (0.05 s hover): item descriptions and full search paths.
+            itemTip = new ToolTip { InitialDelay = 50, ReshowDelay = 50, AutoPopDelay = 8000, ShowAlways = true };
             ApplySearchListFont();
 
             // Type anywhere (except text inputs) to start the search; Esc clears it.
@@ -1041,7 +1041,14 @@ namespace WinPanel
                 iconTimer.Stop();
                 return;
             }
-            try { iconQueue.Dequeue()(); } catch { }
+            // Time-budgeted batch: drain as many icon tasks as fit in ~20 ms per tick
+            // instead of exactly one. The UI stays responsive, but a panel with many
+            // shortcuts no longer pays a fixed 15 ms pause per icon.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (iconQueue.Count > 0 && sw.ElapsedMilliseconds < 20)
+            {
+                try { iconQueue.Dequeue()(); } catch { }
+            }
         }
 
         private static Image LoadIconForItem(ShortcutItem item)
@@ -1069,15 +1076,27 @@ namespace WinPanel
             tile.Invalidate();
         }
 
+        // The closed-folder icon is fetched from the shell once and cloned per use:
+        // folder children would otherwise repeat the (slow) shell lookup per tile.
+        private static Image _closedFolderIcon;
+
+        private static Image GetFolderIconImage()
+        {
+            if (_closedFolderIcon == null)
+            {
+                var icon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
+                _closedFolderIcon = icon != null ? icon.ToBitmap() : SystemIcons.WinLogo.ToBitmap();
+            }
+            return (Image)_closedFolderIcon.Clone();
+        }
+
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
             Image img = null;
             if (child.IsFolder)
             {
-                var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                if (folderIcon != null) img = folderIcon.ToBitmap();
-                else img = SystemIcons.WinLogo.ToBitmap();
+                img = GetFolderIconImage();
             }
             else
             {
@@ -1595,12 +1614,16 @@ namespace WinPanel
                 // Docking layout never sizes hidden panels (they keep the 200x100
                 // default), so tiles rendered "in the dark" end up squashed in the
                 // top-left corner of the tab. Make each panel briefly visible while
-                // rendering so it lays out to its real bounds; the final visibility
-                // is restored right away, before anything paints.
-                bool wasVisible = lp.Visible;
+                // rendering so it lays out to its real bounds.
+                // Only the active tab may stay visible afterwards — Control.Visible
+                // GETTER reports the effective visibility (false while the form itself
+                // is still hidden during startup), so it can NOT be used to remember
+                // the previous state: doing so hid every panel, including the active
+                // one, and the panel stayed empty until the next window move.
+                bool keepVisible = ReferenceEquals(lp, activeLayoutPanel);
                 lp.Visible = true;
                 RenderCurrentFolder(lp, tabData);
-                lp.Visible = wasVisible;
+                lp.Visible = keepVisible;
             }
         }
 
@@ -2493,8 +2516,8 @@ namespace WinPanel
             this.ForeColor = textColor;
             this.Font = new Font("Segoe UI", 9f);
 
-            // Descriptions pop up as tooltips after 0.3 s of hovering.
-            tip = new ToolTip { InitialDelay = 300, ReshowDelay = 200, AutoPopDelay = 8000 };
+            // Descriptions pop up as tooltips almost instantly (0.05 s).
+            tip = new ToolTip { InitialDelay = 50, ReshowDelay = 50, AutoPopDelay = 8000, ShowAlways = true };
 
             openScreen = Screen.FromPoint(screenPos);
             var wa = openScreen.WorkingArea;
@@ -3423,26 +3446,29 @@ namespace WinPanel
 
         // Draws "text" at pos with the [start, start+len) fragment highlighted:
         // same font (a bold font is wider and shifts the text around the match),
-        // accent color plus a soft background bar.
+        // accent color plus a soft background bar. All segments are measured and
+        // drawn with NoPadding — the default GDI padding would add a few pixels
+        // after each measured fragment and create a visible gap inside the text.
         public static void DrawHighlighted(Graphics g, string display, int start, int len,
             Font normal, Point pos, Color normalColor, Color highlightColor, bool lightTheme)
         {
+            const TextFormatFlags flags = TextFormatFlags.NoPadding;
             if (len <= 0 || start < 0 || start + len > display.Length)
             {
-                TextRenderer.DrawText(g, display, normal, pos, normalColor);
+                TextRenderer.DrawText(g, display, normal, pos, normalColor, flags);
                 return;
             }
             string before = display.Substring(0, start);
             string mid = display.Substring(start, len);
             string after = display.Substring(start + len);
-            TextRenderer.DrawText(g, before, normal, pos, normalColor);
-            int x = pos.X + TextRenderer.MeasureText(before, normal).Width;
-            Size midSz = TextRenderer.MeasureText(mid, normal);
+            TextRenderer.DrawText(g, before, normal, pos, normalColor, flags);
+            int x = pos.X + TextRenderer.MeasureText(before, normal, Size.Empty, flags).Width;
+            Size midSz = TextRenderer.MeasureText(mid, normal, Size.Empty, flags);
             Color barColor = lightTheme ? Color.FromArgb(45, highlightColor) : Color.FromArgb(55, highlightColor);
             using (var brush = new SolidBrush(barColor))
                 g.FillRectangle(brush, x - 1, pos.Y, midSz.Width + 2, midSz.Height);
-            TextRenderer.DrawText(g, mid, normal, new Point(x, pos.Y), highlightColor);
-            TextRenderer.DrawText(g, after, normal, new Point(x + midSz.Width, pos.Y), normalColor);
+            TextRenderer.DrawText(g, mid, normal, new Point(x, pos.Y), highlightColor, flags);
+            TextRenderer.DrawText(g, after, normal, new Point(x + midSz.Width, pos.Y), normalColor, flags);
         }
     }
 

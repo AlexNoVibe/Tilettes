@@ -26,6 +26,7 @@ namespace WinPanel
         private NumericUpDown numGridRows;
         private NumericUpDown numDefaultItemSize;
         private CheckBox chkLightTheme;
+        private CheckBox chkEditMode;
         private CheckBox chkMiniExplorer;
 
         private NumericUpDown numIconScale;
@@ -172,7 +173,8 @@ namespace WinPanel
             exitTip.SetToolTip(numFolderExit, Loc.S("Return from a folder after this many seconds without activity (0 = off)", "Выходить из папки после стольких секунд без активности (0 = выкл)"));
             y += 30;
 
-            chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 300, Checked = settings.IsLightTheme, ForeColor = textColor };
+            chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 250, Checked = settings.IsLightTheme, ForeColor = textColor };
+            chkEditMode = new CheckBox { Text = "Allow adding icons", Left = 290, Top = y, Width = 280, Checked = settings.EditMode, ForeColor = textColor };
             y += 30;
 
             var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
@@ -297,6 +299,7 @@ namespace WinPanel
             this.Controls.Add(lblFolders);
             this.Controls.Add(cmbFolders);
             this.Controls.Add(chkLightTheme);
+            this.Controls.Add(chkEditMode);
             this.Controls.Add(chkMiniExplorer);
             this.Controls.Add(numFolderExit);
             this.Controls.Add(lblExit);
@@ -317,13 +320,16 @@ namespace WinPanel
             this.Controls.Add(btnSave);
             this.Controls.Add(btnCancel);
 
+            y += 42;
+
             // Bottom info: the real window position/size — shown only when it differs
             // from the values entered above (numbers only, no separate button).
+            // It sits on its own row below Save/Cancel so the buttons never cover it.
             lblLive = new Label
             {
                 Left = 20,
-                Top = this.ClientSize.Height - 44,
-                Width = 390,
+                Top = y,
+                Width = 460,
                 Height = 20,
                 ForeColor = settings.IsLightTheme ? Color.FromArgb(90, 90, 90) : Color.FromArgb(170, 170, 170)
             };
@@ -345,8 +351,8 @@ namespace WinPanel
                            liveRect.Width != (int)numWidth.Value || liveRect.Height != (int)numHeight.Value;
             lblLive.Visible = differs;
             if (differs)
-                lblLive.Text = "Current window: " + liveRect.Width + " x " + liveRect.Height +
-                               " at (" + liveRect.X + ", " + liveRect.Y + ")";
+                lblLive.Text = Loc.S("Current window: ", "Текущее окно: ") + liveRect.Width + " x " + liveRect.Height +
+                               Loc.S(" at (", " в (") + liveRect.X + ", " + liveRect.Y + ")";
         }
 
         // One settings row for a font group: [size] [color swatch] [family]
@@ -475,6 +481,7 @@ namespace WinPanel
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.IsLightTheme = chkLightTheme.Checked;
+            settings.EditMode = chkEditMode.Checked;
             settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
             settings.SearchFuzzyLevel = (int)numFuzzy.Value;
             settings.SearchInMeta = chkSearchMeta.Checked;

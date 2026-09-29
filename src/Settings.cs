@@ -88,6 +88,8 @@ namespace WinPanel
             WindowY = 100;
             MinimizeToTray = true;
             OpenFoldersInPopup = false;
+            // First-run defaults: grid visible and adding icons (edit mode) allowed.
+            EditMode = true;
             GridVisible = true;
             HotkeyShow = "Ctrl+J";
             MiniExplorerCtrlClick = true;
