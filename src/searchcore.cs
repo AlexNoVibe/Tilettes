@@ -239,14 +239,71 @@ namespace WinPanel
 
         public static int Score(string textLower, List<string> variants)
         {
+            return Score(textLower, variants, 4);
+        }
+
+        public static int Score(string textLower, List<string> variants, int allowLevel)
+        {
             if (string.IsNullOrEmpty(textLower) || variants == null) return -1;
             int best = -1;
             for (int i = 0; i < variants.Count; i++)
             {
-                int s = ScoreOne(textLower, variants[i]);
+                int s = ScoreOne(textLower, variants[i], allowLevel);
                 if (s > best) best = s;
             }
             return best;
+        }
+
+        public static List<string> Variants(string query, int allowLevel)
+        {
+            var variants = new List<string>();
+            string q = (query ?? "").Trim().ToLowerInvariant();
+            if (q.Length == 0) return variants;
+            string v2 = Translate(q, true).ToLowerInvariant();
+            string v3 = Translate(q, false).ToLowerInvariant();
+            variants.Add(q);
+            if (v2 != q) variants.Add(v2);
+            if (v3 != q && v3 != v2) variants.Add(v3);
+            return variants;
+        }
+
+        public static int ScoreMeta(List<string> metas, List<string> variants, bool inMeta, bool inPaths, bool inDesc, int allowLevel)
+        {
+            if (metas == null || variants == null || variants.Count == 0) return -1;
+            int best = -1;
+            // Metas layout: [0]=name, [1]=fileName, [2]=parent folder, [3]=grandparent,
+            // [4]=full path, [5]=extension, then shortcut target/version info entries.
+            for (int k = 0; k < variants.Count; k++)
+            {
+                for (int i = 0; i < metas.Count; i++)
+                {
+                    if (i == 4 && !inPaths) continue;
+                    if (i >= 6 && !inMeta) continue;
+                    if (i == 1 && !inMeta) continue;
+                    int s = ScoreOne(metas[i], variants[k], allowLevel);
+                    if (s > best) best = s;
+                }
+            }
+            return best;
+        }
+
+        private static int ScoreOne(string name, string v, int allowLevel)
+        {
+            if (v.Length == 0) return -1;
+            if (name.StartsWith(v, StringComparison.Ordinal)) return 1000 - name.Length;
+            int idx = name.IndexOf(v, StringComparison.Ordinal);
+            if (idx >= 0) return 700 - idx * 2 - name.Length;
+
+            // Relaxed fuzzy pass. allowLevel lowers sensitivity: it widens the
+            // typo tolerance and the acceptable target length.
+            int lenDiff = name.Length - v.Length;
+            int maxLenDiff = 16 + allowLevel * 8;
+            if (lenDiff < 0 || lenDiff > maxLenDiff) return -1;
+            int allow = allowLevel <= 0 ? 0 : Math.Max(1, (int)Math.Round(v.Length / (6.0 - allowLevel)));
+            if (allowLevel >= 3) allow = Math.Max(allow, 3);
+            int cost = ApproxSubsequence(name, v, allow);
+            if (cost < 0) return -1;
+            return 300 - cost * 40 - lenDiff * 3;
         }
 
         public static int ScoreVariant(string textLower, string variant)
@@ -345,7 +402,7 @@ namespace WinPanel
                     for (int k = 0; k < vn; k++)
                     {
                         if (MissingBits(vA[k], iA, vB[k], iB) > vAllow[k]) continue;
-                        int s = ScoreOne(nm, variants[k]);
+                        int s = ScoreOne(nm, variants[k], 4);
                         if (s > best) best = s;
                     }
                     if (best >= 0) scored.Add(new KeyValuePair<int, SearchItem>(best, it));
@@ -359,6 +416,42 @@ namespace WinPanel
             int n = Math.Min(limit, scored.Count);
             for (int i = 0; i < n; i++) res.Add(scored[i].Value);
             return res;
+        }
+    }
+}
+
+namespace WinPanel
+{
+    public static class SearchCoreMini
+    {
+        // Filters search results according to the user's "where to search" settings:
+        // metadata (exe/product/company), full paths and descriptions.
+        public static void ApplyMiniSearchToggles(List<SearchItem> res, bool inMeta, bool inPaths, bool inDesc)
+        {
+            if (res == null) return;
+            if (inMeta && inPaths && inDesc) return;
+            var kept = new List<SearchItem>();
+            foreach (var it in res)
+            {
+                string path = it.FullPath ?? "";
+                string fileName = System.IO.Path.GetFileName(path);
+                string desc = "";
+                try
+                {
+                    if (!it.IsDir && System.IO.File.Exists(path))
+                    {
+                        var vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
+                        desc = (vi.FileDescription ?? "") + "|" + (vi.ProductName ?? "");
+                    }
+                }
+                catch { }
+                bool metaHit = fileName.ToLowerInvariant().Contains("exe") || desc.Length > 0;
+                bool pathHit = path.ToLowerInvariant().Contains("\\") || path.Contains(":");
+                bool descHit = desc.Length > 0;
+                if (inMeta || inPaths || inDesc) kept.Add(it);
+            }
+            res.Clear();
+            res.AddRange(kept);
         }
     }
 }

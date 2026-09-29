@@ -435,6 +435,8 @@ namespace WinPanel
                     try { AutoStart.Apply(settings.AutoStart, settings.AutoStartMinimized); } catch { }
                     try { trayIcon.Visible = settings.TrayIconAlways; } catch { }
                     Loc.Walk(this);
+                    try { if (panelSearchBox != null) panelSearchBox.Font = Settings.MakeFont(panelSearchBox.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize))); } catch { }
+                    try { if (panelSearchList != null) panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize))); } catch { }
                     LoadTabs();
                 }
             }
@@ -1331,6 +1333,13 @@ namespace WinPanel
             // ---- Search bar for the saved items (bottom row of the top strip) ----
             var searchRow = new Panel { Dock = DockStyle.Bottom, Height = 31, BackColor = bgColor };
             var sBox = new TextBox { Left = 8, Top = 5, Width = 280, BorderStyle = BorderStyle.FixedSingle, BackColor = panelColor, ForeColor = textColor };
+            try
+            {
+                int bfs = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize));
+                if (bfs != 9) sBox.Font = new Font(sBox.Font.FontFamily, bfs);
+                if (bfs > 13) { sBox.Width = 380; searchRow.Height = Math.Max(31, bfs + 22); }
+            }
+            catch { }
             sBox.TextChanged += (s, e) => { if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); } };
             sBox.KeyDown += PanelSearchBox_KeyDown;
             searchRow.Controls.Add(sBox);

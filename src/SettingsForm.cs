@@ -29,6 +29,8 @@ namespace WinPanel
         private CheckBox chkMiniExplorer;
 
         private NumericUpDown numIconScale;
+        private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
+        private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc;
         private NumericUpDown numFolderExit;
         private ComboBox cmbLang;
         private CheckBox chkAutoStart, chkAutoStartMin, chkTrayAlways, chkKeepTab;
@@ -188,8 +190,35 @@ namespace WinPanel
                 out numFontTabsSize, out btnFontTabsColor, out cmbFontTabs);
             y += 30;
             AddFontRow("UI Font:", y, settings.FontUiSize, settings.FontUiColor, settings.FontUiName,
-                out numFontUiSize, out btnFontUiColor, out cmbFontUi);
+                out numFontUiSize, out btnFontItemsColor, out cmbFontUi);
             y += 34;
+            // ---- Search section ----
+            var lblSearchSection = new Label { Text = "Search", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
+            y += 24;
+            var lblFuzzy = new Label { Text = "Fuzzy accuracy (0-3):", Left = 20, Top = y, Width = 150 };
+            numFuzzy = new NumericUpDown { Left = 175, Top = y - 2, Width = 45, Minimum = 0, Maximum = 3, Value = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            y += 26;
+            chkSearchMeta = new CheckBox { Text = "Search in metadata (exe, product)", Left = 20, Top = y, Width = 420, Checked = settings.SearchInMeta, ForeColor = textColor };
+            y += 24;
+            chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 420, Checked = settings.SearchInPaths, ForeColor = textColor };
+            y += 24;
+            chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 420, Checked = settings.SearchInDesc, ForeColor = textColor };
+            y += 26;
+            var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 120 };
+            numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblSearchBoxFont = new Label { Text = "box", Left = 205, Top = y, Width = 35 };
+            numSearchResultsFont = new NumericUpDown { Left = 250, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblSearchResultsFont = new Label { Text = "results", Left = 305, Top = y, Width = 60 };
+            this.Controls.Add(lblSearchSection);
+            this.Controls.Add(lblFuzzy);
+            this.Controls.Add(numFuzzy);
+            this.Controls.Add(chkSearchMeta);
+            this.Controls.Add(chkSearchPaths);
+            this.Controls.Add(chkSearchDesc);
+            this.Controls.Add(lblSearchFonts);
+            this.Controls.Add(numSearchBoxFont);
+            this.Controls.Add(numSearchResultsFont);
+            this.Controls.Add(lblSearchResultsFont);
 
             var lblTypes = new Label { Text = "File types:", Left = 20, Top = y, Width = 92 };
             var btnTypeIcons = new Button { Text = "Icons by type...", Left = 115, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
@@ -442,6 +471,13 @@ namespace WinPanel
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.IsLightTheme = chkLightTheme.Checked;
+            settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
+            settings.SearchFuzzyLevel = (int)numFuzzy.Value;
+            settings.SearchInMeta = chkSearchMeta.Checked;
+            settings.SearchInPaths = chkSearchPaths.Checked;
+            settings.SearchInDesc = chkSearchDesc.Checked;
+            settings.SearchBoxFontSize = (int)numSearchBoxFont.Value;
+            settings.SearchResultsFontSize = (int)numSearchResultsFont.Value;
             settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
             settings.Language = cmbLang.SelectedIndex == 1 ? "en" : "ru";
             settings.AutoStart = chkAutoStart.Checked;

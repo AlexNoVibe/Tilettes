@@ -48,6 +48,14 @@ namespace WinPanel
         public bool KeepActiveTab { get; set; }
         public string ActiveTab { get; set; }
 
+        // Panel search tuning
+        public int SearchFuzzyLevel { get; set; }     // 0 = exact only, 1..3 = looser fuzzy
+        public bool SearchInMeta { get; set; }        // exe name, product, company
+        public bool SearchInPaths { get; set; }       // full path text
+        public bool SearchInDesc { get; set; }        // FileDescription / shortcut description
+        public int SearchBoxFontSize { get; set; }
+        public int SearchResultsFontSize { get; set; }
+
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
@@ -91,6 +99,12 @@ namespace WinPanel
             TrayIconAlways = true;
             KeepActiveTab = true;
             ActiveTab = "";
+            SearchFuzzyLevel = 2;
+            SearchInMeta = true;
+            SearchInPaths = true;
+            SearchInDesc = true;
+            SearchBoxFontSize = 9;
+            SearchResultsFontSize = 9;
 
             GridTransparency = 50;
             GridColumns = 16;
@@ -217,6 +231,16 @@ namespace WinPanel
                 string atab = ini.Read("ActiveTab");
                 if (atab != null) s.ActiveTab = atab;
 
+                int sfz;
+                if (int.TryParse(ini.Read("SearchFuzzyLevel"), out sfz)) s.SearchFuzzyLevel = sfz;
+                bool sim, sip, sid;
+                if (bool.TryParse(ini.Read("SearchInMeta"), out sim)) s.SearchInMeta = sim;
+                if (bool.TryParse(ini.Read("SearchInPaths"), out sip)) s.SearchInPaths = sip;
+                if (bool.TryParse(ini.Read("SearchInDesc"), out sid)) s.SearchInDesc = sid;
+                int sbfs, srfs;
+                if (int.TryParse(ini.Read("SearchBoxFontSize"), out sbfs)) s.SearchBoxFontSize = sbfs;
+                if (int.TryParse(ini.Read("SearchResultsFontSize"), out srfs)) s.SearchResultsFontSize = srfs;
+
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
@@ -273,6 +297,12 @@ namespace WinPanel
                 ini.Write("TrayIconAlways", TrayIconAlways.ToString());
                 ini.Write("KeepActiveTab", KeepActiveTab.ToString());
                 ini.Write("ActiveTab", ActiveTab == null ? "" : ActiveTab);
+                ini.Write("SearchFuzzyLevel", SearchFuzzyLevel.ToString());
+                ini.Write("SearchInMeta", SearchInMeta.ToString());
+                ini.Write("SearchInPaths", SearchInPaths.ToString());
+                ini.Write("SearchInDesc", SearchInDesc.ToString());
+                ini.Write("SearchBoxFontSize", SearchBoxFontSize.ToString());
+                ini.Write("SearchResultsFontSize", SearchResultsFontSize.ToString());
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
