@@ -80,6 +80,23 @@ namespace WinPanel
         public string FontUiColor { get; set; }
         public string FontUiName { get; set; }
 
+        // Full backup every N days (0 = off); stored into autoBackup\ as a zip.
+        public int BackupDays { get; set; }
+        public string LastBackupDate { get; set; }
+
+        // Mirror the system Start Menu into the "Пуск" tab every N hours (0 = off).
+        public int StartMenuSyncHours { get; set; }
+        public string LastSyncDate { get; set; }
+
+        // Remember what the user searched and opened (panel search history).
+        public bool SearchSaveHistory { get; set; }
+
+        // Capture the physical Win key (both) to show the panel instead of Start.
+        public bool HotkeyWin { get; set; }
+
+        // Decorative skin id ("" = disabled); see Skins.cs
+        public string SkinName { get; set; }
+
         public Settings()
         {
             StartupWidth = 900;
@@ -130,6 +147,14 @@ namespace WinPanel
             FontUiSize = 9;
             FontUiColor = "";
             FontUiName = "Segoe UI";
+
+            BackupDays = 7;
+            LastBackupDate = "";
+            StartMenuSyncHours = 24;
+            LastSyncDate = "";
+            SearchSaveHistory = true;
+            HotkeyWin = true;
+            SkinName = "";
         }
 
         public static System.Drawing.Color ParseColor(string hex, System.Drawing.Color fallback)
@@ -267,6 +292,18 @@ namespace WinPanel
                 val = ini.Read("FontUiColor"); if (val != null) s.FontUiColor = val;
                 val = ini.Read("FontUiName"); if (val != null && val.Length > 0) s.FontUiName = val;
                 if (int.TryParse(ini.Read("FontUiSize"), out fus)) s.FontUiSize = fus;
+
+                int bd;
+                if (int.TryParse(ini.Read("BackupDays"), out bd)) s.BackupDays = Math.Max(0, Math.Min(365, bd));
+                val = ini.Read("LastBackupDate"); if (val != null) s.LastBackupDate = val;
+                int smh;
+                if (int.TryParse(ini.Read("StartMenuSyncHours"), out smh)) s.StartMenuSyncHours = Math.Max(0, Math.Min(8760, smh));
+                val = ini.Read("LastSyncDate"); if (val != null) s.LastSyncDate = val;
+                bool ssh;
+                if (bool.TryParse(ini.Read("SearchSaveHistory"), out ssh)) s.SearchSaveHistory = ssh;
+                bool hkw;
+                if (bool.TryParse(ini.Read("HotkeyWin"), out hkw)) s.HotkeyWin = hkw;
+                val = ini.Read("SkinName"); if (val != null) s.SkinName = val;
             }
             catch
             {
@@ -331,6 +368,14 @@ namespace WinPanel
                 ini.Write("FontUiSize", FontUiSize.ToString());
                 ini.Write("FontUiColor", FontUiColor == null ? "" : FontUiColor);
                 ini.Write("FontUiName", FontUiName == null ? "" : FontUiName);
+
+                ini.Write("BackupDays", BackupDays.ToString());
+                ini.Write("LastBackupDate", LastBackupDate == null ? "" : LastBackupDate);
+                ini.Write("StartMenuSyncHours", StartMenuSyncHours.ToString());
+                ini.Write("LastSyncDate", LastSyncDate == null ? "" : LastSyncDate);
+                ini.Write("SearchSaveHistory", SearchSaveHistory.ToString());
+                ini.Write("HotkeyWin", HotkeyWin.ToString());
+                ini.Write("SkinName", SkinName == null ? "" : SkinName);
             }
             catch (Exception ex)
             {

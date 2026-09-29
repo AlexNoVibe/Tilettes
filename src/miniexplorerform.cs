@@ -1245,6 +1245,8 @@ namespace WinPanel
                 else
                 {
                     m.MenuItems.Add(Loc.S("Show in Explorer"), (s2, e2) => OpenInExplorer(en.FullPath, true));
+                    if (IsTarExtractable(en.Name))
+                        m.MenuItems.Add(Loc.S("Extract here (tar)", "Распаковать здесь (tar)"), (s2, e2) => ExtractArchiveHere(en));
                 }
                 m.MenuItems.Add(Loc.S("Copy path"), (s2, e2) => CopyText(en.FullPath));
             }
@@ -1262,6 +1264,44 @@ namespace WinPanel
         private static void CopyText(string t)
         {
             try { if (!string.IsNullOrEmpty(t)) Clipboard.SetText(t); } catch { }
+        }
+
+        // Archives the bundled bsdtar can unpack (tar, gz, zip, ...).
+        private static bool IsTarExtractable(string name)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(name)) return false;
+                string n = name.ToLowerInvariant();
+                return n.EndsWith(".tar") || n.EndsWith(".tar.gz") || n.EndsWith(".tar.bz2") ||
+                       n.EndsWith(".tar.xz") || n.EndsWith(".tgz") || n.EndsWith(".tbz2") ||
+                       n.EndsWith(".txz") || n.EndsWith(".zip") || n.EndsWith(".gz") || n.EndsWith(".xz");
+            }
+            catch { return false; }
+        }
+
+        // "tar открыть": unpack the archive into a subfolder next to it through the
+        // embedded console (output stays visible), then refresh the listing.
+        private void ExtractArchiveHere(DirEntry en)
+        {
+            try
+            {
+                string dir = Path.GetFileNameWithoutExtension(en.Name);
+                if (string.IsNullOrEmpty(dir)) dir = "extracted";
+                foreach (char c in Path.GetInvalidFileNameChars()) dir = dir.Replace(c, '_');
+                RunInConsole("mkdir \"" + dir + "\" 2>nul & tar -xf \"" + en.FullPath + "\" -C \"" + dir + "\"");
+                var t = new System.Windows.Forms.Timer { Interval = 1500 };
+                t.Tick += delegate
+                {
+                    try { t.Stop(); t.Dispose(); LoadDir(); }
+                    catch { }
+                };
+                t.Start();
+            }
+            catch (Exception ex)
+            {
+                AppendConsole(Loc.S("Extract failed: ", "Не удалось распаковать: ") + ex.Message, Color.FromArgb(214, 106, 106));
+            }
         }
 
         private void OpenInExplorer(string path, bool select)

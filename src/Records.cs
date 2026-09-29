@@ -18,6 +18,11 @@ namespace WinPanel
         public string CustomIconPath { get; set; }
         // Free-form user description; used by the panel search ("Search in descriptions").
         public string ShortDescription { get; set; }
+        // Sync bookkeeping: where a mirrored Start Menu item came from ("file:C:\...",
+        // "dir:...", "uwp:shell:AppsFolder\..."). Empty for normal user items.
+        public string Src { get; set; }
+        // UWP / Store app (launched through shell:AppsFolder, icon via the shell).
+        public bool IsUwp { get; set; }
         public List<ShortcutItem> Children { get; set; }
 
         public ShortcutItem()
@@ -34,6 +39,8 @@ namespace WinPanel
         public string Name { get; set; }
         public bool IsGridLayout { get; set; } // True = Grid, False = Free layout
         public int Row { get; set; } // Tab bar row; tabs are placed into rows manually by dragging
+        // Special tab type ("startmenu" = mirrored system Start Menu; null = normal).
+        public string Kind { get; set; }
         public List<ShortcutItem> Items { get; set; }
 
         public TabData()

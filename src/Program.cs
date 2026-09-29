@@ -106,6 +106,14 @@ namespace WinPanel
         private const int WM_HOTKEY = 0x0312;
         private bool hotkeyRegistered = false;
 
+        // Win-key capture ("panel instead of Start"): both physical Win keys.
+        private const int HotkeyIdWinL = 0x5712;
+        private const int HotkeyIdWinR = 0x5713;
+        private bool hotkeyWinRegistered = false;
+
+        // Active decorative skin (null/"None" id = classic behavior).
+        private Skin skin = Skin.None;
+
         public MainForm()
         {
             settings = Settings.Load(settingsPath);
@@ -143,6 +151,9 @@ namespace WinPanel
             FileTypes.Load(FileTypes.DefaultFilePath);
 
             isEditMode = settings.EditMode;
+
+            try { SearchHistoryStore.Load(); }
+            catch (Exception ex) { AppLog.Write("Search history load", ex); }
 
             ApplyThemeColors();
 
@@ -293,6 +304,12 @@ namespace WinPanel
                     UnregisterHotKey(this.Handle, HotkeyId);
                     hotkeyRegistered = false;
                 }
+                if (hotkeyWinRegistered)
+                {
+                    try { UnregisterHotKey(this.Handle, HotkeyIdWinL); } catch { }
+                    try { UnregisterHotKey(this.Handle, HotkeyIdWinR); } catch { }
+                    hotkeyWinRegistered = false;
+                }
                 if (iconTimer != null)
                 {
                     iconTimer.Stop();
@@ -322,11 +339,28 @@ namespace WinPanel
                 tabNavigations[tab] = new Stack<ShortcutItem>();
             }
 
+            // Overflow protection: after the user shrank the grid, items that no
+            // longer fit move into a last-resort folder (kept for later restore).
+            try
+            {
+                bool changed = false;
+                foreach (var tab in records.Tabs) changed |= EnsureTabFits(tab);
+                if (changed) records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("Overflow pass", ex); }
+
             LoadTabs();
 
             ApplyHotkey();
 
             AddEdgeGrips();
+
+            // Scheduled maintenance: a full backup (3 minutes after launch when due)
+            // and the Start Menu mirror sync (20 seconds after launch when due).
+            try { BackupManager.ScheduleIfNeeded(this, settings); }
+            catch (Exception ex) { AppLog.Write("Backup schedule", ex); }
+            try { StartMenuSync.ScheduleIfNeeded(this, settings); }
+            catch (Exception ex) { AppLog.Write("Sync schedule", ex); }
         }
 
         // WS_EX_COMPOSITED: the window (with all children) paints double-buffered,
@@ -350,6 +384,7 @@ namespace WinPanel
             {
                 this.Region = null;
                 lastRegionW = -1;
+                UpdateBorderOverlay();
                 return;
             }
             // Recreate the rounded region only when the size actually changed, so a
@@ -358,6 +393,88 @@ namespace WinPanel
             lastRegionW = Width;
             lastRegionH = Height;
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+            UpdateBorderOverlay();
+        }
+
+        // Decorative skin frame: a thin colored line following the rounded window
+        // contour. Lives on an overlay that is transparent to the mouse, so tiles,
+        // grips and panels underneath keep working.
+        private BorderOverlay borderOverlay;
+
+        private void UpdateBorderOverlay()
+        {
+            try
+            {
+                if (!Skin.IsActive(skin) || skin.BorderWidth <= 0 || WindowState == FormWindowState.Maximized)
+                {
+                    if (borderOverlay != null) { borderOverlay.Dispose(); borderOverlay = null; }
+                    return;
+                }
+                if (borderOverlay == null || borderOverlay.IsDisposed)
+                {
+                    borderOverlay = new BorderOverlay();
+                    this.Controls.Add(borderOverlay);
+                }
+                borderOverlay.SkinBorder = skin.Border;
+                borderOverlay.BorderSize = Math.Max(1, skin.BorderWidth);
+                borderOverlay.Bounds = new Rectangle(0, 0, Width, Height);
+                borderOverlay.BringToFront();
+                borderOverlay.Invalidate();
+            }
+            catch (Exception ex) { AppLog.Write("Border overlay", ex); }
+        }
+
+        // Clicks and drag-resize must fall through the frame to the real controls.
+        // The frame is drawn in OnPaint (no Control.Region: assigning a Region
+        // before the handle exists blows up in Region.GetHrgn on some systems).
+        private class BorderOverlay : Control
+        {
+            public Color SkinBorder = Color.Gray;
+            public int BorderSize = 2;
+
+            public BorderOverlay()
+            {
+                this.Enabled = false;
+                this.TabStop = false;
+                // No DoubleBuffered here: a buffered transparent control copies the
+                // uninitialized buffer to the screen and renders as a black rect.
+                SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
+            }
+            protected override CreateParams CreateParams
+            {
+                get { var cp = base.CreateParams; cp.ExStyle |= 0x20; return cp; } // WS_EX_TRANSPARENT
+            }
+            protected override void OnPaintBackground(PaintEventArgs e) { }
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                try
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    int bw = Math.Max(1, BorderSize);
+                    using (var pen = new Pen(SkinBorder, bw))
+                        e.Graphics.DrawPath(pen, GetRoundedRectPath(new Rectangle(bw / 2, bw / 2, Math.Max(1, Width - bw - 1), Math.Max(1, Height - bw - 1)), 15));
+                }
+                catch { }
+            }
+            private System.Drawing.Drawing2D.GraphicsPath GetRoundedRectPath(Rectangle bounds, int radius)
+            {
+                var path = new System.Drawing.Drawing2D.GraphicsPath();
+                int d = radius * 2;
+                if (bounds.Width < d || bounds.Height < d) { path.AddRectangle(bounds); return path; }
+                Rectangle arc = new Rectangle(bounds.Location, new Size(d, d));
+                path.AddArc(arc, 180, 90);
+                arc.X = bounds.Right - d; path.AddArc(arc, 270, 90);
+                arc.Y = bounds.Bottom - d; path.AddArc(arc, 0, 90);
+                arc.X = bounds.Left; path.AddArc(arc, 90, 90);
+                path.CloseFigure();
+                return path;
+            }
+            protected override void WndProc(ref Message m)
+            {
+                const int WM_NCHITTEST = 0x84;
+                if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)(-1); return; } // HTTRANSPARENT
+                base.WndProc(ref m);
+            }
         }
 
         // Invisible edge grips: the borderless window is resizable from any edge or
@@ -400,6 +517,15 @@ namespace WinPanel
             {
                 RestoreWindow();
                 return;
+            }
+            if (m.Msg == WM_HOTKEY)
+            {
+                int hkId = m.WParam.ToInt32();
+                if (hkId == HotkeyIdWinL || hkId == HotkeyIdWinR)
+                {
+                    ToggleByWinKey();
+                    return;
+                }
             }
             if (m.Msg == SingleInstance.ShowMessage)
             {
@@ -540,7 +666,21 @@ namespace WinPanel
                     Loc.Walk(this);
                     try { if (panelSearchBox != null) panelSearchBox.Font = Settings.MakeFont(panelSearchBox.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize))); } catch { }
                     ApplySearchListFont();
+
+                    // A smaller grid may no longer hold every item: re-run overflow.
+                    try
+                    {
+                        bool changed = false;
+                        foreach (var tab in records.Tabs) changed |= EnsureTabFits(tab);
+                        if (changed) records.Save(recordsPath);
+                    }
+                    catch (Exception ex) { AppLog.Write("Overflow pass", ex); }
+
                     LoadTabs();
+
+                    // "Do it now" requests from the settings dialog.
+                    if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, true);
+                    if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
                 }
             }
         }
@@ -561,6 +701,19 @@ namespace WinPanel
                 hoverColor = Color.FromArgb(62, 62, 66);
                 textColor = Color.White;
             }
+
+            // Decorative skin (Android, Night, ...): its own palette replaces the
+            // theme colors; the background becomes a gradient and a border line
+            // frames the window. Empty id keeps the classic behavior untouched.
+            try { skin = Skin.Find(settings != null ? settings.SkinName : null); } catch { skin = Skin.None; }
+            if (Skin.IsActive(skin))
+            {
+                bgColor = skin.BgTop;
+                panelColor = skin.Panel;
+                hoverColor = skin.Hover;
+                textColor = skin.Text;
+            }
+
             this.BackColor = bgColor;
             this.ForeColor = textColor;
             if (topPanel != null) topPanel.BackColor = bgColor;
@@ -576,6 +729,72 @@ namespace WinPanel
                 textColor = uiOverride;
                 this.ForeColor = textColor;
             }
+            try { this.Invalidate(); } catch { }
+            try { UpdateBorderOverlay(); } catch { }
+        }
+
+        // Skin background: vertical gradient between the two skin colors.
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            try
+            {
+                if (!Skin.IsActive(skin)) { base.OnPaintBackground(e); return; }
+                using (var brush = new LinearGradientBrush(this.ClientRectangle, skin.BgTop, skin.BgBottom, LinearGradientMode.Vertical))
+                {
+                    e.Graphics.FillRectangle(brush, this.ClientRectangle);
+                }
+            }
+            catch { base.OnPaintBackground(e); }
+        }
+
+        // Skin border: a rounded outer line around the main window.
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            try
+            {
+                if (!Skin.IsActive(skin) || WindowState == FormWindowState.Maximized) return;
+                int bw = Math.Max(1, skin.BorderWidth);
+                using (var pen = new Pen(skin.Border, bw))
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    int inset = bw / 2;
+                    e.Graphics.DrawPath(pen, GetRoundedRectPath(new Rectangle(inset, inset, Width - bw - 1, Height - bw - 1), 15));
+                }
+            }
+            catch { }
+        }
+
+        // ---- helpers used by the scheduled subsystems (backup / sync) ----
+
+        public string SettingsFilePath { get { return settingsPath; } }
+        public string RecordsFilePath { get { return recordsPath; } }
+        public Records Records { get { return records; } }
+
+        // Tray balloon from any thread-safe context.
+        public void ShowBalloon(string text)
+        {
+            try
+            {
+                if (trayIcon == null) return;
+                trayIcon.ShowBalloonTip(3000, "WinPanel", text ?? "", ToolTipIcon.Info);
+            }
+            catch { }
+        }
+
+        // The records were replaced underneath the form (Start Menu sync): re-read
+        // them, re-apply overflow protection and rebuild the UI.
+        public void OnDataExternallyChanged()
+        {
+            try
+            {
+                records = Records.Load(recordsPath);
+                foreach (var tab in records.Tabs)
+                    if (!tabNavigations.ContainsKey(tab)) tabNavigations[tab] = new Stack<ShortcutItem>();
+                foreach (var tab in records.Tabs) EnsureTabFits(tab);
+                LoadTabs();
+            }
+            catch (Exception ex) { AppLog.Write("OnDataExternallyChanged", ex); }
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -659,15 +878,15 @@ namespace WinPanel
             {
                 if (panelSearchBox == null || panelSearchBox.IsDisposed) return;
                 string q = panelSearchBox.Text.Trim();
-                if (q.Length == 0) { HidePanelSearch(); return; }
+                if (q.Length == 0) { ShowPastSearch(); return; }
                 if (activeTabData == null || activeLayoutPanel == null) return;
                 var variants = SearchCore.Variants(q);
                 if (variants.Count == 0) { HidePanelSearch(); return; }
 
-                // Build a flat snapshot of the items and run the actual matching on a
-                // background thread: with thousands of entries the UI never freezes.
+                // Search spans every tab, so the mirrored Start Menu tab is reachable
+                // from anywhere (its whole purpose is to feed the search).
                 var all = new List<ShortcutItem>();
-                CollectAllItems(activeTabData.Items, all);
+                foreach (var tab in records.Tabs) CollectAllItems(tab.Items, all);
                 int gen = ++panelSearchGen;
                 fuzzyLevel = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 useMeta = settings.SearchInMeta; usePaths = settings.SearchInPaths; useDesc = settings.SearchInDesc;
@@ -683,6 +902,7 @@ namespace WinPanel
 
                 var vv = variants;
                 panelSearchVariants = vv;
+                string qLower = q.ToLowerInvariant();
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
                     List<KeyValuePair<int, ShortcutItem>> found;
@@ -693,6 +913,16 @@ namespace WinPanel
                         this.BeginInvoke((MethodInvoker)delegate()
                         {
                             if (this.IsDisposed || gen != panelSearchGen) return;
+                            // History boost: queries that previously led to this exact
+                            // item rank it far above fresh matches.
+                            for (int i = 0; i < found.Count; i++)
+                            {
+                                int boost = 0;
+                                try { boost = SearchHistoryStore.Boost(qLower, found[i].Value.Path) * 40; }
+                                catch { }
+                                if (boost != 0)
+                                    found[i] = new KeyValuePair<int, ShortcutItem>(found[i].Key + boost, found[i].Value);
+                            }
                             found.Sort(delegate(KeyValuePair<int, ShortcutItem> a, KeyValuePair<int, ShortcutItem> b)
                             {
                                 if (b.Key != a.Key) return b.Key - a.Key;
@@ -705,6 +935,43 @@ namespace WinPanel
                 });
             }
             catch { }
+        }
+
+        // Empty search box: show what the user searched and opened before
+        // ("Прошлый поиск"), best pairs first. Respects the history setting.
+        private void ShowPastSearch()
+        {
+            try
+            {
+                if (!settings.SearchSaveHistory || activeTabData == null) { HidePanelSearch(); return; }
+                var top = SearchHistoryStore.Top(15);
+                if (top.Count == 0) { HidePanelSearch(); return; }
+                panelSearchGen++;
+                panelSearchResults.Clear();
+                foreach (var e in top)
+                {
+                    var it = new ShortcutItem();
+                    it.Name = (string.IsNullOrEmpty(e.Query) ? "" : e.Query + "  →  ") + e.Name;
+                    it.Path = e.Path ?? "";
+                    it.IsFolder = e.IsFolder;
+                    panelSearchResults.Add(it);
+                }
+                panelSearchList.BeginUpdate();
+                panelSearchList.Items.Clear();
+                foreach (var it in panelSearchResults) panelSearchList.Items.Add(it.Name);
+                panelSearchList.EndUpdate();
+                panelSearchList.ClearSelected();
+                panelSearchList.Invalidate();
+                panelSearchVariants = new List<string>();
+                panelSearchStatus.Text = Loc.IsRu
+                    ? "Прошлый поиск · " + panelSearchResults.Count + " · Enter — открыть, Esc — закрыть"
+                    : "Past search · " + panelSearchResults.Count + " · Enter to open, Esc to close";
+                panelSearchOverlay.Bounds = contentPanel.Bounds;
+                panelSearchOverlay.Visible = true;
+                panelSearchOverlay.BringToFront();
+                panelSearchActive = true;
+            }
+            catch (Exception ex) { AppLog.Write("Past search", ex); }
         }
 
         private static void CollectAllItems(List<ShortcutItem> items, List<ShortcutItem> outList)
@@ -814,7 +1081,15 @@ namespace WinPanel
         {
             if (i < 0 || i >= panelSearchResults.Count) return;
             var it = panelSearchResults[i];
+            string q = panelSearchBox != null && panelSearchBox.Text != null ? panelSearchBox.Text.Trim() : "";
+            bool fromPast = q.Length == 0; // clicked inside "Прошлый поиск"
             ClearPanelSearch();
+            // Remember "query -> opened item" so the same pair ranks higher next time.
+            if (settings.SearchSaveHistory && !fromPast && !string.IsNullOrEmpty(it.Path))
+            {
+                SearchHistoryStore.Record(q, it.Name, it.Path, it.IsFolder);
+                SearchHistoryStore.Save();
+            }
             if (it.IsFolder)
             {
                 var nav = tabNavigations[activeTabData];
@@ -861,7 +1136,7 @@ namespace WinPanel
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
                     Image big = null;
-                    try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIcon(it.Path, false); }
+                    try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIconAuto(it.Path, false); }
                     catch { }
                     ic = null;
                     if (big != null)
@@ -986,10 +1261,68 @@ namespace WinPanel
                 hotkeyRegistered = false;
             }
             uint mods, vk;
-            if (!ParseHotkey(settings != null ? settings.HotkeyShow : null, out mods, out vk)) return;
+            if (!ParseHotkey(settings != null ? settings.HotkeyShow : null, out mods, out vk)) { ApplyWinKeyHotkey(); return; }
             hotkeyRegistered = RegisterHotKey(this.Handle, HotkeyId, mods | 0x4000 /* MOD_NOREPEAT */, vk);
             if (!hotkeyRegistered && trayIcon != null)
                 trayIcon.ShowBalloonTip(2500, "WinPanel", "Hotkey " + settings.HotkeyShow + " is already in use by another program.", ToolTipIcon.Warning);
+            ApplyWinKeyHotkey();
+        }
+
+        // Captures (or releases) the physical Win keys so the panel appears instead
+        // of the Start menu. Fails soft when another program holds the keys.
+        private void ApplyWinKeyHotkey()
+        {
+            try
+            {
+                bool want = settings != null && settings.HotkeyWin;
+                if (!want)
+                {
+                    if (hotkeyWinRegistered)
+                    {
+                        try { UnregisterHotKey(this.Handle, HotkeyIdWinL); } catch { }
+                        try { UnregisterHotKey(this.Handle, HotkeyIdWinR); } catch { }
+                        hotkeyWinRegistered = false;
+                    }
+                    return;
+                }
+                if (hotkeyWinRegistered) return;
+                const uint MOD_WIN = 0x8, MOD_NOREPEAT = 0x4000;
+                const uint VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+                bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, VK_LWIN);
+                bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, VK_RWIN);
+                hotkeyWinRegistered = left || right;
+                if (!hotkeyWinRegistered)
+                    AppLog.Write("Win key capture failed: already held by another program");
+                else if (!left || !right)
+                    AppLog.Write("Win key capture partial: L=" + left + " R=" + right);
+            }
+            catch (Exception ex) { AppLog.Write("Win key hotkey", ex); }
+        }
+
+        // The captured Start button: show the panel (search focused) or hide it.
+        private void ToggleByWinKey()
+        {
+            try
+            {
+                if (this.Visible && this.WindowState != FormWindowState.Minimized)
+                {
+                    this.Hide();
+                }
+                else
+                {
+                    RestoreWindow();
+                    try
+                    {
+                        if (panelSearchBox != null && panelSearchBox.Visible)
+                        {
+                            panelSearchBox.Focus();
+                            panelSearchBox.SelectAll();
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex) { AppLog.Write("Win key toggle", ex); }
         }
 
         private static bool ParseHotkey(string hotkey, out uint mods, out uint vk)
@@ -1060,8 +1393,8 @@ namespace WinPanel
             string typeIcon = FileTypes.GetIconForPath(item.Path);
             if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                 return IconExtractor.LoadAny(typeIcon);
-            // 3) standard shell icon
-            return IconExtractor.GetIcon(item.Path, true);
+            // 3) standard shell icon (shell: paths = UWP apps)
+            return IconExtractor.GetIconAuto(item.Path, true);
         }
 
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
@@ -1111,7 +1444,7 @@ namespace WinPanel
                         if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                             img = IconExtractor.LoadAny(typeIcon);
                         else
-                            img = IconExtractor.GetIcon(child.Path, true);
+                            img = IconExtractor.GetIconAuto(child.Path, true);
                     }
                 }
                 catch { }
@@ -1890,6 +2223,157 @@ namespace WinPanel
                 item.GridX = cell.X;
                 item.GridY = cell.Y;
             }
+        }
+
+        // Static twin of PlaceInGrid for subsystems without settings access
+        // (Start Menu sync): first free cell in reading order.
+        internal static void PlaceIntoGridStatic(List<ShortcutItem> items, ShortcutItem item, int cols, int rows)
+        {
+            try
+            {
+                int s = item.Size;
+                if (s < 1 || s > 4) s = 1;
+                var occ = new bool[rows, cols];
+                foreach (var it in items)
+                {
+                    if (ReferenceEquals(it, item)) continue;
+                    int os = it.Size;
+                    if (os < 1 || os > 4) os = 1;
+                    if (os > cols || os > rows) os = Math.Max(1, Math.Min(cols, rows));
+                    int gx = it.GridX, gy = it.GridY;
+                    if (gx < 0 || gy < 0) continue;
+                    gx = Math.Max(0, Math.Min(cols - os, gx));
+                    gy = Math.Max(0, Math.Min(rows - os, gy));
+                    for (int dy = 0; dy < os; dy++)
+                        for (int dx = 0; dx < os; dx++)
+                            occ[gy + dy, gx + dx] = true;
+                }
+                for (int y = 0; y + s <= rows; y++)
+                {
+                    for (int x = 0; x + s <= cols; x++)
+                    {
+                        bool free = true;
+                        for (int dy = 0; dy < s && free; dy++)
+                            for (int dx = 0; dx < s && free; dx++)
+                                if (occ[y + dy, x + dx]) free = false;
+                        if (free)
+                        {
+                            item.GridX = x;
+                            item.GridY = y;
+                            return;
+                        }
+                    }
+                }
+                // Nowhere free: the overflow pass will relocate the item.
+                item.GridX = 0;
+                item.GridY = 0;
+            }
+            catch (Exception ex) { AppLog.Write("PlaceIntoGridStatic", ex); }
+        }
+
+        // ---------- Grid overflow protection ----------
+        // When the grid got smaller (manual settings change) or a sync added many
+        // items, the entries that no longer fit move into a last-resort folder
+        // ("Ещё"); a few rows always stay free. When the grid grows back, the
+        // folder unpacks itself. Returns true when the layout changed.
+        private const string OverflowSrcKey = "auto:overflow";
+        private const int ReservedRows = 2;
+
+        internal bool EnsureTabFits(TabData tab)
+        {
+            if (tab == null || !tab.IsGridLayout) return false;
+            int cols = Math.Max(1, settings.GridColumns);
+            int rows = Math.Max(1, settings.GridRows);
+            int usableRows = rows - ReservedRows;
+            if (usableRows < 1) usableRows = rows;
+
+            ShortcutItem overflow = null;
+            foreach (var it in tab.Items)
+                if (it.IsFolder && it.Src == OverflowSrcKey) { overflow = it; break; }
+
+            bool changed = false;
+
+            // 1) Unpack a previous overflow folder when everything fits again.
+            if (overflow != null && overflow.Children != null && overflow.Children.Count > 0)
+            {
+                long need = 0;
+                foreach (var it in tab.Items)
+                    if (!ReferenceEquals(it, overflow)) need += CellCount(it, cols, rows);
+                foreach (var ch in overflow.Children) need += CellCount(ch, cols, rows);
+                if (need <= (long)cols * usableRows)
+                {
+                    foreach (var ch in overflow.Children)
+                    {
+                        PlaceInGrid(tab.Items, ch, Math.Max(0, ch.GridX), Math.Max(0, ch.GridY), cols, rows);
+                        tab.Items.Add(ch);
+                    }
+                    overflow.Children.Clear();
+                    tab.Items.Remove(overflow);
+                    overflow = null;
+                    changed = true;
+                }
+            }
+
+            // 2) Evict bottom-most items until the rest fits into the usable rows.
+            long total = 0;
+            foreach (var it in tab.Items)
+                if (!ReferenceEquals(it, overflow)) total += CellCount(it, cols, rows);
+
+            if (total > (long)cols * usableRows)
+            {
+                if (overflow == null)
+                {
+                    overflow = new ShortcutItem();
+                    overflow.Name = Loc.S("More", "Ещё");
+                    overflow.IsFolder = true;
+                    overflow.Src = OverflowSrcKey;
+                    overflow.Size = 1;
+                    tab.Items.Add(overflow);
+                    changed = true;
+                }
+                if (overflow.Children == null) overflow.Children = new List<ShortcutItem>();
+
+                var byBottom = new List<ShortcutItem>(tab.Items);
+                byBottom.RemoveAll(delegate(ShortcutItem it) { return it.IsFolder && it.Src == OverflowSrcKey; });
+                byBottom.Sort(delegate(ShortcutItem a, ShortcutItem b)
+                {
+                    int ba = ClampItemSize(a.Size) + Math.Max(0, a.GridY);
+                    int bb = ClampItemSize(b.Size) + Math.Max(0, b.GridY);
+                    if (bb != ba) return bb - ba;          // lowest on screen first
+                    return b.GridX - a.GridX;               // then rightmost
+                });
+
+                int guard = byBottom.Count + 8;
+                while (total > (long)cols * usableRows && guard-- > 0 && byBottom.Count > 0)
+                {
+                    ShortcutItem victim = byBottom[0];
+                    byBottom.RemoveAt(0);
+                    tab.Items.Remove(victim);
+                    overflow.Children.Add(victim);
+                    total -= CellCount(victim, cols, rows);
+                    changed = true;
+                }
+                AppLog.Write("Overflow: " + overflow.Children.Count + " item(s) moved into '" + overflow.Name + "' (" + tab.Name + ")");
+            }
+
+            // 3) The overflow folder itself needs a visible cell (bottom rows first).
+            if (overflow != null)
+            {
+                overflow.Size = 1;
+                int beforeX = overflow.GridX, beforeY = overflow.GridY;
+                PlaceInGrid(tab.Items, overflow, 0, rows - 1, cols, rows);
+                if ((overflow.GridX != beforeX || overflow.GridY != beforeY) && beforeX >= 0) changed = true;
+            }
+
+            return changed;
+        }
+
+        private static long CellCount(ShortcutItem it, int cols, int rows)
+        {
+            int s = it.Size;
+            if (s < 1 || s > 4) s = 1;
+            if (s > cols || s > rows) s = Math.Max(1, Math.Min(cols, rows));
+            return (long)s * s;
         }
 
         private void CreateFolder(Panel layoutPanel, TabData tabData)
@@ -2778,7 +3262,7 @@ namespace WinPanel
 
             if (!item.IsFolder)
             {
-                try { IconImage = IconExtractor.GetIcon(item.Path, true); } catch { }
+                try { IconImage = IconExtractor.GetIconAuto(item.Path, true); } catch { }
                 if (IconImage == null) IconImage = SystemIcons.Application.ToBitmap();
             }
             else
@@ -3477,6 +3961,7 @@ namespace WinPanel
         [STAThread]
         static void Main()
         {
+            AppLog.InstallGlobalHandlers();
             if (!SingleInstance.Start())
             {
                 SingleInstance.NotifyExisting();
@@ -3484,7 +3969,18 @@ namespace WinPanel
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm());
+            try
+            {
+                Application.Run(new MainForm());
+            }
+            catch (Exception ex)
+            {
+                // Startup crash: log it and let the user see what happened instead of
+                // a silent process exit.
+                AppLog.Write("Fatal startup exception", ex);
+                try { MessageBox.Show("WinPanel: " + ex.Message + "\n\n" + Loc.S("Details in log.txt", "Подробности в log.txt"), "WinPanel", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                catch { }
+            }
         }
     }
 }

@@ -37,7 +37,11 @@ namespace WinPanel
                     using (var fs = new FileStream(path, FileMode.Open))
                     {
                         var list = (List<ExplorerBookmark>)serializer.Deserialize(fs);
-                        if (list != null) return list;
+                        if (list != null)
+                        {
+                            MergeDefaults(list);
+                            return list;
+                        }
                     }
                     return new List<ExplorerBookmark>();
                 }
@@ -51,6 +55,41 @@ namespace WinPanel
             try { Save(path, seeded); }
             catch { }
             return seeded;
+        }
+
+        // Adds command groups that appeared after the user's bookmarks.xml was
+        // created (docker/cmd/powershell/tar). Existing entries are never touched
+        // or reordered; only missing groups/commands are appended.
+        public static void MergeDefaults(List<ExplorerBookmark> list)
+        {
+            try
+            {
+                if (list == null) return;
+                var defaults = CreateDefault();
+                foreach (var group in defaults)
+                {
+                    ExplorerBookmark existing = null;
+                    foreach (var b in list)
+                        if (b.Kind == "group" && string.Equals(b.Name, group.Name, StringComparison.OrdinalIgnoreCase))
+                        { existing = b; break; }
+
+                    if (existing == null)
+                    {
+                        list.Add(group);
+                        continue;
+                    }
+                    if (existing.Children == null) existing.Children = new List<ExplorerBookmark>();
+                    foreach (var cmd in group.Children)
+                    {
+                        bool has = false;
+                        foreach (var c in existing.Children)
+                            if (c.Kind == "cmd" && string.Equals(c.Value, cmd.Value, StringComparison.OrdinalIgnoreCase))
+                            { has = true; break; }
+                        if (!has) existing.Children.Add(cmd);
+                    }
+                }
+            }
+            catch { }
         }
 
         public static void Save(string path, List<ExplorerBookmark> list)
@@ -84,11 +123,43 @@ namespace WinPanel
             docker.Name = "Docker";
             docker.Children.Add(Command("docker ps", "docker ps"));
             docker.Children.Add(Command("docker ps -a", "docker ps -a"));
+            docker.Children.Add(Command("docker images", "docker images"));
             docker.Children.Add(Command("docker compose up -d", "docker compose up -d"));
+            docker.Children.Add(Command("docker compose down", "docker compose down"));
             docker.Children.Add(Command("docker compose logs --tail 100 -f", "docker compose logs --tail 100 -f"));
+            docker.Children.Add(Command("docker compose build", "docker compose build"));
+            docker.Children.Add(Command("docker system df", "docker system df"));
+
+            var cmd = new ExplorerBookmark();
+            cmd.Kind = "group";
+            cmd.Name = "CMD";
+            cmd.Children.Add(Command("tasklist", "tasklist"));
+            cmd.Children.Add(Command("ipconfig /all", "ipconfig /all"));
+            cmd.Children.Add(Command("netstat -ano", "netstat -ano"));
+            cmd.Children.Add(Command("systeminfo", "systeminfo"));
+            cmd.Children.Add(Command("ping 8.8.8.8 -n 5", "ping 8.8.8.8 -n 5"));
+            cmd.Children.Add(Command("dir /a", "dir /a"));
+
+            var ps = new ExplorerBookmark();
+            ps.Kind = "group";
+            ps.Name = "PowerShell";
+            ps.Children.Add(Command("Top processes by CPU", "powershell -NoProfile -Command \"Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, CPU, Id\""));
+            ps.Children.Add(Command("Running services", "powershell -NoProfile -Command \"Get-Service | Where-Object {$_.Status -eq 'Running'} | Format-Table -AutoSize\""));
+            ps.Children.Add(Command("IPv4 addresses", "powershell -NoProfile -Command \"Get-NetIPAddress -AddressFamily IPv4 | Format-Table IPAddress, InterfaceAlias -AutoSize\""));
+            ps.Children.Add(Command("Disk free space", "powershell -NoProfile -Command \"Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize\""));
+            ps.Children.Add(Command("Open PowerShell here (window)", "start powershell -NoExit -Command \"Set-Location -LiteralPath .\""));
+
+            var tar = new ExplorerBookmark();
+            tar.Kind = "group";
+            tar.Name = "tar";
+            tar.Children.Add(Command("tar --version", "tar --version"));
+            tar.Children.Add(Command("tar: list archive contents (edit name)", "tar -tf archive.tar"));
 
             var list = new List<ExplorerBookmark>();
             list.Add(docker);
+            list.Add(cmd);
+            list.Add(ps);
+            list.Add(tar);
             return list;
         }
     }

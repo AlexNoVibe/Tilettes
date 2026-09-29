@@ -74,9 +74,21 @@ namespace WinPanel
         private const int SHIL_EXTRALARGE = 2;
         private const int ILD_TRANSPARENT = 1;
 
-        public static Image GetIcon(string path, bool large)
+        // Icon for any item path: shell: namespace paths (UWP apps) go through the
+        // IShellItemImageFactory, everything else through the regular extraction.
+        public static Image GetIconAuto(string path, bool large)
         {
-            // SHGFI_SYSICONINDEX alone returns iIcon = 0 on some systems, which makes every
+            try
+            {
+                if (ShellItemApi.IsShellPath(path))
+                    return ShellItemApi.GetShellIcon(path, large ? 96 : 48);
+            }
+            catch { }
+            return GetIcon(path, large);
+        }
+
+        public static Image GetIcon(string path, bool large)
+        {            // SHGFI_SYSICONINDEX alone returns iIcon = 0 on some systems, which makes every
             // item render the generic blank-page icon. Requesting SHGFI_ICON as well makes
             // the shell resolve the real system image list index into iIcon.
             SHFILEINFO shinfo = new SHFILEINFO();

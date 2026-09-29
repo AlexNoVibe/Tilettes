@@ -53,6 +53,16 @@ namespace WinPanel
         private Button btnBackup;
         private Button btnRestore;
 
+        // New in v2: skin picker, scheduled backup + Start Menu sync, search
+        // history, Win-key capture. Flags tell MainForm to run things "now".
+        private ComboBox cmbSkin;
+        private NumericUpDown numBackupDays;
+        private NumericUpDown numSyncHours;
+        private CheckBox chkSaveHistory;
+        private CheckBox chkWinKey;
+        public bool RunBackupNow { get; private set; }
+        public bool RunSyncNow { get; private set; }
+
         private Color bgColor;
         private Color panelColor;
         private Color hoverColor;
@@ -97,7 +107,7 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 588;
-            this.Height = 912;
+            this.Height = 1058;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -183,6 +193,19 @@ namespace WinPanel
             string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+J" : settings.HotkeyShow;
             if (!cmbHotkey.Items.Contains(hk)) cmbHotkey.Items.Add(hk);
             cmbHotkey.SelectedItem = hk;
+            chkWinKey = new CheckBox
+            {
+                Text = Loc.S("Capture Start button (Win)", "Захват кнопки Пуск (Win)"),
+                Left = 345,
+                Top = y,
+                Width = 235,
+                Checked = settings.HotkeyWin,
+                ForeColor = textColor
+            };
+            var winKeyTip = new ToolTip();
+            winKeyTip.SetToolTip(chkWinKey, Loc.S("Pressing the Win key shows the panel instead of the Start menu",
+                "Кнопка Пуск (Win) открывает панель вместо меню Пуск"));
+            this.Controls.Add(chkWinKey);
             y += 30;
 
             // Font rows: [size] [color] [family] — one row per group
@@ -206,6 +229,30 @@ namespace WinPanel
             chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 530, Checked = settings.SearchInPaths, ForeColor = textColor };
             y += 24;
             chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 530, Checked = settings.SearchInDesc, ForeColor = textColor };
+            y += 26;
+            chkSaveHistory = new CheckBox
+            {
+                Text = Loc.S("Save search history", "Сохранять историю поиска"),
+                Left = 20,
+                Top = y,
+                Width = 250,
+                Checked = settings.SearchSaveHistory,
+                ForeColor = textColor
+            };
+            var btnClearHistory = new Button
+            {
+                Text = Loc.S("Clear history", "Очистить историю"),
+                Left = 290,
+                Top = y - 3,
+                Width = 130,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
+            };
+            btnClearHistory.FlatAppearance.BorderSize = 0;
+            btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), "WinPanel"); };
+            this.Controls.Add(chkSaveHistory);
+            this.Controls.Add(btnClearHistory);
             y += 26;
             var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 125 };
             numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
@@ -253,6 +300,65 @@ namespace WinPanel
             cmbLang.Items.Add("Русский");
             cmbLang.Items.Add("English");
             cmbLang.SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            y += 30;
+
+            // ---- Maintenance: skin, scheduled backup, Start Menu sync ----
+            var lblMaint = new Label { Text = Loc.S("Maintenance & Start Menu", "Обслуживание и Пуск"), Left = 20, Top = y, Width = 350, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
+            y += 24;
+
+            var lblSkin = new Label { Text = Loc.S("Skin:", "Шкурка:"), Left = 20, Top = y, Width = 90 };
+            cmbSkin = new ComboBox { Left = 110, Top = y - 2, Width = 160, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            int skinIdx = 0;
+            for (int i = 0; i < Skin.All.Count; i++)
+            {
+                cmbSkin.Items.Add(Skin.All[i].DisplayName);
+                if (string.Equals(Skin.All[i].Id, settings.SkinName, StringComparison.OrdinalIgnoreCase)) skinIdx = i;
+            }
+            cmbSkin.SelectedIndex = skinIdx;
+            y += 28;
+
+            var lblBackupDays = new Label { Text = Loc.S("Backup every N days (0 = off):", "Бэкап раз в N дней (0 = выкл):"), Left = 20, Top = y, Width = 210 };
+            numBackupDays = new NumericUpDown { Left = 235, Top = y - 2, Width = 50, Maximum = 365, Minimum = 0, Value = Math.Max(0, Math.Min(365, settings.BackupDays)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblSyncHours = new Label { Text = Loc.S("Sync Start Menu every N h (0 = off):", "Синхр. Пуска раз в N ч (0 = выкл):"), Left = 300, Top = y, Width = 190 };
+            numSyncHours = new NumericUpDown { Left = 492, Top = y - 2, Width = 50, Maximum = 8760, Minimum = 0, Value = Math.Max(0, Math.Min(8760, settings.StartMenuSyncHours)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var backupTip = new ToolTip();
+            backupTip.SetToolTip(numBackupDays, Loc.S("Full backup (settings + shortcuts + bookmarks) into autoBackup\\; runs 3 minutes after launch when due",
+                "Полный бэкап (настройки + ярлыки + закладки) в autoBackup\\; делается через 3 минуты после запуска, когда подошёл срок"));
+            y += 30;
+
+            var btnRunBackup = new Button
+            {
+                Text = Loc.S("Backup now", "Бэкап сейчас"),
+                Left = 20,
+                Top = y - 3,
+                Width = 130,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
+            };
+            btnRunBackup.FlatAppearance.BorderSize = 0;
+            btnRunBackup.Click += (s, e) => { RunBackupNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            var btnRunSync = new Button
+            {
+                Text = Loc.S("Sync Start Menu now", "Синхронизировать Пуск"),
+                Left = 165,
+                Top = y - 3,
+                Width = 185,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
+            };
+            btnRunSync.FlatAppearance.BorderSize = 0;
+            btnRunSync.Click += (s, e) => { RunSyncNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            this.Controls.Add(lblMaint);
+            this.Controls.Add(lblSkin);
+            this.Controls.Add(cmbSkin);
+            this.Controls.Add(lblBackupDays);
+            this.Controls.Add(numBackupDays);
+            this.Controls.Add(lblSyncHours);
+            this.Controls.Add(numSyncHours);
+            this.Controls.Add(btnRunBackup);
+            this.Controls.Add(btnRunSync);
             y += 30;
 
             btnBackup = new Button { Text = "Save backup", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
@@ -509,6 +615,13 @@ namespace WinPanel
             settings.FontUiSize = (int)numFontUiSize.Value;
             settings.FontUiColor = ColorValue(btnFontUiColor, settings.FontUiColor);
             settings.FontUiName = FamilyValue(cmbFontUi, settings.FontUiName);
+
+            settings.HotkeyWin = chkWinKey.Checked;
+            settings.SearchSaveHistory = chkSaveHistory.Checked;
+            settings.BackupDays = (int)numBackupDays.Value;
+            settings.StartMenuSyncHours = (int)numSyncHours.Value;
+            try { settings.SkinName = cmbSkin.SelectedIndex >= 0 && cmbSkin.SelectedIndex < Skin.All.Count ? Skin.All[cmbSkin.SelectedIndex].Id : ""; }
+            catch { settings.SkinName = ""; }
 
             settings.Save(settingsPath);
             this.DialogResult = DialogResult.OK;

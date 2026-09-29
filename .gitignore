@@ -21,3 +21,10 @@ TOOLS.md
 UI_SPEC.md
 winpanel_changelog*.html
 ico/*.lnk
+
+# v2 runtime artifacts
+autoBackup/
+log.txt
+searchHistory.xml
+settings.ini.bak
+*.bak
