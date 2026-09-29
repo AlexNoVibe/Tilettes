@@ -37,6 +37,10 @@ namespace WinPanel
         private static int descIndex = -1;
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
+        private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
+        private Font searchHlFont;                                     // bold font used to draw matched characters
+        private string lastSearchTip = null;
+        private ToolTip itemTip;   // 0.3 s hover tooltip: descriptions + full search paths
         private string settingsPath = "settings.ini";
         private string recordsPath = "records.xml";
         private Panel topPanel;
@@ -207,6 +211,7 @@ namespace WinPanel
                 IntegralHeight = false
             };
             panelSearchList.DrawItem += PanelSearchList_DrawItem;
+            panelSearchList.MouseMove += PanelSearchList_MouseMove;
             panelSearchList.DoubleClick += (s, e) => OpenPanelSearchResult(panelSearchList.SelectedIndex);
             panelSearchList.KeyDown += (s, e) =>
             {
@@ -223,6 +228,10 @@ namespace WinPanel
             panelSearchOverlay.Controls.Add(panelSearchList);
             panelSearchOverlay.Controls.Add(panelSearchStatus);
             this.Controls.Add(panelSearchOverlay);
+
+            // Shared tooltip (0.3 s hover): item descriptions and full search paths.
+            itemTip = new ToolTip { InitialDelay = 300, ReshowDelay = 200, AutoPopDelay = 8000 };
+            ApplySearchListFont();
 
             // Type anywhere (except text inputs) to start the search; Esc clears it.
             this.KeyPreview = true;
@@ -450,7 +459,7 @@ namespace WinPanel
                     try { trayIcon.Visible = settings.TrayIconAlways; } catch { }
                     Loc.Walk(this);
                     try { if (panelSearchBox != null) panelSearchBox.Font = Settings.MakeFont(panelSearchBox.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize))); } catch { }
-                    try { if (panelSearchList != null) panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize))); } catch { }
+                    ApplySearchListFont();
                     LoadTabs();
                 }
             }
@@ -592,6 +601,7 @@ namespace WinPanel
                 panelSearchActive = true;
 
                 var vv = variants;
+                panelSearchVariants = vv;
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
                     List<KeyValuePair<int, ShortcutItem>> found;
@@ -662,12 +672,26 @@ namespace WinPanel
                         if (i == descIndex && !useDesc) continue;
                         if (i >= 6 && !useMeta) continue;
                         int s = SearchCore.ScoreVariant(metas[i], variants[k]);
+                        if (s < 0) continue;
+                        s += MetaBoost(i);
                         if (s > best) best = s;
                     }
                 }
                 if (best >= 0) found.Add(new KeyValuePair<int, ShortcutItem>(best, it));
             }
             return found;
+        }
+
+        // Ranking boost depending on which field matched: an item whose own name
+        // (or description) matches ranks above one that matched only in its path.
+        private static int MetaBoost(int metaIndex)
+        {
+            if (metaIndex == 0) return 140;                  // display name
+            if (metaIndex == 1) return 80;                   // file name
+            if (metaIndex == descIndex) return 60;           // user description
+            if (metaIndex == 2 || metaIndex == 3) return 30; // parent folder names
+            if (metaIndex == 4) return 10;                   // full path
+            return 0;                                        // version info etc.
         }
 
         private void ApplySearchResults(List<KeyValuePair<int, ShortcutItem>> found)
@@ -695,6 +719,8 @@ namespace WinPanel
             if (panelSearchOverlay != null) panelSearchOverlay.Visible = false;
             panelSearchActive = false;
             if (panelSearchResults != null) panelSearchResults.Clear();
+            panelSearchVariants = new List<string>();
+            lastSearchTip = null;
         }
 
         private void ClearPanelSearch()
@@ -769,21 +795,113 @@ namespace WinPanel
                     }
                     panelSearchIcons[key] = ic;
                 }
-                if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, e.Bounds.Top + 5, 16, 16));
+                int iconY = e.Bounds.Top + Math.Max(3, (panelSearchList.ItemHeight - 16) / 2);
+                if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, iconY, 16, 16));
             }
             catch { }
-            int ty = e.Bounds.Top + 6;
-            TextRenderer.DrawText(g, it.Name, this.Font, new Point(e.Bounds.Left + 32, ty), textColor);
-            string sub = PanelSearch.GetSummary(it);
-            if (!string.IsNullOrEmpty(sub))
+
+            Font f = this.Font;
+            Font fb = GetSearchHlFont();
+            Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
+            Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
+            int textH = TextRenderer.MeasureText("Ag", f).Height;
+            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - textH) / 2);
+            int left = e.Bounds.Left + 32;
+
+            // Right column: the full path; when it does not fit, only its tail is
+            // shown (the tooltip on hover always shows the full path).
+            string path = it.Path ?? "";
+            int maxPathW = (int)(e.Bounds.Width * 0.45);
+            string pathDisplay = path.Length > 0 ? UiText.FitTail(path, f, maxPathW) : "";
+            int pathW = pathDisplay.Length > 0 ? TextRenderer.MeasureText(pathDisplay, f).Width : 0;
+            int pathX = e.Bounds.Right - 8 - pathW;
+
+            // Middle column: the user description
+            string desc = PanelSearch.GetDescription(it);
+            bool hasDesc = !string.IsNullOrEmpty(desc);
+
+            // Left column: name (the query match is highlighted)
+            int hlStart, hlLen;
+            bool nameHl = UiText.FindHighlight((it.Name ?? "").ToLowerInvariant(), panelSearchVariants, out hlStart, out hlLen);
+            int maxNameW = (hasDesc
+                ? e.Bounds.Left + (int)(e.Bounds.Width * 0.38) - 24
+                : pathX - 16) - left;
+            string nameDisplay = it.Name;
+            if (TextRenderer.MeasureText(nameDisplay, f).Width > maxNameW && maxNameW > 30)
+                nameDisplay = UiText.FitEnd(it.Name, f, maxNameW);
+            UiText.ClampHighlight(nameDisplay, ref nameHl, ref hlStart, ref hlLen);
+            UiText.DrawHighlighted(g, nameDisplay, nameHl ? hlStart : -1, nameHl ? hlLen : 0, f, fb, new Point(left, ty), textColor, acc);
+
+            if (hasDesc)
             {
-                Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
-                var nameSz = TextRenderer.MeasureText(it.Name, this.Font);
-                var subSz = TextRenderer.MeasureText(sub, this.Font);
-                int sx = e.Bounds.Right - subSz.Width - 12;
-                if (sx > e.Bounds.Left + 32 + nameSz.Width + 20)
-                    TextRenderer.DrawText(g, sub, this.Font, new Point(sx, ty), subColor);
+                int descX = Math.Max(left + TextRenderer.MeasureText(nameDisplay, f).Width + 24,
+                                     e.Bounds.Left + (int)(e.Bounds.Width * 0.38));
+                int descSpace = pathX - 16 - descX;
+                if (descSpace > 40)
+                {
+                    int dStart, dLen;
+                    bool descHl = UiText.FindHighlight(desc.ToLowerInvariant(), panelSearchVariants, out dStart, out dLen);
+                    string descDisplay = desc;
+                    if (TextRenderer.MeasureText(desc, f).Width > descSpace)
+                        descDisplay = UiText.FitEnd(desc, f, descSpace);
+                    UiText.ClampHighlight(descDisplay, ref descHl, ref dStart, ref dLen);
+                    UiText.DrawHighlighted(g, descDisplay, descHl ? dStart : -1, descHl ? dLen : 0, f, fb, new Point(descX, ty), subColor, acc);
+                }
             }
+
+            if (pathDisplay.Length > 0)
+            {
+                int pStart, pLen;
+                bool pathHl = UiText.FindHighlight(path.ToLowerInvariant(), panelSearchVariants, out pStart, out pLen);
+                int cut = path.Length - (pathDisplay.Length - 1); // chars hidden by the leading "…"
+                bool tailHl = pathHl && pStart >= cut;
+                if (tailHl)
+                    UiText.DrawHighlighted(g, pathDisplay, pStart - cut, pLen, f, fb, new Point(pathX, ty), subColor, acc);
+                else
+                    TextRenderer.DrawText(g, pathDisplay, f, new Point(pathX, ty), subColor);
+            }
+        }
+
+        private Font GetSearchHlFont()
+        {
+            if (searchHlFont == null) searchHlFont = new Font(this.Font, FontStyle.Bold);
+            return searchHlFont;
+        }
+
+        // Hovering a result row shows a tooltip with the full path and description.
+        private void PanelSearchList_MouseMove(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if (itemTip == null) return;
+                int i = panelSearchList.IndexFromPoint(e.Location);
+                string t = "";
+                if (i >= 0 && i < panelSearchResults.Count)
+                {
+                    var it = panelSearchResults[i];
+                    t = it.Path ?? "";
+                    string d = PanelSearch.GetDescription(it);
+                    if (!string.IsNullOrEmpty(d)) t = (t.Length > 0 ? t + "\n" : "") + d;
+                }
+                if (!string.Equals(t, lastSearchTip, StringComparison.Ordinal))
+                {
+                    lastSearchTip = t;
+                    itemTip.SetToolTip(panelSearchList, t);
+                }
+            }
+            catch { }
+        }
+
+        // Applies the "search results" font from the settings and syncs the row height.
+        private void ApplySearchListFont()
+        {
+            try
+            {
+                panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)));
+                panelSearchList.ItemHeight = Math.Max(26, TextRenderer.MeasureText("Ag", panelSearchList.Font).Height + 10);
+                if (searchHlFont != null) { searchHlFont.Dispose(); searchHlFont = null; }
+            }
+            catch { }
         }
 
         // (Re)registers the global "show window" hotkey from settings.
@@ -3026,6 +3144,94 @@ namespace WinPanel
                 return icon;
             }
             return null;
+        }
+    }
+
+    // Text helpers shared by the panel search and the mini explorer search:
+    // tail/end truncation and drawing a highlighted (matched) fragment.
+    internal static class UiText
+    {
+        // Truncates the START of a string so the tail fits ("…\sub\file.exe").
+        public static string FitTail(string s, Font f, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (TextRenderer.MeasureText(s, f).Width <= maxWidth) return s;
+            const string ell = "…";
+            int lo = 0, hi = s.Length - 1, keep = 0;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                string cand = ell + s.Substring(s.Length - mid);
+                if (TextRenderer.MeasureText(cand, f).Width <= maxWidth) { keep = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
+            return ell + s.Substring(s.Length - keep);
+        }
+
+        // Truncates the END of a string with an ellipsis.
+        public static string FitEnd(string s, Font f, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (TextRenderer.MeasureText(s, f).Width <= maxWidth) return s;
+            const string ell = "…";
+            int lo = 0, hi = s.Length, keep = 0;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                string cand = s.Substring(0, mid) + ell;
+                if (TextRenderer.MeasureText(cand, f).Width <= maxWidth) { keep = mid; lo = mid + 1; }
+                else hi = mid - 1;
+            }
+            return s.Substring(0, keep) + ell;
+        }
+
+        // Finds the earliest query variant occurrence inside a lowercase text.
+        public static bool FindHighlight(string textLower, List<string> variants, out int start, out int len)
+        {
+            start = -1; len = 0;
+            if (string.IsNullOrEmpty(textLower) || variants == null) return false;
+            int bestIdx = int.MaxValue, bestLen = 0;
+            for (int i = 0; i < variants.Count; i++)
+            {
+                string v = variants[i];
+                if (string.IsNullOrEmpty(v)) continue;
+                int idx = textLower.IndexOf(v, StringComparison.Ordinal);
+                if (idx < 0) continue;
+                if (idx < bestIdx || (idx == bestIdx && v.Length > bestLen)) { bestIdx = idx; bestLen = v.Length; }
+            }
+            if (bestIdx == int.MaxValue) return false;
+            start = bestIdx; len = bestLen;
+            return true;
+        }
+
+        // Drops the highlight range when the truncated display string no longer contains it.
+        public static void ClampHighlight(string display, ref bool enabled, ref int start, ref int len)
+        {
+            if (!enabled || start < 0) { enabled = false; start = -1; len = 0; return; }
+            if (start >= display.Length) { enabled = false; start = -1; len = 0; return; }
+            int maxLen = display.Length - start;
+            if (display.EndsWith("…", StringComparison.Ordinal)) maxLen--;
+            if (len > maxLen) len = maxLen;
+            if (len <= 0) { enabled = false; start = -1; len = 0; }
+        }
+
+        // Draws "text" at pos with the [start, start+len) fragment in bold accent color.
+        public static void DrawHighlighted(Graphics g, string display, int start, int len,
+            Font normal, Font bold, Point pos, Color normalColor, Color highlightColor)
+        {
+            if (len <= 0 || start < 0 || start + len > display.Length)
+            {
+                TextRenderer.DrawText(g, display, normal, pos, normalColor);
+                return;
+            }
+            string before = display.Substring(0, start);
+            string mid = display.Substring(start, len);
+            string after = display.Substring(start + len);
+            TextRenderer.DrawText(g, before, normal, pos, normalColor);
+            int x = pos.X + TextRenderer.MeasureText(before, normal).Width;
+            TextRenderer.DrawText(g, mid, bold, new Point(x, pos.Y), highlightColor);
+            x += TextRenderer.MeasureText(mid, bold).Width;
+            TextRenderer.DrawText(g, after, normal, new Point(x, pos.Y), normalColor);
         }
     }
 

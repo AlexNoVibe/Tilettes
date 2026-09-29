@@ -292,7 +292,15 @@ namespace WinPanel
             if (v.Length == 0) return -1;
             if (name.StartsWith(v, StringComparison.Ordinal)) return 1000 - name.Length;
             int idx = name.IndexOf(v, StringComparison.Ordinal);
-            if (idx >= 0) return 700 - idx * 2 - name.Length;
+            if (idx >= 0)
+            {
+                // A hit right after a separator (space, slash, dash, dot...) is a
+                // "word start" match and ranks clearly above a mid-word hit.
+                char p = name[idx - 1];
+                bool boundary = p == ' ' || p == '\\' || p == '/' || p == '_' || p == '-' ||
+                                p == '.' || p == '[' || p == '(';
+                return 700 + (boundary ? 60 : 0) - idx * 2 - name.Length;
+            }
 
             // Relaxed fuzzy pass. allowLevel lowers sensitivity: it widens the
             // typo tolerance and the acceptable target length.
