@@ -1980,6 +1980,10 @@ namespace WinPanel
                 Location = new Point(xPos, yPos)
             };
 
+            // Description pops up as a tooltip after 0.3 s of hovering.
+            if (itemTip != null && !string.IsNullOrEmpty(item.ShortDescription))
+                itemTip.SetToolTip(tile, item.ShortDescription);
+
             if (item.IsFolder)
             {
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
@@ -2229,18 +2233,29 @@ namespace WinPanel
         }
 
         // Lets the user attach a free-form description to any item; the text is
-        // stored in records.xml and is searchable ("Search in descriptions").
+        // stored in records.xml, is searchable and shows as a hover tooltip.
         private void EditItemDescription(ShortcutItem item)
         {
-            string d = Prompt.ShowDialog(
-                Loc.S("Description text", "Текст описания"),
-                Loc.S("Description...", "Описание..."),
-                item.ShortDescription == null ? "" : item.ShortDescription);
-            if (d != null)
+            string d = DescriptionDialog.Show(this, item);
+            if (d == null) return;
+            item.ShortDescription = d;
+            PanelSearch.Invalidate(item);
+            records.Save(recordsPath);
+            UpdateItemTooltip(item);
+        }
+
+        // Refreshes the hover tooltip of the tile that shows this item.
+        private void UpdateItemTooltip(ShortcutItem item)
+        {
+            if (itemTip == null) return;
+            foreach (Control c in contentPanel.Controls)
             {
-                item.ShortDescription = d.Trim();
-                PanelSearch.Invalidate(item);
-                records.Save(recordsPath);
+                var tc = c as TileControl;
+                if (tc != null && tc.Item == item)
+                {
+                    itemTip.SetToolTip(tc, string.IsNullOrEmpty(item.ShortDescription) ? null : item.ShortDescription);
+                    return;
+                }
             }
         }
 
@@ -3093,6 +3108,107 @@ namespace WinPanel
                 if (c.IsFolder) n += CountItemsRecursive(c);
             }
             return n;
+        }
+    }
+
+    // Themed editor for an item's description. The description feeds the panel
+    // search and pops up as a hover tooltip — the dialog says so explicitly.
+    public class DescriptionDialog : Form
+    {
+        private TextBox textBox;
+        private bool accepted;
+
+        [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
+
+        private DescriptionDialog(ShortcutItem item)
+        {
+            Settings st = MainForm.CurrentSettings;
+            bool light = st != null && st.IsLightTheme;
+            Color bg = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
+            Color panel = light ? Color.FromArgb(214, 214, 218) : Color.FromArgb(45, 45, 48);
+            Color txt = light ? Color.Black : Color.White;
+            Color dim = light ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
+
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.ShowInTaskbar = false;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.BackColor = bg;
+            this.ForeColor = txt;
+            this.ClientSize = new Size(470, 250);
+            if (st != null) this.Font = Settings.MakeFont(st.FontUiName, st.FontUiSize);
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+
+            var title = new Label
+            {
+                Text = Loc.S("Description", "Описание") + " — " + item.Name,
+                Left = 20,
+                Top = 16,
+                Width = 430,
+                Height = 22,
+                Font = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold)
+            };
+            this.Controls.Add(title);
+
+            var info = new Label
+            {
+                Text = Loc.S("The description is used by the search and pops up as a tooltip when hovering the element.",
+                             "Описание используется в поиске и всплывает подсказкой при наведении на элемент."),
+                Left = 20,
+                Top = 42,
+                Width = 430,
+                Height = 32,
+                ForeColor = dim
+            };
+            this.Controls.Add(info);
+
+            textBox = new TextBox
+            {
+                Left = 20,
+                Top = 80,
+                Width = 430,
+                Height = 106,
+                Multiline = true,
+                ScrollBars = ScrollBars.Vertical,
+                BackColor = panel,
+                ForeColor = txt,
+                BorderStyle = BorderStyle.FixedSingle,
+                Text = item.ShortDescription == null ? "" : item.ShortDescription
+            };
+            this.Controls.Add(textBox);
+
+            var cancel = new Button { Text = Loc.S("Cancel", "Отмена"), Left = 250, Top = 198, Width = 95, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            cancel.FlatAppearance.BorderSize = 0;
+            cancel.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
+            var ok = new Button { Text = Loc.S("OK", "ОК"), Left = 355, Top = 198, Width = 95, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            ok.FlatAppearance.BorderSize = 0;
+            ok.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
+            ok.Click += (s, e) => { accepted = true; };
+            this.Controls.Add(cancel);
+            this.Controls.Add(ok);
+            this.AcceptButton = ok;
+            this.CancelButton = cancel;
+        }
+
+        // Returns the entered text, or null when the dialog was cancelled.
+        public static string Show(IWin32Window owner, ShortcutItem item)
+        {
+            using (var dlg = new DescriptionDialog(item))
+            {
+                dlg.ShowDialog(owner);
+                return dlg.accepted ? dlg.textBox.Text.Trim() : null;
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(Color.FromArgb(120, this.ForeColor)))
+            {
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            }
         }
     }
 

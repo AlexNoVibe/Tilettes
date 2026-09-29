@@ -44,6 +44,7 @@ namespace WinPanel
             { "Exit", "Выход" },
             { "Close", "Закрыть" },
             { "Open", "Открыть" },
+            { "Description", "Описание" },
             { "Description...", "Описание…" },
             { "Description text", "Текст описания" },
             { "Search", "Поиск" },
