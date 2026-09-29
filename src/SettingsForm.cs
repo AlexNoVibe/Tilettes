@@ -102,6 +102,7 @@ namespace WinPanel
             this.MaximizeBox = false;
 
             this.ForeColor = textColor;
+            this.BackColor = bgColor; // labels/checkboxes inherit it: no white-on-white text
             this.Font = new Font("Segoe UI", 9f);
 
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
