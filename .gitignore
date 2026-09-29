@@ -7,3 +7,17 @@ settings.xml
 config/
 bookmarks.xml
 filetypes.xml
+
+# Personal / runtime files - never publish
+records.xml
+settings.ini
+REPORT.md
+USER.md
+AGENTS.md
+SOUL.md
+IDENTITY.md
+HEARTBEAT.md
+TOOLS.md
+UI_SPEC.md
+winpanel_changelog*.html
+ico/*.lnk
