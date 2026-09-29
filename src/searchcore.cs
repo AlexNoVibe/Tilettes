@@ -308,8 +308,11 @@ namespace WinPanel
 
         public static int ScoreVariant(string textLower, string variant)
         {
-            return ScoreOne(textLower, variant);
+            return ScoreOne(textLower, variant, fuzzyLevelStatic);
         }
+
+        // Snapshot of the panel search settings for background threads.
+        public static int fuzzyLevelStatic = 2;
 
         private static int ScoreOne(string name, string v)
         {
@@ -424,28 +427,49 @@ namespace WinPanel
 {
     public static class SearchCoreMini
     {
-        // Removes results that matched only in fields the user turned off:
-        // inMeta covers file names / exe names, inPaths covers folder-only hits.
+        // Removes results that matched only in fields the user turned off.
+        // The file index matches names and paths; a hit is "path-only" when
+        // the query is NOT contained in the item's own name (it matched via
+        // parent folders). Files have no descriptions here, so inDesc is unused.
         public static void ApplyMiniSearchToggles(List<SearchItem> res, bool inMeta, bool inPaths, bool inDesc)
         {
             if (res == null || res.Count == 0) return;
             if (inMeta && inPaths) return;
+            string q = LastQueryLower;
             var kept = new List<SearchItem>();
             foreach (var it in res)
             {
-                string path = it.FullPath ?? "";
-                string dir = "";
-                try { dir = System.IO.Path.GetDirectoryName(path) ?? ""; } catch { }
-                // A hit is "path-only" when the query is not contained in the item's
-                // own name (so it matched via parent folders from the index).
-                bool inName = (it.NameLower ?? "").Length > 0;
-                bool pathOnly = !inName && dir.Length > 0;
-                if (pathOnly && !inPaths) continue;
-                if (!pathOnly && !inMeta) continue;
+                string nm = it.NameLower;
+                if (string.IsNullOrEmpty(nm)) nm = (it.Name ?? "").ToLowerInvariant();
+                bool nameHit = q.Length > 0 && nm.Contains(q);
+                bool pathHit = false;
+                if (!nameHit) pathHit = IsPathHit(it, q);
+                if (!nameHit && !pathHit) continue; // should not happen
+                if (!nameHit && pathHit && !inPaths) continue;
+                if (nameHit && !inMeta) continue;
                 kept.Add(it);
             }
             res.Clear();
             res.AddRange(kept);
         }
+
+        // Path hit: the query occurs in some ancestor folder of the item.
+        private static bool IsPathHit(SearchItem it, string q)
+        {
+            try
+            {
+                string dir = System.IO.Path.GetDirectoryName(it.FullPath ?? "") ?? "";
+                while (dir.Length > 0)
+                {
+                    if (dir.ToLowerInvariant().Contains(q)) return true;
+                    dir = System.IO.Path.GetDirectoryName(dir) ?? "";
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        // Set by MiniExplorerForm right before toggles are applied.
+        public static string LastQueryLower = "";
     }
 }

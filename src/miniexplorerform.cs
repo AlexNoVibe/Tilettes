@@ -1402,6 +1402,7 @@ namespace WinPanel
                 else
                     src = SearchCore.GetIndex(currentPath, out building, out scanned);
                 var res = SearchCore.Run(q, src, 400);
+                SearchCoreMini.LastQueryLower = q.ToLowerInvariant();
                 SearchCoreMini.ApplyMiniSearchToggles(res, settings.SearchInMeta, settings.SearchInPaths, settings.SearchInDesc);
                 searchItems = res;
                 searchMode = true;

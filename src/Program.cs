@@ -582,6 +582,7 @@ namespace WinPanel
                 fuzzyLevel = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 useMeta = settings.SearchInMeta; usePaths = settings.SearchInPaths; useDesc = settings.SearchInDesc;
                 descIndex = PanelSearch.DescIndex;
+                SearchCore.fuzzyLevelStatic = fuzzyLevel;
 
                 panelSearchStatus.Text = Loc.IsRu ? "Поиск…" : "Searching…";
                 panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
@@ -656,6 +657,7 @@ namespace WinPanel
                     for (int i = 0; i < metas.Length; i++)
                     {
                         if (i == 4 && !usePaths) continue;
+                        if ((i == 2 || i == 3) && !usePaths) continue;
                         if (i == 1 && !useMeta) continue;
                         if (i == descIndex && !useDesc) continue;
                         if (i >= 6 && !useMeta) continue;
