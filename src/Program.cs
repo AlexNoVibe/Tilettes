@@ -123,6 +123,15 @@ namespace WinPanel
             if (startHidden && settings.AutoStartMinimized)
                 this.Shown += (s, e) => { try { this.Hide(); } catch { } };
 
+            // Auto-test hook: WINPANEL_AUTOTEST=settings opens the settings dialog right
+            // after startup so automated screenshots can capture it.
+            try
+            {
+                if (string.Equals(Environment.GetEnvironmentVariable("WINPANEL_AUTOTEST"), "settings", StringComparison.OrdinalIgnoreCase))
+                    this.Shown += (s, e) => OpenSettings();
+            }
+            catch { }
+
             // Copy user shortcuts/icons that live outside the panel folder into <exe>\ico
             // so they are not lost when the originals are moved or deleted.
             ConsolidateAllRecords();
@@ -572,6 +581,7 @@ namespace WinPanel
                 int gen = ++panelSearchGen;
                 fuzzyLevel = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 useMeta = settings.SearchInMeta; usePaths = settings.SearchInPaths; useDesc = settings.SearchInDesc;
+                descIndex = PanelSearch.DescIndex;
 
                 panelSearchStatus.Text = Loc.IsRu ? "Поиск…" : "Searching…";
                 panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
@@ -646,9 +656,9 @@ namespace WinPanel
                     for (int i = 0; i < metas.Length; i++)
                     {
                         if (i == 4 && !usePaths) continue;
-                        if (i >= 6 && !useMeta) continue;
                         if (i == 1 && !useMeta) continue;
                         if (i == descIndex && !useDesc) continue;
+                        if (i >= 6 && !useMeta) continue;
                         int s = SearchCore.ScoreVariant(metas[i], variants[k]);
                         if (s > best) best = s;
                     }

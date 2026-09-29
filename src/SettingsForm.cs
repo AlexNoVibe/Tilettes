@@ -96,7 +96,7 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 470;
-            this.Height = 770;
+            this.Height = 880;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;

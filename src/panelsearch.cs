@@ -97,10 +97,6 @@ namespace WinPanel
                     }
                     Add(list, path);
                     Add(list, Path.GetExtension(path));
-                    // Slot 6 is reserved for the user description so search can
-                    // toggle it independently. Insert a placeholder when missing.
-                    while (list.Count < 6) Add(list, "~~pad" + list.Count);
-                    list.Insert(DescIndex, it.ShortDescription == null ? "" : it.ShortDescription.ToLowerInvariant());
 
                     string target = path;
                     if (path.ToLowerInvariant().EndsWith(".lnk"))
@@ -134,6 +130,11 @@ namespace WinPanel
                 }
                 catch { }
             }
+
+            // Slot 6 is reserved for the user description so search can toggle
+            // it independently. Pad the list in case the path block was skipped.
+            while (list.Count < 6) list.Add("~~pad" + list.Count);
+            list.Insert(DescIndex, it.ShortDescription == null ? "" : it.ShortDescription.ToLowerInvariant());
 
             var entry = new MetaEntry();
             entry.Name = it.Name;

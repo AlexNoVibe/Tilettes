@@ -237,6 +237,12 @@ namespace WinPanel
             this.Controls.Add(btnScopeAll);
 
             searchBox = new TextBox { Left = 470, Top = 33, Width = 120, Height = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = listColor, ForeColor = textColor };
+            try
+            {
+                int sfs = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize));
+                if (sfs != 9) searchBox.Font = new Font(searchBox.Font.FontFamily, sfs);
+            }
+            catch { }
             searchBox.TextChanged += (s, e) =>
             {
                 if (searchBox.TextLength > 0)
@@ -317,7 +323,7 @@ namespace WinPanel
                 ForeColor = textColor,
                 BorderStyle = BorderStyle.FixedSingle,
                 DrawMode = DrawMode.OwnerDrawFixed,
-                ItemHeight = 24,
+                ItemHeight = Math.Max(16, Math.Min(60, settings.SearchResultsFontSize + 15)),
                 IntegralHeight = false
             };
             fileList.DrawItem += FileList_DrawItem;

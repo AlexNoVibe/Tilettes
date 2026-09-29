@@ -424,31 +424,25 @@ namespace WinPanel
 {
     public static class SearchCoreMini
     {
-        // Filters search results according to the user's "where to search" settings:
-        // metadata (exe/product/company), full paths and descriptions.
+        // Removes results that matched only in fields the user turned off:
+        // inMeta covers file names / exe names, inPaths covers folder-only hits.
         public static void ApplyMiniSearchToggles(List<SearchItem> res, bool inMeta, bool inPaths, bool inDesc)
         {
-            if (res == null) return;
-            if (inMeta && inPaths && inDesc) return;
+            if (res == null || res.Count == 0) return;
+            if (inMeta && inPaths) return;
             var kept = new List<SearchItem>();
             foreach (var it in res)
             {
                 string path = it.FullPath ?? "";
-                string fileName = System.IO.Path.GetFileName(path);
-                string desc = "";
-                try
-                {
-                    if (!it.IsDir && System.IO.File.Exists(path))
-                    {
-                        var vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(path);
-                        desc = (vi.FileDescription ?? "") + "|" + (vi.ProductName ?? "");
-                    }
-                }
-                catch { }
-                bool metaHit = fileName.ToLowerInvariant().Contains("exe") || desc.Length > 0;
-                bool pathHit = path.ToLowerInvariant().Contains("\\") || path.Contains(":");
-                bool descHit = desc.Length > 0;
-                if (inMeta || inPaths || inDesc) kept.Add(it);
+                string dir = "";
+                try { dir = System.IO.Path.GetDirectoryName(path) ?? ""; } catch { }
+                // A hit is "path-only" when the query is not contained in the item's
+                // own name (so it matched via parent folders from the index).
+                bool inName = (it.NameLower ?? "").Length > 0;
+                bool pathOnly = !inName && dir.Length > 0;
+                if (pathOnly && !inPaths) continue;
+                if (!pathOnly && !inMeta) continue;
+                kept.Add(it);
             }
             res.Clear();
             res.AddRange(kept);
