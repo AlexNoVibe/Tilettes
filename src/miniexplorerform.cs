@@ -1522,7 +1522,7 @@ namespace WinPanel
             int hStart, hLen;
             bool nameHl = UiText.FindHighlight((it.Name ?? "").ToLowerInvariant(), searchVariants, out hStart, out hLen);
             UiText.DrawHighlighted(g, it.Name, nameHl ? hStart : -1, nameHl ? hLen : 0,
-                this.Font, boldFont, new Point(e.Bounds.Left + 28, ty), textColor, accentColor);
+                this.Font, new Point(e.Bounds.Left + 28, ty), textColor, accentColor, settings.IsLightTheme);
 
             string sub = it.Dir;
             if (!string.IsNullOrEmpty(sub))
@@ -1538,7 +1538,7 @@ namespace WinPanel
                     bool subHl = UiText.FindHighlight(sub.ToLowerInvariant(), searchVariants, out pStart, out pLen);
                     int cut = sub.Length - (subDisplay.Length - 1);
                     if (subHl && pStart >= cut)
-                        UiText.DrawHighlighted(g, subDisplay, pStart - cut, pLen, this.Font, boldFont, new Point(sx, ty), dimColor, accentColor);
+                        UiText.DrawHighlighted(g, subDisplay, pStart - cut, pLen, this.Font, new Point(sx, ty), dimColor, accentColor, settings.IsLightTheme);
                     else
                         TextRenderer.DrawText(g, subDisplay, this.Font, new Point(sx, ty), dimColor);
                 }

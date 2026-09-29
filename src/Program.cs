@@ -38,7 +38,6 @@ namespace WinPanel
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
-        private Font searchHlFont;                                     // bold font used to draw matched characters
         private string lastSearchTip = null;
         private ToolTip itemTip;   // 0.3 s hover tooltip: descriptions + full search paths
         private string settingsPath = "settings.ini";
@@ -883,8 +882,8 @@ namespace WinPanel
             catch { }
 
             Font f = this.Font;
-            Font fb = GetSearchHlFont();
             Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
+            bool light = settings.IsLightTheme;
             Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
             int textH = TextRenderer.MeasureText("Ag", f).Height;
             int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - textH) / 2);
@@ -912,7 +911,7 @@ namespace WinPanel
             if (TextRenderer.MeasureText(nameDisplay, f).Width > maxNameW && maxNameW > 30)
                 nameDisplay = UiText.FitEnd(it.Name, f, maxNameW);
             UiText.ClampHighlight(nameDisplay, ref nameHl, ref hlStart, ref hlLen);
-            UiText.DrawHighlighted(g, nameDisplay, nameHl ? hlStart : -1, nameHl ? hlLen : 0, f, fb, new Point(left, ty), textColor, acc);
+            UiText.DrawHighlighted(g, nameDisplay, nameHl ? hlStart : -1, nameHl ? hlLen : 0, f, new Point(left, ty), textColor, acc, light);
 
             if (hasDesc)
             {
@@ -927,7 +926,7 @@ namespace WinPanel
                     if (TextRenderer.MeasureText(desc, f).Width > descSpace)
                         descDisplay = UiText.FitEnd(desc, f, descSpace);
                     UiText.ClampHighlight(descDisplay, ref descHl, ref dStart, ref dLen);
-                    UiText.DrawHighlighted(g, descDisplay, descHl ? dStart : -1, descHl ? dLen : 0, f, fb, new Point(descX, ty), subColor, acc);
+                    UiText.DrawHighlighted(g, descDisplay, descHl ? dStart : -1, descHl ? dLen : 0, f, new Point(descX, ty), subColor, acc, light);
                 }
             }
 
@@ -938,18 +937,22 @@ namespace WinPanel
                 int cut = path.Length - (pathDisplay.Length - 1); // chars hidden by the leading "…"
                 bool tailHl = pathHl && pStart >= cut;
                 if (tailHl)
-                    UiText.DrawHighlighted(g, pathDisplay, pStart - cut, pLen, f, fb, new Point(pathX, ty), subColor, acc);
+                    UiText.DrawHighlighted(g, pathDisplay, pStart - cut, pLen, f, new Point(pathX, ty), subColor, acc, light);
                 else
                     TextRenderer.DrawText(g, pathDisplay, f, new Point(pathX, ty), subColor);
             }
         }
 
-        private Font GetSearchHlFont()
+        // Applies the "search results" font from the settings and syncs the row height.
+        private void ApplySearchListFont()
         {
-            if (searchHlFont == null) searchHlFont = new Font(this.Font, FontStyle.Bold);
-            return searchHlFont;
+            try
+            {
+                panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)));
+                panelSearchList.ItemHeight = Math.Max(26, TextRenderer.MeasureText("Ag", panelSearchList.Font).Height + 10);
+            }
+            catch { }
         }
-
         // Hovering a result row shows a tooltip with the full path and description.
         private void PanelSearchList_MouseMove(object sender, MouseEventArgs e)
         {
@@ -970,18 +973,6 @@ namespace WinPanel
                     lastSearchTip = t;
                     itemTip.SetToolTip(panelSearchList, t);
                 }
-            }
-            catch { }
-        }
-
-        // Applies the "search results" font from the settings and syncs the row height.
-        private void ApplySearchListFont()
-        {
-            try
-            {
-                panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)));
-                panelSearchList.ItemHeight = Math.Max(26, TextRenderer.MeasureText("Ag", panelSearchList.Font).Height + 10);
-                if (searchHlFont != null) { searchHlFont.Dispose(); searchHlFont = null; }
             }
             catch { }
         }
@@ -1600,7 +1591,16 @@ namespace WinPanel
             {
                 Panel lp = null;
                 foreach (var kv in layoutPanels) if (tabByButton[kv.Key] == tabData) { lp = kv.Value; break; }
-                if (lp != null) RenderCurrentFolder(lp, tabData);
+                if (lp == null) continue;
+                // Docking layout never sizes hidden panels (they keep the 200x100
+                // default), so tiles rendered "in the dark" end up squashed in the
+                // top-left corner of the tab. Make each panel briefly visible while
+                // rendering so it lays out to its real bounds; the final visibility
+                // is restored right away, before anything paints.
+                bool wasVisible = lp.Visible;
+                lp.Visible = true;
+                RenderCurrentFolder(lp, tabData);
+                lp.Visible = wasVisible;
             }
         }
 
@@ -2305,7 +2305,9 @@ namespace WinPanel
                     miniExplorer = new MiniExplorerForm(item.Path, settings, settingsPath);
                 else
                     miniExplorer.NavigateExternal(item.Path);
-                if (!miniExplorer.Visible) miniExplorer.Show(this);
+                // Shown WITHOUT owner: an owned window is pinned above its owner, which
+                // made the mini explorer impossible to send behind the main panel.
+                if (!miniExplorer.Visible) miniExplorer.Show();
                 else miniExplorer.Activate();
             }
             catch (Exception ex)
@@ -2434,6 +2436,7 @@ namespace WinPanel
     public class FolderPopupForm : Form
     {
         private ShortcutItem folder;
+        private ToolTip tip;
         private Settings settings;
         private bool editMode;
         private Action<ShortcutItem> onMoveOutOfFolder;
@@ -2489,6 +2492,9 @@ namespace WinPanel
             this.BackColor = bgColor;
             this.ForeColor = textColor;
             this.Font = new Font("Segoe UI", 9f);
+
+            // Descriptions pop up as tooltips after 0.3 s of hovering.
+            tip = new ToolTip { InitialDelay = 300, ReshowDelay = 200, AutoPopDelay = 8000 };
 
             openScreen = Screen.FromPoint(screenPos);
             var wa = openScreen.WorkingArea;
@@ -2626,6 +2632,8 @@ namespace WinPanel
                 var tile = new PopupTile(child, panelColor, hoverColor, textColor);
                 tile.Margin = new Padding(TileGap / 2);
                 AttachTileHandlers(tile, child);
+                if (!string.IsNullOrEmpty(child.ShortDescription))
+                    tip.SetToolTip(tile, child.ShortDescription);
                 flow.Controls.Add(tile);
             }
         }
@@ -3413,9 +3421,11 @@ namespace WinPanel
             if (len <= 0) { enabled = false; start = -1; len = 0; }
         }
 
-        // Draws "text" at pos with the [start, start+len) fragment in bold accent color.
+        // Draws "text" at pos with the [start, start+len) fragment highlighted:
+        // same font (a bold font is wider and shifts the text around the match),
+        // accent color plus a soft background bar.
         public static void DrawHighlighted(Graphics g, string display, int start, int len,
-            Font normal, Font bold, Point pos, Color normalColor, Color highlightColor)
+            Font normal, Point pos, Color normalColor, Color highlightColor, bool lightTheme)
         {
             if (len <= 0 || start < 0 || start + len > display.Length)
             {
@@ -3427,9 +3437,12 @@ namespace WinPanel
             string after = display.Substring(start + len);
             TextRenderer.DrawText(g, before, normal, pos, normalColor);
             int x = pos.X + TextRenderer.MeasureText(before, normal).Width;
-            TextRenderer.DrawText(g, mid, bold, new Point(x, pos.Y), highlightColor);
-            x += TextRenderer.MeasureText(mid, bold).Width;
-            TextRenderer.DrawText(g, after, normal, new Point(x, pos.Y), normalColor);
+            Size midSz = TextRenderer.MeasureText(mid, normal);
+            Color barColor = lightTheme ? Color.FromArgb(45, highlightColor) : Color.FromArgb(55, highlightColor);
+            using (var brush = new SolidBrush(barColor))
+                g.FillRectangle(brush, x - 1, pos.Y, midSz.Width + 2, midSz.Height);
+            TextRenderer.DrawText(g, mid, normal, new Point(x, pos.Y), highlightColor);
+            TextRenderer.DrawText(g, after, normal, new Point(x + midSz.Width, pos.Y), normalColor);
         }
     }
 
