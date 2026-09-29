@@ -95,7 +95,7 @@ namespace WinPanel
             }
 
             this.Text = "Settings";
-            this.Width = 470;
+            this.Width = 588;
             this.Height = 880;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
@@ -198,11 +198,11 @@ namespace WinPanel
             var lblFuzzy = new Label { Text = "Fuzzy accuracy (0-3):", Left = 20, Top = y, Width = 150 };
             numFuzzy = new NumericUpDown { Left = 175, Top = y - 2, Width = 45, Minimum = 0, Maximum = 3, Value = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 26;
-            chkSearchMeta = new CheckBox { Text = "Search in metadata (exe, product)", Left = 20, Top = y, Width = 420, Checked = settings.SearchInMeta, ForeColor = textColor };
+            chkSearchMeta = new CheckBox { Text = "Search in metadata (exe, product)", Left = 20, Top = y, Width = 530, Checked = settings.SearchInMeta, ForeColor = textColor };
             y += 24;
-            chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 420, Checked = settings.SearchInPaths, ForeColor = textColor };
+            chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 530, Checked = settings.SearchInPaths, ForeColor = textColor };
             y += 24;
-            chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 420, Checked = settings.SearchInDesc, ForeColor = textColor };
+            chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 530, Checked = settings.SearchInDesc, ForeColor = textColor };
             y += 26;
             var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 120 };
             numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
@@ -229,7 +229,7 @@ namespace WinPanel
             btnTypeOpen.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.OpenWith, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
             y += 36;
 
-            chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 420, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
+            chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 530, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
             y += 30;
 
             var lblSection = new Label { Text = "Autostart & window", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
