@@ -20,6 +20,10 @@ namespace WinPanel
             public ulong MaskB;
         }
 
+        // Index of the description entry inside the metas array
+        // (only present when the user filled one in).
+        public const int DescIndex = 6;
+
         private static readonly object Gate = new object();
         private static readonly Dictionary<ShortcutItem, MetaEntry> cache = new Dictionary<ShortcutItem, MetaEntry>();
 
@@ -58,6 +62,12 @@ namespace WinPanel
             maskB = e.MaskB;
         }
 
+        // Returns the user description of the item ("" when not set).
+        public static string GetDescription(ShortcutItem it)
+        {
+            return it == null || it.ShortDescription == null ? "" : it.ShortDescription;
+        }
+
         private static MetaEntry GetEntry(ShortcutItem it)
         {
             lock (Gate)
@@ -87,6 +97,10 @@ namespace WinPanel
                     }
                     Add(list, path);
                     Add(list, Path.GetExtension(path));
+                    // Slot 6 is reserved for the user description so search can
+                    // toggle it independently. Insert a placeholder when missing.
+                    while (list.Count < 6) Add(list, "~~pad" + list.Count);
+                    list.Insert(DescIndex, it.ShortDescription == null ? "" : it.ShortDescription.ToLowerInvariant());
 
                     string target = path;
                     if (path.ToLowerInvariant().EndsWith(".lnk"))

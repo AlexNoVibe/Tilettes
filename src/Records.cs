@@ -16,6 +16,8 @@ namespace WinPanel
         public int Size { get; set; } // Cell size for grid layout: 1 (1x1), 2 (2x2), 3 (3x3), 4 (4x4)
         public bool IsFolder { get; set; }
         public string CustomIconPath { get; set; }
+        // Free-form user description; used by the panel search ("Search in descriptions").
+        public string ShortDescription { get; set; }
         public List<ShortcutItem> Children { get; set; }
 
         public ShortcutItem()

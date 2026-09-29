@@ -175,6 +175,7 @@ namespace WinPanel
         }
 
         public static void ShowContextMenu(string path, int x, int y, IntPtr handle, bool editMode,
+            string descriptionLabel, Action onEditDescription,
             bool canMoveOutOfFolder, Action onMoveOutOfFolder,
             Action onOpenContainingFolder,
             Action onOpenMiniExplorer,
@@ -208,6 +209,8 @@ namespace WinPanel
                     if (onOpenMiniExplorer != null)
                         InsertCustomItem(hMenu, pos++, customIdStart + 9, Loc.S("Open in Mini Explorer"), marker);
                     InsertCustomItem(hMenu, pos++, customIdStart + 7, Loc.S("Open containing folder"), marker);
+                    if (descriptionLabel != null && onEditDescription != null)
+                        InsertCustomItem(hMenu, pos++, customIdStart + 11, descriptionLabel, marker);
                     if (editMode && canMoveOutOfFolder)
                         InsertCustomItem(hMenu, pos++, customIdStart + 8, Loc.S("Move out of folder"), marker);
                     InsertSeparator(hMenu, pos++);
@@ -263,6 +266,7 @@ namespace WinPanel
                     else if (cmd == customIdStart + 4) { if (onRename != null) onRename(); }
                     else if (cmd == customIdStart + 5) { if (onChangeIcon != null) onChangeIcon(); }
                     else if (cmd == customIdStart + 6) { if (onRemove != null) onRemove(); }
+                    else if (cmd == customIdStart + 11) { if (onEditDescription != null) onEditDescription(); }
 
                     DestroyMenu(hMenu);
                     Marshal.ReleaseComObject(contextMenu);

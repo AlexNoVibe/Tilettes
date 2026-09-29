@@ -30,6 +30,11 @@ namespace WinPanel
         private Label panelSearchStatus;
         private bool panelSearchActive;
         private int panelSearchGen;
+        // Snapshot of the "Search" settings used by the background worker thread
+        // (plain fields: the worker cannot touch the settings object safely).
+        private static int fuzzyLevel = 2;
+        private static bool useMeta = true, usePaths = true, useDesc = true;
+        private static int descIndex = -1;
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private string settingsPath = "settings.ini";
@@ -565,6 +570,8 @@ namespace WinPanel
                 var all = new List<ShortcutItem>();
                 CollectAllItems(activeTabData.Items, all);
                 int gen = ++panelSearchGen;
+                fuzzyLevel = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
+                useMeta = settings.SearchInMeta; usePaths = settings.SearchInPaths; useDesc = settings.SearchInDesc;
 
                 panelSearchStatus.Text = Loc.IsRu ? "Поиск…" : "Searching…";
                 panelSearchStatus.ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
@@ -619,7 +626,9 @@ namespace WinPanel
             for (int k = 0; k < vn; k++)
             {
                 SearchCore.MakeMask(variants[k], out vA[k], out vB[k]);
-                vAllow[k] = Math.Max(1, variants[k].Length / 4);
+                int lvl = fuzzyLevel;
+                vAllow[k] = lvl <= 0 ? 0 : Math.Max(1, (int)Math.Round(variants[k].Length / (6.0 - lvl)));
+                if (lvl >= 3) vAllow[k] = Math.Max(vAllow[k], 3);
             }
 
             foreach (var it in items)
@@ -636,6 +645,10 @@ namespace WinPanel
                     if (SearchCore.MissingBits(vA[k], iA, vB[k], iB) > vAllow[k]) continue;
                     for (int i = 0; i < metas.Length; i++)
                     {
+                        if (i == 4 && !usePaths) continue;
+                        if (i >= 6 && !useMeta) continue;
+                        if (i == 1 && !useMeta) continue;
+                        if (i == descIndex && !useDesc) continue;
                         int s = SearchCore.ScoreVariant(metas[i], variants[k]);
                         if (s > best) best = s;
                     }
@@ -1110,6 +1123,7 @@ namespace WinPanel
             int tabRows = 1;
             foreach (var tab in records.Tabs) tabRows = Math.Max(tabRows, tab.Row + 1);
             topPanel.Height = Math.Max(tabRows * 35, 62) + 31;
+            try { topPanel.Height += Math.Max(31, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)) + 22); } catch { }
 
             // ---- Right stack: row 1 = min / max / close, row 2 = settings / edit ----
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
@@ -1345,8 +1359,8 @@ namespace WinPanel
             searchRow.Controls.Add(sBox);
             var sHint = new Label
             {
-                Left = 296,
-                Top = 9,
+                Left = sBox.Width + 16,
+                Top = (searchRow.Height - 14) / 2 + 2,
                 Width = 520,
                 ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155),
                 Text = Loc.S("Search saved items: name, exe, folder, description...", "Поиск по сохранённым: имя, exe, папка, описание...")
@@ -1893,6 +1907,7 @@ namespace WinPanel
                             fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
                             fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
                             fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
+                            fMenu.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) => EditItemDescription(item));
                             fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
                         }
@@ -1903,6 +1918,7 @@ namespace WinPanel
                         // The Explorer menu is always available; our own items are shown
                         // before the Explorer items, edit actions only in edit mode.
                         NativeContextMenu.ShowContextMenu(item.Path, pt.X, pt.Y, this.Handle, isEditMode,
+                            Loc.S("Description...", "Описание..."), (Action)delegate { EditItemDescription(item); },
                             tabNavigations[tabData].Count > 0,
                             () => MoveItemOutOfFolder(panel, tabData, item),
                             () => OpenContainingFolder(item),
@@ -2084,6 +2100,22 @@ namespace WinPanel
             catch (Exception ex)
             {
                 ReportLaunchError("Mini Explorer error: " + ex.Message);
+            }
+        }
+
+        // Lets the user attach a free-form description to any item; the text is
+        // stored in records.xml and is searchable ("Search in descriptions").
+        private void EditItemDescription(ShortcutItem item)
+        {
+            string d = Prompt.ShowDialog(
+                Loc.S("Description text", "Текст описания"),
+                Loc.S("Description...", "Описание..."),
+                item.ShortDescription == null ? "" : item.ShortDescription);
+            if (d != null)
+            {
+                item.ShortDescription = d.Trim();
+                PanelSearch.Invalidate(item);
+                records.Save(recordsPath);
             }
         }
 
