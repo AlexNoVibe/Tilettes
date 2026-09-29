@@ -1134,8 +1134,11 @@ namespace WinPanel
 
             int tabRows = 1;
             foreach (var tab in records.Tabs) tabRows = Math.Max(tabRows, tab.Row + 1);
-            topPanel.Height = Math.Max(tabRows * 35, 62) + 31;
-            try { topPanel.Height += Math.Max(31, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)) + 22); } catch { }
+            int searchRowH = 31;
+            try { searchRowH = Math.Max(31, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)) + 22); } catch { }
+            topSearchRowH = searchRowH;
+            // Tab rows sit directly above the search row: no filler space between them.
+            topPanel.Height = tabRows * 35 + searchRowH;
 
             // ---- Right stack: row 1 = min / max / close, row 2 = settings / edit ----
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
@@ -1369,15 +1372,6 @@ namespace WinPanel
             sBox.TextChanged += (s, e) => { if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); } };
             sBox.KeyDown += PanelSearchBox_KeyDown;
             searchRow.Controls.Add(sBox);
-            var sHint = new Label
-            {
-                Left = sBox.Width + 16,
-                Top = (searchRow.Height - 14) / 2 + 2,
-                Width = 520,
-                ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155),
-                Text = Loc.S("Search saved items: name, exe, folder, description...", "Поиск по сохранённым: имя, exe, папка, описание...")
-            };
-            searchRow.Controls.Add(sHint);
             topPanel.Controls.Add(searchRow);
             panelSearchRow = searchRow;
             panelSearchBox = sBox;
@@ -1493,7 +1487,7 @@ namespace WinPanel
                     int r = c.Top / 35 + 1;
                     if (r > rowsUsed) rowsUsed = r;
                 }
-                topPanel.Height = Math.Max(rowsUsed * 35, 62);
+                topPanel.Height = rowsUsed * 35 + topSearchRowH;
             };
 
             tabBtn.MouseUp += (s, e) =>
@@ -1555,6 +1549,7 @@ namespace WinPanel
         }
 
         private Button addTabRef; // reference to the "+" button to skip it during tab drags
+        private int topSearchRowH = 31; // height of the search row (kept for tab-drag relayout)
 
         private void DisposeControlTree(Control root)
         {
