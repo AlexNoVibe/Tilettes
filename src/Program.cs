@@ -30,6 +30,10 @@ namespace WinPanel
         private Label panelSearchStatus;
         private bool panelSearchActive;
         private int panelSearchGen;
+        // Set by ClearPanelSearch so the empty-box TextChanged (from clearing the
+        // query) does not re-show the overlay as "Прошлый поиск" right after the
+        // user closed the search by clicking a tab or pressing Esc.
+        private bool suppressSearchOnEmpty;
         // Quick search settings: toggles to the right of the box, shown while the
         // box has text. State lives in Settings (persisted to settings.ini).
         private Panel panelSearchSettingsRow;
@@ -407,7 +411,11 @@ namespace WinPanel
             if (Width == lastRegionW && Height == lastRegionH && this.Region != null) return;
             lastRegionW = Width;
             lastRegionH = Height;
-            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+            // GDI rounds the region off by the last pixel column/row (the form client
+            // is Width x Height, but a W x H region stops at W-1 / H-1) — a 1px stripe
+            // of whatever is behind the window shone through on the right/bottom edge.
+            // Extending the region by 1px covers the full client area.
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 15, 15));
             UpdateBorderOverlay();
         }
 
@@ -1019,7 +1027,7 @@ namespace WinPanel
         // `flip` switches it; both go through Settings so the state survives
         // restarts. `label` is re-evaluated on restyle (the fuzzy button shows the
         // current level).
-        private void AddSearchToggle(Func<string> label, Func<bool> get, Action flip, string tooltip)
+        private void AddSearchToggle(int height, Func<string> label, Func<bool> get, Action flip, string tooltip)
         {
             var b = new Button
             {
@@ -1028,7 +1036,8 @@ namespace WinPanel
                 Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize),
                 Margin = new Padding(2, 0, 2, 0),
                 BackColor = bgColor,
-                ForeColor = textColor
+                ForeColor = textColor,
+                Height = height // matches the search box, so the row stays aligned
             };
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = hoverColor;
@@ -1088,7 +1097,8 @@ namespace WinPanel
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 Padding = new Padding(0),
                 BackColor = bgColor,
-                Location = new Point(sBox.Right + 10, 4),
+                // Align with the search box: same top, same height (DPI-safe).
+                Location = new Point(sBox.Right + 10, sBox.Top),
                 Visible = false
             };
             searchToggleRestylers.Clear();
@@ -1098,27 +1108,27 @@ namespace WinPanel
                 int lvl = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 return lvl == 0 ? Loc.S("Exact", "Точно") : "~ " + lvl;
             };
-            AddSearchToggle(fuzzyLabel,
+            AddSearchToggle(sBox.Height, fuzzyLabel,
                 delegate { return settings.SearchFuzzyLevel > 0; },
                 delegate { settings.SearchFuzzyLevel = (Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)) + 1) % 4; },
                 Loc.S("Match precision: exact or fuzzy (0-3)", "Точность совпадения: точное или нечёткое (0-3)"));
 
-            AddSearchToggle(delegate { return Loc.S("Metadata", "Метаданные"); },
+            AddSearchToggle(sBox.Height, delegate { return Loc.S("Metadata", "Метаданные"); },
                 delegate { return settings.SearchInMeta; },
                 delegate { settings.SearchInMeta = !settings.SearchInMeta; },
                 Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
 
-            AddSearchToggle(delegate { return Loc.S("Paths", "Пути"); },
+            AddSearchToggle(sBox.Height, delegate { return Loc.S("Paths", "Пути"); },
                 delegate { return settings.SearchInPaths; },
                 delegate { settings.SearchInPaths = !settings.SearchInPaths; },
                 Loc.S("Search in full paths", "Искать в полных путях"));
 
-            AddSearchToggle(delegate { return Loc.S("Descriptions", "Описания"); },
+            AddSearchToggle(sBox.Height, delegate { return Loc.S("Descriptions", "Описания"); },
                 delegate { return settings.SearchInDesc; },
                 delegate { settings.SearchInDesc = !settings.SearchInDesc; },
                 Loc.S("Search in item descriptions", "Искать в описаниях элементов"));
 
-            AddSearchToggle(delegate { return Loc.S("Start", "Пуск"); },
+            AddSearchToggle(sBox.Height, delegate { return Loc.S("Start", "Пуск"); },
                 delegate { return settings.SearchInStart; },
                 delegate { settings.SearchInStart = !settings.SearchInStart; },
                 Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
@@ -1218,7 +1228,15 @@ namespace WinPanel
         private void ClearPanelSearch()
         {
             HidePanelSearch();
-            try { if (panelSearchBox != null) panelSearchBox.Clear(); } catch { }
+            try
+            {
+                if (panelSearchBox != null && panelSearchBox.Text.Length > 0)
+                {
+                    suppressSearchOnEmpty = true;
+                    panelSearchBox.Clear();
+                }
+            }
+            catch { }
         }
 
         private void OpenPanelSearchResult(int i)
@@ -2186,8 +2204,16 @@ namespace WinPanel
             sBox.TextChanged += (s, e) =>
             {
                 // Quick search settings appear while the box has text.
-                if (panelSearchSettingsRow != null) panelSearchSettingsRow.Visible = sBox.Text.Trim().Length > 0;
-                if (panelSearchTimer != null) { panelSearchTimer.Stop(); panelSearchTimer.Start(); }
+                bool hasText = sBox.Text.Trim().Length > 0;
+                if (panelSearchSettingsRow != null) panelSearchSettingsRow.Visible = hasText;
+                if (panelSearchTimer == null) return;
+                panelSearchTimer.Stop();
+                if (hasText) { panelSearchTimer.Start(); return; }
+                // Empty box: show "Прошлый поиск" as before — unless the box was
+                // just cleared programmatically (tab click / Esc), which must close
+                // the search for good instead of re-opening the overlay.
+                if (suppressSearchOnEmpty) { suppressSearchOnEmpty = false; return; }
+                panelSearchTimer.Start();
             };
             sBox.KeyDown += PanelSearchBox_KeyDown;
             searchRow.Controls.Add(sBox);
@@ -2779,8 +2805,12 @@ namespace WinPanel
             int cols = Math.Max(1, settings.GridColumns);
             int rows = Math.Max(1, settings.GridRows);
 
-            // The grid always stretches with the visible window area and never paints
-            // outside the panel's client rectangle.
+            // The grid stretches over the visible window area. The outer border lines
+            // are pulled 8px inside: the last 6px of every window edge are covered by
+            // the invisible resize grips (bg-colored strips), so a border drawn right
+            // at the edge is hidden and "falls off" the visible area. Interior lines
+            // stay on the tile-cell boundaries.
+            const int BorderInset = 8;
             float cellWidth = panel.ClientSize.Width / (float)cols;
             float cellHeight = panel.ClientSize.Height / (float)rows;
             if (cellWidth <= 0 || cellHeight <= 0) return;
@@ -2799,12 +2829,16 @@ namespace WinPanel
                 for (int i = 0; i <= cols; i++)
                 {
                     float x = i * cellWidth + scroll.X;
+                    if (i == 0) x = BorderInset + scroll.X;
+                    else if (i == cols) x = panel.ClientSize.Width - BorderInset + scroll.X;
                     if (x >= 0 && x <= panel.ClientSize.Width)
                         e.Graphics.DrawLine(gridPen, x, scroll.Y, x, panel.ClientSize.Height);
                 }
                 for (int i = 0; i <= rows; i++)
                 {
                     float y = i * cellHeight + scroll.Y;
+                    if (i == 0) y = BorderInset + scroll.Y;
+                    else if (i == rows) y = panel.ClientSize.Height - BorderInset + scroll.Y;
                     if (y >= 0 && y <= panel.ClientSize.Height)
                         e.Graphics.DrawLine(gridPen, scroll.X, y, panel.ClientSize.Width, y);
                 }
@@ -4484,7 +4518,7 @@ namespace WinPanel
             Size midSz = TextRenderer.MeasureText(mid, normal, Size.Empty, flags);
             Color barColor = lightTheme ? Color.FromArgb(45, highlightColor) : Color.FromArgb(55, highlightColor);
             using (var brush = new SolidBrush(barColor))
-                g.FillRectangle(brush, x - 1, pos.Y, midSz.Width + 2, midSz.Height);
+                g.FillRectangle(brush, x, pos.Y, midSz.Width, midSz.Height); // no extra padding: the bar hugs the letters
             TextRenderer.DrawText(g, mid, normal, new Point(x, pos.Y), highlightColor, flags);
             TextRenderer.DrawText(g, after, normal, new Point(x + midSz.Width, pos.Y), normalColor, flags);
         }
