@@ -96,7 +96,7 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 588;
-            this.Height = 880;
+            this.Height = 912;
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -221,6 +221,8 @@ namespace WinPanel
             this.Controls.Add(numSearchResultsFont);
             this.Controls.Add(lblSearchResultsFont);
 
+            y += 30; // the search fonts row must not overlap the file type buttons below
+
             var lblTypes = new Label { Text = "File types:", Left = 20, Top = y, Width = 92 };
             var btnTypeIcons = new Button { Text = "Icons by type...", Left = 115, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnTypeIcons.FlatAppearance.BorderSize = 0;
@@ -250,11 +252,11 @@ namespace WinPanel
             cmbLang.SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
             y += 30;
 
-            btnBackup = new Button { Text = "Backup Settings", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnBackup = new Button { Text = "Save backup", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
 
-            btnRestore = new Button { Text = "Restore Settings", Left = 165, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnRestore = new Button { Text = "Restore backup", Left = 165, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnRestore.FlatAppearance.BorderSize = 0;
             btnRestore.Click += BtnRestore_Click;
 

@@ -95,8 +95,8 @@ namespace WinPanel
             { "Always keep tray icon", "Держать значок в трее" },
             { "Remember active tab", "Запоминать активную вкладку" },
             { "Language:", "Язык:" },
-            { "Backup Settings", "Сохранить настройки" },
-            { "Restore Settings", "Восстановить настройки" },
+            { "Save backup", "Сохранить бекап" },
+            { "Restore backup", "Восстановить бекап" },
 
             // Mini explorer - toolbar and console
             { "Edit", "Изменить" },
@@ -110,6 +110,8 @@ namespace WinPanel
             { "Show / hide bookmarks panel", "Показать / скрыть панель закладок" },
             { "Show / hide top bookmarks bar", "Показать / скрыть полосу закладок" },
             { "Drag to resize the console", "Потяните, чтобы изменить высоту консоли" },
+            { "Ctrl+mouse wheel - console font size", "Ctrl+колесо мыши — размер шрифта консоли" },
+            { "Search scope: click switches folder / everywhere", "Область поиска: клик переключает папка/везде" },
             { "BOOKMARKS", "ЗАКЛАДКИ" },
 
             // Mini explorer - menus
@@ -123,6 +125,10 @@ namespace WinPanel
             { "Add current folder to bookmarks", "Добавить текущую папку в закладки" },
             { "Open console window here", "Открыть окно консоли здесь" },
             { "(empty)", "(пусто)" },
+            { "Edit command...", "Изменить команду..." },
+            { "Edit command", "Изменить команду" },
+            { "Move up", "Вверх" },
+            { "Move down", "Вниз" },
 
             // Mini explorer - search
             { "Папка", "Папка" },
