@@ -358,6 +358,16 @@ namespace WinPanel
                 tabNavigations[tab] = new Stack<ShortcutItem>();
             }
 
+            // Start tab auto-layout: senior folders on the top row, their subfolders
+            // copied as quick-access tiles (pure re-layout of the mirror data — no
+            // path or content is touched). Safe to run on every start.
+            try
+            {
+                if (StartMenuSync.RelayoutStartTab(records, settings.GridColumns, settings.GridRows))
+                    records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("Start tab layout", ex); }
+
             // Overflow protection: after the user shrank the grid, items that no
             // longer fit move into a last-resort folder (kept for later restore).
             try
@@ -1027,17 +1037,17 @@ namespace WinPanel
         // `flip` switches it; both go through Settings so the state survives
         // restarts. `label` is re-evaluated on restyle (the fuzzy button shows the
         // current level).
-        private void AddSearchToggle(int height, Func<string> label, Func<bool> get, Action flip, string tooltip)
+        private void AddSearchToggle(Font font, int height, Func<string> label, Func<bool> get, Action flip, string tooltip)
         {
             var b = new Button
             {
                 FlatStyle = FlatStyle.Flat,
                 Cursor = Cursors.Hand,
-                Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize),
+                Font = font,                  // same font as the search box
                 Margin = new Padding(2, 0, 2, 0),
                 BackColor = bgColor,
                 ForeColor = textColor,
-                Height = height // matches the search box, so the row stays aligned
+                Height = height               // matches the search box height
             };
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = hoverColor;
@@ -1108,27 +1118,29 @@ namespace WinPanel
                 int lvl = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 return lvl == 0 ? Loc.S("Exact", "Точно") : "~ " + lvl;
             };
-            AddSearchToggle(sBox.Height, fuzzyLabel,
+            // PreferredHeight is font-based (no handle needed): the toggles match the
+            // search box even when a bigger search font grew it.
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, fuzzyLabel,
                 delegate { return settings.SearchFuzzyLevel > 0; },
                 delegate { settings.SearchFuzzyLevel = (Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)) + 1) % 4; },
                 Loc.S("Match precision: exact or fuzzy (0-3)", "Точность совпадения: точное или нечёткое (0-3)"));
 
-            AddSearchToggle(sBox.Height, delegate { return Loc.S("Metadata", "Метаданные"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Metadata", "Метаданные"); },
                 delegate { return settings.SearchInMeta; },
                 delegate { settings.SearchInMeta = !settings.SearchInMeta; },
                 Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
 
-            AddSearchToggle(sBox.Height, delegate { return Loc.S("Paths", "Пути"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Paths", "Пути"); },
                 delegate { return settings.SearchInPaths; },
                 delegate { settings.SearchInPaths = !settings.SearchInPaths; },
                 Loc.S("Search in full paths", "Искать в полных путях"));
 
-            AddSearchToggle(sBox.Height, delegate { return Loc.S("Descriptions", "Описания"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Descriptions", "Описания"); },
                 delegate { return settings.SearchInDesc; },
                 delegate { settings.SearchInDesc = !settings.SearchInDesc; },
                 Loc.S("Search in item descriptions", "Искать в описаниях элементов"));
 
-            AddSearchToggle(sBox.Height, delegate { return Loc.S("Start", "Пуск"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Start", "Пуск"); },
                 delegate { return settings.SearchInStart; },
                 delegate { settings.SearchInStart = !settings.SearchInStart; },
                 Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
@@ -2198,7 +2210,9 @@ namespace WinPanel
             {
                 int bfs = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize));
                 if (bfs != 9) sBox.Font = new Font(sBox.Font.FontFamily, bfs);
-                if (bfs > 13) { sBox.Width = 380; searchRow.Height = Math.Max(31, bfs + 22); }
+                // The row always matches the font-dependent box height.
+                searchRow.Height = Math.Max(31, bfs + 22);
+                if (bfs > 13) sBox.Width = 380;
             }
             catch { }
             sBox.TextChanged += (s, e) =>
@@ -2528,6 +2542,14 @@ namespace WinPanel
         {
             int s = ClampItemSize(item.Size);
             Point cell = FindFreeGridCell(items, item, s, cols, rows, preferX, preferY);
+            if (cell.X < 0)
+            {
+                // Folder views can hold more items than the visible grid holds.
+                // Without this fallback every overflowing item stayed unpositioned
+                // (GridX=-1) and the whole pile rendered in the same spot; placing
+                // beyond the fold instead keeps them reachable via AutoScroll.
+                cell = FindFreeGridCell(items, item, s, cols, Math.Max(rows, s) * 3, -1, -1);
+            }
             if (cell.X >= 0)
             {
                 item.GridX = cell.X;
@@ -2592,6 +2614,9 @@ namespace WinPanel
         internal bool EnsureTabFits(TabData tab)
         {
             if (tab == null || !tab.IsGridLayout) return false;
+            // The Start tab is laid out by StartMenuSync across the whole grid; the
+            // generic overflow packing (with its reserved rows) would fight it.
+            if (tab.Kind == StartMenuSync.TabKind) return false;
             int cols = Math.Max(1, settings.GridColumns);
             int rows = Math.Max(1, settings.GridRows);
             int usableRows = rows - ReservedRows;
@@ -4498,9 +4523,14 @@ namespace WinPanel
 
         // Draws "text" at pos with the [start, start+len) fragment highlighted:
         // same font (a bold font is wider and shifts the text around the match),
-        // accent color plus a soft background bar. All segments are measured and
-        // drawn with NoPadding — the default GDI padding would add a few pixels
-        // after each measured fragment and create a visible gap inside the text.
+        // accent color plus a soft background bar.
+        //
+        // Measuring: TextRenderer adds a constant slack to EVERY call (a single
+        // "G" measures ~FontHeight wide even with NoPadding), which padded the
+        // highlight bar by several pixels on each side. The slack cancels in the
+        // DIFFERENCE of two measurements of strings sharing a prefix, so every
+        // width below is measured as "x"+text minus "x" — real glyph advances,
+        // and the bar hugs the letters with no extra padding.
         public static void DrawHighlighted(Graphics g, string display, int start, int len,
             Font normal, Point pos, Color normalColor, Color highlightColor, bool lightTheme)
         {
@@ -4513,14 +4543,19 @@ namespace WinPanel
             string before = display.Substring(0, start);
             string mid = display.Substring(start, len);
             string after = display.Substring(start + len);
+            int wX = TextRenderer.MeasureText("x", normal, Size.Empty, flags).Width;
+            int wHead = TextRenderer.MeasureText("x" + before, normal, Size.Empty, flags).Width;
+            int wHeadMid = TextRenderer.MeasureText("x" + before + mid, normal, Size.Empty, flags).Width;
+            int beforeAdv = wHead - wX;
+            int midAdv = wHeadMid - wHead;
+            int barH = TextRenderer.MeasureText("x", normal, Size.Empty, flags).Height;
             TextRenderer.DrawText(g, before, normal, pos, normalColor, flags);
-            int x = pos.X + TextRenderer.MeasureText(before, normal, Size.Empty, flags).Width;
-            Size midSz = TextRenderer.MeasureText(mid, normal, Size.Empty, flags);
+            int x = pos.X + beforeAdv;
             Color barColor = lightTheme ? Color.FromArgb(45, highlightColor) : Color.FromArgb(55, highlightColor);
             using (var brush = new SolidBrush(barColor))
-                g.FillRectangle(brush, x, pos.Y, midSz.Width, midSz.Height); // no extra padding: the bar hugs the letters
+                g.FillRectangle(brush, x, pos.Y, midAdv, barH);
             TextRenderer.DrawText(g, mid, normal, new Point(x, pos.Y), highlightColor, flags);
-            TextRenderer.DrawText(g, after, normal, new Point(x + midSz.Width, pos.Y), normalColor, flags);
+            TextRenderer.DrawText(g, after, normal, new Point(x + midAdv, pos.Y), normalColor, flags);
         }
     }
 

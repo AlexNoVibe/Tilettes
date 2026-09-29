@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
@@ -247,8 +248,12 @@ namespace WinPanel
 
                 MergeList(tab.Items, roots, cols, rows);
 
-                // Overflow protection: too many top-level cells -> into the "Ещё" folder.
-                form.EnsureTabFits(tab);
+                // Start tab auto-layout: senior folders on the top row, their
+                // subfolders copied as quick-access tiles across the field.
+                LayoutStartTab(tab, cols, rows);
+
+                // The layout uses the whole grid; the generic overflow packing
+                // (EnsureTabFits) is skipped for this tab and would fight it.
 
                 s.LastSyncDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 records.Save(form.RecordsFilePath);
@@ -293,7 +298,7 @@ namespace WinPanel
                     it.IsFolder = n.IsFolder;
                     it.Path = n.Path ?? "";
                     it.IsUwp = n.IsUwp;
-                    it.Size = 1; // synced items start at the minimal 1x1 size
+                    it.Size = 2; // 1x1 synced tiles proved too small to read
                     if (n.IsFolder) MergeChildren(it.Children, n.Children);
                     // Find a free cell: the spiral search starts at (0,0), so new
                     // items pack into the first available corner of the grid.
@@ -330,7 +335,7 @@ namespace WinPanel
                     it.IsFolder = n.IsFolder;
                     it.Path = n.Path ?? "";
                     it.IsUwp = n.IsUwp;
-                    it.Size = 1;
+                    it.Size = 2; // 1x1 synced tiles proved too small to read
                     if (n.IsFolder) MergeChildren(it.Children, n.Children);
                     items.Add(it);
                 }
@@ -353,6 +358,242 @@ namespace WinPanel
                    src.StartsWith("dir:", StringComparison.OrdinalIgnoreCase) ||
                    src.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ||
                    src.StartsWith("uwp:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ---------- Start tab auto-layout ----------
+
+        // Src prefix of the quick-access copies; they are rebuilt from scratch on
+        // every layout pass, which makes the pass idempotent.
+        private const string AutoKey = "sm:auto:";
+
+        // Total number of descendants of an item (the whole subtree).
+        private static int CountDeep(ShortcutItem it)
+        {
+            int n = 0;
+            if (it.Children != null)
+            {
+                n += it.Children.Count;
+                foreach (var c in it.Children) n += CountDeep(c);
+            }
+            return n;
+        }
+
+        // Tile size of a quick-access copy by its content: more items -> bigger,
+        // never 1x1 (too small to be readable). Empty folders are not placed at all.
+        private static int TileSizeFor(int count)
+        {
+            if (count >= 80) return 6;
+            if (count >= 40) return 5;
+            if (count >= 15) return 4;
+            if (count >= 6) return 3;
+            return 2;
+        }
+
+        // Re-lays out the Start tab over the whole grid. Returns true when anything
+        // changed. A pure layout pass on the existing mirror data: nothing is moved
+        // between folders, every path and every child stays where it was.
+        // Public entry for the startup pass (works without a sync).
+        internal static bool RelayoutStartTab(Records records, int cols, int rows)
+        {
+            try
+            {
+                TabData tab = null;
+                foreach (var t in records.Tabs)
+                    if (t.Kind == TabKind) { tab = t; break; }
+                if (tab == null) return false;
+                return LayoutStartTab(tab, cols, rows);
+            }
+            catch (Exception ex) { AppLog.Write("Start tab relayout", ex); return false; }
+        }
+
+        // The layout itself:
+        //   top row - the senior folders (the sync roots), sized by content
+        //             (empty = 1x1, rich = 5x5/6x6), packed edge to edge so the
+        //             row fits the grid width (shrunk further on a narrow grid);
+        //   below   - every senior's direct subfolders as COPIES (the originals
+        //             keep all their content), sized by content (2x2 minimum),
+        //             stacked in a column that starts right under their senior;
+        //   rules   - tiles of different seniors never overlap: side-by-side
+        //             columns of different seniors may touch, but a tile that
+        //             would sit directly below a foreign senior's tile keeps a
+        //             1-cell gap; empty subfolders are not placed; when the field
+        //             is full the remaining subfolders simply stay inside their
+        //             senior folder.
+        private static bool LayoutStartTab(TabData tab, int cols, int rows)
+        {
+            bool changed = false;
+
+            // Drop the previous auto-copies — they are rebuilt from scratch.
+            for (int i = tab.Items.Count - 1; i >= 0; i--)
+            {
+                string src = tab.Items[i].Src;
+                if (src != null && src.StartsWith(AutoKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    tab.Items.RemoveAt(i);
+                    changed = true;
+                }
+            }
+
+            var seniors = new List<ShortcutItem>();
+            foreach (var it in tab.Items)
+                if (it.IsFolder && IsSyncKey(it.Src)) seniors.Add(it);
+            if (seniors.Count == 0) return changed;
+
+            var counts = new Dictionary<ShortcutItem, int>();
+            foreach (var s in seniors) counts[s] = CountDeep(s);
+
+            // Richest senior first: it takes the leftmost spot of the top row.
+            seniors.Sort(delegate(ShortcutItem a, ShortcutItem b)
+            {
+                int d = counts[b] - counts[a];
+                if (d != 0) return d;
+                return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            // owner: 0 = free, idx+1 = cells belonging to senior #idx,
+            // int.MaxValue = user-placed items (never overlapped).
+            int[,] owner = new int[rows, cols];
+
+            // Senior sizes: content-rich ones get the top row, the empty ones a
+            // single cell. Then shrink until the row fits the grid width.
+            foreach (var s in seniors)
+            {
+                int c = counts[s];
+                s.Size = c == 0 ? 1 : (c >= 60 ? 6 : 5);
+            }
+            int total = 0;
+            foreach (var s in seniors) total += s.Size;
+            while (total > cols)
+            {
+                ShortcutItem biggest = null;
+                foreach (var s in seniors)
+                    if (counts[s] > 0 && s.Size > 2 && (biggest == null || s.Size > biggest.Size)) biggest = s;
+                if (biggest == null) break;
+                biggest.Size--;
+                total--;
+            }
+
+            // User-placed items keep their cells (and block them).
+            foreach (var it in tab.Items)
+            {
+                if (it.IsFolder && IsSyncKey(it.Src)) continue;
+                int sz = Math.Max(1, it.Size);
+                if (it.GridX >= 0 && it.GridY >= 0)
+                    MarkRect(owner, it.GridX, it.GridY, sz, sz, int.MaxValue);
+            }
+
+            // Top row: seniors packed edge to edge.
+            int x = 0;
+            for (int idx = 0; idx < seniors.Count; idx++)
+            {
+                var s = seniors[idx];
+                int gx = Math.Max(0, Math.Min(cols - s.Size, x));
+                if (s.GridX != gx || s.GridY != 0) changed = true;
+                s.GridX = gx;
+                s.GridY = 0;
+                MarkRect(owner, gx, 0, s.Size, s.Size, idx + 1);
+                x += s.Size;
+            }
+
+            // Phase B: every senior fills its own column (directly below it).
+            // Phase C: the rest goes to the first free spot on the field, keeping
+            //          a 1-cell gap above foreign tiles.
+            var overflow = new List<KeyValuePair<int, ShortcutItem>>();
+            for (int idx = 0; idx < seniors.Count; idx++)
+            {
+                var senior = seniors[idx];
+                if (senior.Children == null || senior.Children.Count == 0) continue;
+                int cy = senior.Size;     // the column starts right below the senior
+                int cx = senior.GridX;
+                var subs = new List<ShortcutItem>();
+                foreach (var c in senior.Children)
+                    if (c.IsFolder && CountDeep(c) > 0) subs.Add(c);
+                subs.Sort(delegate(ShortcutItem a, ShortcutItem b)
+                {
+                    return CountDeep(b).CompareTo(CountDeep(a));
+                });
+                foreach (var sub in subs)
+                {
+                    int k = TileSizeFor(CountDeep(sub));
+                    if (k > senior.Size) k = senior.Size;
+                    if (cy + k <= rows && CanPlace(owner, idx + 1, cx, cy, k))
+                    {
+                        PlaceCopy(tab, owner, idx, sub, k, cx, cy);
+                        changed = true;
+                        cy += k;
+                    }
+                    else
+                    {
+                        overflow.Add(new KeyValuePair<int, ShortcutItem>(idx, sub));
+                    }
+                }
+            }
+            foreach (var kv in overflow)
+            {
+                var senior = seniors[kv.Key];
+                int k = TileSizeFor(CountDeep(kv.Value));
+                if (k > senior.Size) k = senior.Size;
+                Point p = FindSpot(owner, kv.Key + 1, k, cols, rows);
+                if (p.X < 0) continue;   // the field is full: the rest stays inside the senior
+                PlaceCopy(tab, owner, kv.Key, kv.Value, k, p.X, p.Y);
+                changed = true;
+            }
+            return changed;
+        }
+
+        private static void PlaceCopy(TabData tab, int[,] owner, int seniorIdx, ShortcutItem sub, int size, int gx, int gy)
+        {
+            var copy = new ShortcutItem();
+            copy.Name = sub.Name;
+            copy.Src = AutoKey + sub.Src;
+            copy.IsFolder = true;
+            copy.Path = sub.Path ?? "";
+            copy.IsUwp = sub.IsUwp;
+            copy.Size = size;
+            // The children list is SHARED with the original folder: the copy is a
+            // second door to the same live content, the original loses nothing.
+            copy.Children = sub.Children;
+            copy.GridX = gx;
+            copy.GridY = gy;
+            tab.Items.Add(copy);
+            MarkRect(owner, gx, gy, size, size, seniorIdx + 1);
+        }
+
+        private static void MarkRect(int[,] owner, int x, int y, int w, int h, int value)
+        {
+            int rows = owner.GetLength(0), cols = owner.GetLength(1);
+            for (int dy = 0; dy < h; dy++)
+                for (int dx = 0; dx < w; dx++)
+                    if (y + dy < rows && x + dx < cols) owner[y + dy, x + dx] = value;
+        }
+
+        // Free k x k rect; a tile may touch a foreign senior's tiles SIDE-BY-SIDE,
+        // but must keep a 1-cell gap when it would sit directly below one.
+        private static bool CanPlace(int[,] owner, int value, int x, int y, int k)
+        {
+            int rows = owner.GetLength(0), cols = owner.GetLength(1);
+            if (x < 0 || y < 0 || x + k > cols || y + k > rows) return false;
+            for (int dy = 0; dy < k; dy++)
+                for (int dx = 0; dx < k; dx++)
+                    if (owner[y + dy, x + dx] != 0) return false;
+            if (y > 0)
+            {
+                for (int dx = 0; dx < k; dx++)
+                {
+                    int o = owner[y - 1, x + dx];
+                    if (o != 0 && o != value) return false;
+                }
+            }
+            return true;
+        }
+
+        // First free position in reading order.
+        private static Point FindSpot(int[,] owner, int value, int k, int cols, int rows)
+        {
+            for (int y = 0; y + k <= rows; y++)
+                for (int x = 0; x + k <= cols; x++)
+                    if (CanPlace(owner, value, x, y, k)) return new Point(x, y);
+            return new Point(-1, -1);
         }
     }
 }
