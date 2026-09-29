@@ -28,6 +28,7 @@ log.txt
 searchHistory.xml
 settings.ini.bak
 *.bak
+.testrun/
 
 memory/
 .openclaw-attachments/

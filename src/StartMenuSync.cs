@@ -229,17 +229,18 @@ namespace WinPanel
                 TabData tab = null;
                 foreach (var t in records.Tabs)
                 {
-                    if (t.Kind == TabKind || t.Name == Loc.S("Start Menu", "Пуск")) { tab = t; break; }
+                    if (t.Kind == TabKind || t.Name == Loc.S("Start Menu", "Пуск") || t.Name == Loc.S("Start", "Пуск")) { tab = t; break; }
                 }
                 if (tab == null)
                 {
                     tab = new TabData();
-                    tab.Name = Loc.S("Start Menu", "Пуск");
                     tab.Kind = TabKind;
                     tab.IsGridLayout = true;
                     records.Tabs.Add(tab);
                     AppLog.Write("Start Menu sync: tab created");
                 }
+                // The sync owns this tab and keeps its name canonical.
+                tab.Name = Loc.S("Start", "Пуск");
 
                 int cols = Math.Max(1, s.GridColumns);
                 int rows = Math.Max(1, s.GridRows);

@@ -18,6 +18,8 @@ namespace WinPanel
             public string[] Metas;
             public ulong MaskA;
             public ulong MaskB;
+            // Resolved target of a .lnk item ("" when not a shortcut).
+            public string Target;
         }
 
         // Index of the description entry inside the metas array
@@ -68,6 +70,13 @@ namespace WinPanel
             return it == null || it.ShortDescription == null ? "" : it.ShortDescription;
         }
 
+        // Resolved target path of a .lnk item ("" when not a shortcut / unknown).
+        public static string GetTarget(ShortcutItem it)
+        {
+            var e = GetEntry(it);
+            return e.Target == null ? "" : e.Target;
+        }
+
         private static MetaEntry GetEntry(ShortcutItem it)
         {
             lock (Gate)
@@ -82,6 +91,7 @@ namespace WinPanel
             Add(list, it.Name);
 
             string path = it.Path;
+            string resolvedTarget = "";
             if (!string.IsNullOrEmpty(path))
             {
                 try
@@ -105,6 +115,7 @@ namespace WinPanel
                         if (!string.IsNullOrEmpty(tp))
                         {
                             target = tp;
+                            resolvedTarget = tp;
                             Add(list, tp);
                             Add(list, Path.GetFileName(tp));
                             try
@@ -138,6 +149,7 @@ namespace WinPanel
 
             var entry = new MetaEntry();
             entry.Name = it.Name;
+            entry.Target = resolvedTarget;
             entry.Metas = list.ToArray();
             ulong a = 0, b = 0;
             foreach (var m in entry.Metas)

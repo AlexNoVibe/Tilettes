@@ -180,7 +180,9 @@ namespace WinPanel
             Action onOpenContainingFolder,
             Action onOpenMiniExplorer,
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
-            Action onRemove, Action onRename, Action onChangeIcon)
+            Action onRemove, Action onRename, Action onChangeIcon,
+            Action onSize5, Action onSize6,
+            string[] moveToTabs, Action<int> onMoveToTab)
         {
             uint dummy;
             IntPtr pidl;
@@ -225,6 +227,8 @@ namespace WinPanel
                         InsertCustomItem(sizeMenu, 1, customIdStart + 1, "2 x 2", marker);
                         InsertCustomItem(sizeMenu, 2, customIdStart + 2, "3 x 3", marker);
                         InsertCustomItem(sizeMenu, 3, customIdStart + 3, "4 x 4", marker);
+                        InsertCustomItem(sizeMenu, 4, customIdStart + 13, "5 x 5", marker);
+                        InsertCustomItem(sizeMenu, 5, customIdStart + 14, "6 x 6", marker);
 
                         MENUITEMINFO sizeItem = new MENUITEMINFO();
                         sizeItem.cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO));
@@ -239,6 +243,24 @@ namespace WinPanel
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 4, Loc.S("Rename"), marker);
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 5, Loc.S("Change Icon"), marker);
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 6, Loc.S("Remove from Panel"), marker);
+
+                        // "Move to tab": a submenu listing the other tabs.
+                        if (moveToTabs != null && moveToTabs.Length > 0 && onMoveToTab != null)
+                        {
+                            IntPtr moveMenu = CreatePopupMenu();
+                            for (int i = 0; i < moveToTabs.Length; i++)
+                                InsertCustomItem(moveMenu, (uint)i, customIdStart + 100 + (uint)i, moveToTabs[i], marker);
+
+                            MENUITEMINFO moveItem = new MENUITEMINFO();
+                            moveItem.cbSize = (uint)Marshal.SizeOf(typeof(MENUITEMINFO));
+                            moveItem.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE | MIIM_SUBMENU | MIIM_BITMAP;
+                            moveItem.fType = MFT_STRING;
+                            moveItem.wID = customIdStart + 12;
+                            moveItem.dwTypeData = Loc.S("Move to tab", "Переместить на вкладку");
+                            moveItem.hSubMenu = moveMenu;
+                            moveItem.hbmpItem = marker;
+                            InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref moveItem);
+                        }
                     }
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
@@ -267,6 +289,12 @@ namespace WinPanel
                     else if (cmd == customIdStart + 5) { if (onChangeIcon != null) onChangeIcon(); }
                     else if (cmd == customIdStart + 6) { if (onRemove != null) onRemove(); }
                     else if (cmd == customIdStart + 11) { if (onEditDescription != null) onEditDescription(); }
+                    else if (cmd == customIdStart + 13) { if (onSize5 != null) onSize5(); }
+                    else if (cmd == customIdStart + 14) { if (onSize6 != null) onSize6(); }
+                    else if (cmd >= customIdStart + 100 && cmd < customIdStart + 100 + 64)
+                    {
+                        if (onMoveToTab != null) onMoveToTab((int)(cmd - (customIdStart + 100)));
+                    }
 
                     DestroyMenu(hMenu);
                     Marshal.ReleaseComObject(contextMenu);

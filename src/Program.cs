@@ -62,8 +62,13 @@ namespace WinPanel
         private Control draggingTile;
         private ShortcutItem draggingItem;
 
-        // Edit mode state
-        private bool isEditMode = false;
+        // Edit mode state: 0 = off, 1 = edit, 2 = multi-select mode (red button).
+        private int editState = 0;
+        private bool isEditMode { get { return editState >= 1; } }
+
+        // Items picked in multi-select mode (red edit button); operations: delete,
+        // move to another tab. Cleared when the tab or the mode changes.
+        private readonly List<ShortcutItem> multiSelection = new List<ShortcutItem>();
 
         // Deferred (non-blocking) icon loading
         private readonly Queue<Action> iconQueue = new Queue<Action>();
@@ -150,7 +155,8 @@ namespace WinPanel
             // File-type rules (icons and "open with" per extension).
             FileTypes.Load(FileTypes.DefaultFilePath);
 
-            isEditMode = settings.EditMode;
+            editState = settings.EditModeState;
+            if (editState < 0 || editState > 2) editState = settings.EditMode ? 1 : 0;
 
             try { SearchHistoryStore.Load(); }
             catch (Exception ex) { AppLog.Write("Search history load", ex); }
@@ -309,6 +315,11 @@ namespace WinPanel
                     try { UnregisterHotKey(this.Handle, HotkeyIdWinL); } catch { }
                     try { UnregisterHotKey(this.Handle, HotkeyIdWinR); } catch { }
                     hotkeyWinRegistered = false;
+                }
+                if (winKeyHook != IntPtr.Zero)
+                {
+                    try { UnhookWindowsHookEx(winKeyHook); } catch { }
+                    winKeyHook = IntPtr.Zero;
                 }
                 if (iconTimer != null)
                 {
@@ -1164,11 +1175,17 @@ namespace WinPanel
             int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - textH) / 2);
             int left = e.Bounds.Left + 32;
 
-            // Right column: the full path; when it does not fit, only its tail is
-            // shown (the tooltip on hover always shows the full path).
+            // Right column: for shortcuts both paths are shown (lnk -> target), the
+            // query can match either of them; when it does not fit, only its tail.
             string path = it.Path ?? "";
+            string targetPath = "";
+            try { if (path.ToLowerInvariant().EndsWith(".lnk")) targetPath = PanelSearch.GetTarget(it); }
+            catch { }
+            string pathCombo = path;
+            if (targetPath.Length > 0 && !string.Equals(targetPath, path, StringComparison.OrdinalIgnoreCase))
+                pathCombo = path + "  →  " + targetPath;
             int maxPathW = (int)(e.Bounds.Width * 0.45);
-            string pathDisplay = path.Length > 0 ? UiText.FitTail(path, f, maxPathW) : "";
+            string pathDisplay = pathCombo.Length > 0 ? UiText.FitTail(pathCombo, f, maxPathW) : "";
             int pathW = pathDisplay.Length > 0 ? TextRenderer.MeasureText(pathDisplay, f).Width : 0;
             int pathX = e.Bounds.Right - 8 - pathW;
 
@@ -1208,8 +1225,8 @@ namespace WinPanel
             if (pathDisplay.Length > 0)
             {
                 int pStart, pLen;
-                bool pathHl = UiText.FindHighlight(path.ToLowerInvariant(), panelSearchVariants, out pStart, out pLen);
-                int cut = path.Length - (pathDisplay.Length - 1); // chars hidden by the leading "…"
+                bool pathHl = UiText.FindHighlight(pathCombo.ToLowerInvariant(), panelSearchVariants, out pStart, out pLen);
+                int cut = pathCombo.Length - (pathDisplay.Length - 1); // chars hidden by the leading "…"
                 bool tailHl = pathHl && pStart >= cut;
                 if (tailHl)
                     UiText.DrawHighlighted(g, pathDisplay, pStart - cut, pLen, f, new Point(pathX, ty), subColor, acc, light);
@@ -1240,6 +1257,15 @@ namespace WinPanel
                 {
                     var it = panelSearchResults[i];
                     t = it.Path ?? "";
+                    try
+                    {
+                        if (t.ToLowerInvariant().EndsWith(".lnk"))
+                        {
+                            string tgt = PanelSearch.GetTarget(it);
+                            if (!string.IsNullOrEmpty(tgt)) t = t + "  →  " + tgt;
+                        }
+                    }
+                    catch { }
                     string d = PanelSearch.GetDescription(it);
                     if (!string.IsNullOrEmpty(d)) t = (t.Length > 0 ? t + "\n" : "") + d;
                 }
@@ -1269,7 +1295,109 @@ namespace WinPanel
         }
 
         // Captures (or releases) the physical Win keys so the panel appears instead
-        // of the Start menu. Fails soft when another program holds the keys.
+        // of the Start menu. RegisterHotKey alone shows the panel but the Start
+        // menu still opens on some systems, so a WH_KEYBOARD_LL hook swallows the
+        // bare Win press. Win+<key> chords are preserved: the first other key
+        // pressed while Win is held re-injects the real Win modifier.
+        private IntPtr winKeyHook = IntPtr.Zero;
+        private LowLevelHookProc hookProcRef;
+        private bool winHeld;      // our hook swallowed a Win press (still physically held)
+        private bool winChord;     // another key was pressed while Win was held
+        private bool winReinject;  // our own keybd_event Win re-injection, pass through
+
+        private struct KBDLLHOOKSTRUCT
+        {
+            public uint vkCode;
+            public uint scanCode;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        private delegate IntPtr LowLevelHookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelHookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
+
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN_LL = 0x0100;
+        private const int WM_KEYUP_LL = 0x0101;
+        private const int WM_SYSKEYDOWN_LL = 0x0104;
+        private const int WM_SYSKEYUP_LL = 0x0105;
+        private const uint KEYEVENTF_KEYUP_LL = 0x0002;
+        private const int VK_LWIN_LL = 0x5B;
+        private const int VK_RWIN_LL = 0x5C;
+
+        private IntPtr WinKeyHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0)
+                {
+                    int msg = wParam.ToInt32();
+                    var k = (KBDLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                    bool isWin = k.vkCode == VK_LWIN_LL || k.vkCode == VK_RWIN_LL;
+                    if (winReinject && isWin)
+                    {
+                        winReinject = false;
+                        return CallNextHookEx(winKeyHook, nCode, wParam, lParam);
+                    }
+                    if (isWin)
+                    {
+                        bool down = msg == WM_KEYDOWN_LL || msg == WM_SYSKEYDOWN_LL;
+                        bool up = msg == WM_KEYUP_LL || msg == WM_SYSKEYUP_LL;
+                        if (down)
+                        {
+                            if (winHeld) return (IntPtr)1; // autorepeat: swallow silently
+                            winHeld = true;
+                            winChord = false;
+                            return (IntPtr)1; // swallow: the Start menu never sees it
+                        }
+                        if (up)
+                        {
+                            winHeld = false;
+                            if (winChord)
+                            {
+                                // The modifier was re-injected for the chord; release it.
+                                winReinject = true;
+                                keybd_event((byte)VK_LWIN_LL, 0, KEYEVENTF_KEYUP_LL, System.UIntPtr.Zero);
+                            }
+                            else
+                            {
+                                // Solo tap (like the Start button): toggle on release,
+                                // so Win+<key> chords never flash the panel.
+                                try { BeginInvoke((MethodInvoker)delegate { ToggleByWinKey(); }); }
+                                catch { }
+                            }
+                            return (IntPtr)1;
+                        }
+                    }
+                    else if (winHeld && !winChord && (msg == WM_KEYDOWN_LL || msg == WM_SYSKEYDOWN_LL))
+                    {
+                        // Win+<key> chord: restore the real Win modifier so the
+                        // combination still works, then let the key through.
+                        winChord = true;
+                        winReinject = true;
+                        keybd_event((byte)VK_LWIN_LL, 0, 0, System.UIntPtr.Zero);
+                    }
+                }
+            }
+            catch { }
+            return CallNextHookEx(winKeyHook, nCode, wParam, lParam);
+        }
+
         private void ApplyWinKeyHotkey()
         {
             try
@@ -1277,6 +1405,11 @@ namespace WinPanel
                 bool want = settings != null && settings.HotkeyWin;
                 if (!want)
                 {
+                    if (winKeyHook != IntPtr.Zero)
+                    {
+                        try { UnhookWindowsHookEx(winKeyHook); } catch { }
+                        winKeyHook = IntPtr.Zero;
+                    }
                     if (hotkeyWinRegistered)
                     {
                         try { UnregisterHotKey(this.Handle, HotkeyIdWinL); } catch { }
@@ -1285,18 +1418,21 @@ namespace WinPanel
                     }
                     return;
                 }
-                if (hotkeyWinRegistered) return;
-                const uint MOD_WIN = 0x8, MOD_NOREPEAT = 0x4000;
-                const uint VK_LWIN = 0x5B, VK_RWIN = 0x5C;
-                bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, VK_LWIN);
-                bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, VK_RWIN);
-                hotkeyWinRegistered = left || right;
-                if (!hotkeyWinRegistered)
-                    AppLog.Write("Win key capture failed: already held by another program");
-                else if (!left || !right)
-                    AppLog.Write("Win key capture partial: L=" + left + " R=" + right);
+                if (winKeyHook != IntPtr.Zero || hotkeyWinRegistered) return;
+
+                hookProcRef = new LowLevelHookProc(WinKeyHookProc); // keep alive for the hook lifetime
+                winKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, hookProcRef, GetModuleHandle(null), 0);
+                if (winKeyHook == IntPtr.Zero)
+                {
+                    // Fallback: hotkey capture (the Start menu may still open).
+                    AppLog.Write("Win key hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ", falling back to hotkey");
+                    const uint MOD_WIN = 0x8, MOD_NOREPEAT = 0x4000;
+                    bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, 0x5B);
+                    bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, 0x5C);
+                    hotkeyWinRegistered = left || right;
+                }
             }
-            catch (Exception ex) { AppLog.Write("Win key hotkey", ex); }
+            catch (Exception ex) { AppLog.Write("Win key hook", ex); }
         }
 
         // The captured Start button: show the panel (search focused) or hide it.
@@ -1727,12 +1863,12 @@ namespace WinPanel
 
             var editBtn = new Button
             {
-                Text = isEditMode ? "✅" : "⬜",
+                Text = editState == 0 ? "⬜" : "✅",
                 Width = 35,
                 Height = 31,
                 Dock = DockStyle.Left,
                 FlatStyle = FlatStyle.Flat,
-                BackColor = isEditMode ? panelColor : bgColor,
+                BackColor = editState == 0 ? bgColor : (editState == 2 ? Color.FromArgb(192, 57, 43) : panelColor),
                 ForeColor = textColor,
                 Cursor = Cursors.Hand,
                 Font = new Font("Segoe UI", 11f)
@@ -1740,11 +1876,13 @@ namespace WinPanel
             editBtn.FlatAppearance.BorderSize = 0;
             editBtn.FlatAppearance.MouseOverBackColor = hoverColor;
             editBtn.Click += (s, e) => {
-                isEditMode = !isEditMode;
-                settings.EditMode = isEditMode;
+                editState = (editState + 1) % 3; // off -> edit -> multi-select -> off
+                settings.EditModeState = editState;
+                settings.EditMode = editState >= 1;
                 settings.Save(settingsPath);
-                editBtn.Text = isEditMode ? "✅" : "⬜";
-                editBtn.BackColor = isEditMode ? panelColor : bgColor;
+                editBtn.Text = editState == 0 ? "⬜" : "✅";
+                editBtn.BackColor = editState == 0 ? bgColor : (editState == 2 ? Color.FromArgb(192, 57, 43) : panelColor);
+                ClearMultiSelection();
             };
             actionRow.Controls.Add(editBtn);
 
@@ -1916,6 +2054,11 @@ namespace WinPanel
             sBox.KeyDown += PanelSearchBox_KeyDown;
             searchRow.Controls.Add(sBox);
             topPanel.Controls.Add(searchRow);
+            // Docking is applied in reverse collection order: rightPanel must stay
+            // last so it docks first at full height. Otherwise searchRow takes the
+            // bottom strip across the whole width and the settings/edit row under
+            // min/max/close is clipped to a 4px sliver.
+            topPanel.Controls.SetChildIndex(rightPanel, topPanel.Controls.Count - 1);
             panelSearchRow = searchRow;
             panelSearchBox = sBox;
             try
@@ -1963,6 +2106,7 @@ namespace WinPanel
         private void ActivateTab(Button tabBtn, Dictionary<Button, Panel> layoutPanels, List<Button> buttons)
         {
             try { if (panelSearchActive) ClearPanelSearch(); } catch { }
+            ClearMultiSelection();
             foreach (var kv in layoutPanels) kv.Value.Visible = false;
             Font tabFont = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize);
             Font tabFontActive = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize, System.Drawing.FontStyle.Bold);
@@ -2124,6 +2268,7 @@ namespace WinPanel
 
         private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
         {
+            ClearMultiSelection();
             DisposeControlTree(layoutPanel);
             layoutPanel.Controls.Clear();
             var navStack = tabNavigations[tabData];
@@ -2161,8 +2306,8 @@ namespace WinPanel
         private int ClampItemSize(int size)
         {
             int s = size;
-            if (s <= 0 || s > 4) s = settings.DefaultItemSize;
-            if (s <= 0 || s > 4) s = 1;
+            if (s <= 0 || s > 6) s = settings.DefaultItemSize;
+            if (s <= 0 || s > 6) s = 1;
             return s;
         }
 
@@ -2232,13 +2377,13 @@ namespace WinPanel
             try
             {
                 int s = item.Size;
-                if (s < 1 || s > 4) s = 1;
+                if (s < 1 || s > 6) s = 1;
                 var occ = new bool[rows, cols];
                 foreach (var it in items)
                 {
                     if (ReferenceEquals(it, item)) continue;
                     int os = it.Size;
-                    if (os < 1 || os > 4) os = 1;
+                    if (os < 1 || os > 6) os = 1;
                     if (os > cols || os > rows) os = Math.Max(1, Math.Min(cols, rows));
                     int gx = it.GridX, gy = it.GridY;
                     if (gx < 0 || gy < 0) continue;
@@ -2371,7 +2516,7 @@ namespace WinPanel
         private static long CellCount(ShortcutItem it, int cols, int rows)
         {
             int s = it.Size;
-            if (s < 1 || s > 4) s = 1;
+            if (s < 1 || s > 6) s = 1;
             if (s > cols || s > rows) s = Math.Max(1, Math.Min(cols, rows));
             return (long)s * s;
         }
@@ -2606,6 +2751,12 @@ namespace WinPanel
                 }
                 else if (e.Button == MouseButtons.Right)
                 {
+                    // Red multi-select mode: right-click opens the bulk menu instead.
+                    if (editState == 2)
+                    {
+                        ShowMultiSelectMenu(tile, item, panel, tabData, e.Location);
+                        return;
+                    }
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
                     {
@@ -2624,10 +2775,14 @@ namespace WinPanel
                             fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
                             fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
                             fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
+                            fSizeMenu.MenuItems.Add("5 x 5", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 5));
+                            fSizeMenu.MenuItems.Add("6 x 6", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 6));
                             fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) => EditItemDescription(item));
                             fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
+                            var fMoveMenu = fMenu.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
+                            FillMoveToTabMenu(fMoveMenu, panel, tabData, new List<ShortcutItem> { item });
                         }
                         fMenu.Show(tile, e.Location);
                     }
@@ -2647,7 +2802,16 @@ namespace WinPanel
                             () => ChangeIconSize(item, tile, panel, tabData, 4),
                             () => RemoveItem(panel, tile, item, tabData),
                             () => RenameItem(item, tile),
-                            () => ChangeItemIcon(item, tile));
+                            () => ChangeItemIcon(item, tile),
+                            () => ChangeIconSize(item, tile, panel, tabData, 5),
+                            () => ChangeIconSize(item, tile, panel, tabData, 6),
+                            OtherTabNames(tabData),
+                            i =>
+                            {
+                                var target = OtherTabByIndex(tabData, i);
+                                if (target != null)
+                                    MoveItemsToTab(new List<ShortcutItem> { item }, tabData, target);
+                            });
                     }
                 }
             };
@@ -2721,6 +2885,13 @@ namespace WinPanel
                     else
                     {
                         bool ctrlClick = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+                        // Red multi-select mode: a plain click toggles selection and
+                        // never launches anything.
+                        if (editState == 2)
+                        {
+                            ToggleMultiSelect(tile, item);
+                            return;
+                        }
                         if (ctrlClick && settings.MiniExplorerCtrlClick && !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path))
                         {
                             OpenMiniExplorer(item);
@@ -2937,12 +3108,165 @@ namespace WinPanel
             records.Save(recordsPath);
             RenderCurrentFolder(panel, tabData);
         }
+
+        // Names of the other tabs (for the "Move to tab" submenu).
+        internal string[] OtherTabNames(TabData skip)
+        {
+            try
+            {
+                var names = new List<string>();
+                foreach (var t in records.Tabs)
+                    if (!ReferenceEquals(t, skip)) names.Add(t.Name);
+                return names.ToArray();
+            }
+            catch { return new string[0]; }
+        }
+
+        private TabData OtherTabByIndex(TabData skip, int index)
+        {
+            try
+            {
+                int i = 0;
+                foreach (var t in records.Tabs)
+                {
+                    if (ReferenceEquals(t, skip)) continue;
+                    if (i == index) return t;
+                    i++;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        // Moves one or several items from the current visible list of `fromTab`
+        // into `toTab` (grid placement, save, UI rebuild).
+        internal void MoveItemsToTab(List<ShortcutItem> items, TabData fromTab, TabData toTab)
+        {
+            try
+            {
+                if (items == null || items.Count == 0 || toTab == null || ReferenceEquals(fromTab, toTab)) return;
+                var fromList = GetCurrentItems(fromTab);
+                int cols = Math.Max(1, settings.GridColumns);
+                int rows = Math.Max(1, settings.GridRows);
+                foreach (var it in items)
+                {
+                    if (it == null) continue;
+                    fromList.Remove(it);
+                    if (toTab.IsGridLayout)
+                        PlaceInGrid(toTab.Items, it, 0, 0, cols, rows);
+                    else
+                    {
+                        it.X = it.X >= 0 ? it.X : 30;
+                        it.Y = it.Y >= 0 ? it.Y : 30;
+                    }
+                    toTab.Items.Add(it);
+                }
+                multiSelection.Clear();
+                records.Save(recordsPath);
+                LoadTabs();
+            }
+            catch (Exception ex) { AppLog.Write("MoveItemsToTab", ex); }
+        }
+
+        // Fills a WinForms submenu with the other tabs (for "Move to tab").
+        private void FillMoveToTabMenu(MenuItem parent, Panel panel, TabData tabData, List<ShortcutItem> items)
+        {
+            try
+            {
+                foreach (var t in records.Tabs)
+                {
+                    if (ReferenceEquals(t, tabData)) continue;
+                    var target = t;
+                    var cap = t.Name;
+                    parent.MenuItems.Add(cap, (s2, e2) => MoveItemsToTab(items, tabData, target));
+                }
+                if (parent.MenuItems.Count == 0)
+                {
+                    var none = parent.MenuItems.Add(Loc.S("(no other tabs)", "(нет других вкладок)"));
+                    none.Enabled = false;
+                }
+            }
+            catch { }
+        }
+
+        // ---------- multi-select mode (the red edit-button state) ----------
+
+        private void ClearMultiSelection()
+        {
+            try
+            {
+                multiSelection.Clear();
+                foreach (Control c in contentPanel.Controls)
+                {
+                    var lp = c as Panel;
+                    if (lp == null) continue;
+                    foreach (Control t in lp.Controls)
+                    {
+                        var tc = t as TileControl;
+                        if (tc != null && tc.MultiSelected) { tc.MultiSelected = false; tc.Invalidate(); }
+                    }
+                }
+            }
+            catch (Exception ex) { AppLog.Write("ClearMultiSelection", ex); }
+        }
+
+        private void ToggleMultiSelect(TileControl tile, ShortcutItem item)
+        {
+            try
+            {
+                if (multiSelection.Remove(item)) tile.MultiSelected = false;
+                else { multiSelection.Add(item); tile.MultiSelected = true; }
+                tile.Invalidate();
+            }
+            catch (Exception ex) { AppLog.Write("ToggleMultiSelect", ex); }
+        }
+
+        // Context menu over a selected tile in multi-select mode: bulk delete /
+        // move to tab / clear selection.
+        private void ShowMultiSelectMenu(TileControl tile, ShortcutItem item, Panel panel, TabData tabData, Point location)
+        {
+            try
+            {
+                if (!multiSelection.Contains(item))
+                {
+                    multiSelection.Add(item);
+                    tile.MultiSelected = true;
+                    tile.Invalidate();
+                }
+                var m = new ContextMenu();
+                string n = multiSelection.Count.ToString();
+                m.MenuItems.Add(Loc.S("Remove selected (" + n + ")", "Удалить выбранные (" + n + ")"), (s2, e2) =>
+                {
+                    var doomed = new List<ShortcutItem>(multiSelection);
+                    if (doomed.Count == 0) return;
+                    string first = doomed[0].Name ?? "";
+                    string caption = Loc.S("Remove selected", "Удалить выбранные");
+                    string text = doomed.Count == 1
+                        ? Loc.S("Remove", "Удалить") + " \"" + first + "\"?"
+                        : Loc.S("Remove ", "Удалить ") + doomed.Count + Loc.S(" items?", " эл.") + "\n" + first + Loc.S(" and more...", " и др...");
+                    if (MessageBox.Show(text, caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                    var currentList = GetCurrentItems(tabData);
+                    foreach (var it in doomed) currentList.Remove(it);
+                    ClearMultiSelection();
+                    records.Save(recordsPath);
+                    RenderCurrentFolder(panel, tabData);
+                });
+                var moveTo = m.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
+                FillMoveToTabMenu(moveTo, panel, tabData, new List<ShortcutItem>(multiSelection));
+                m.MenuItems.Add(Loc.S("Clear selection", "Снять выделение"), (s2, e2) => ClearMultiSelection());
+                m.Show(tile, location);
+            }
+            catch (Exception ex) { AppLog.Write("MultiSelectMenu", ex); }
+        }
     }
 
     // Popup window that opens a folder's children above everything else.
+    // Nested folders are opened inside the popup itself (with a Back button),
+    // so deep structures work in popup mode exactly like in the tab mode.
     public class FolderPopupForm : Form
     {
         private ShortcutItem folder;
+        private readonly List<ShortcutItem> navStack = new List<ShortcutItem>();
         private ToolTip tip;
         private Settings settings;
         private bool editMode;
@@ -2953,6 +3277,8 @@ namespace WinPanel
         private Color hoverColor;
         private Color textColor;
         private FlowLayoutPanel flow;
+        private Label titleLbl;
+        private Button backBtn;
         private Screen openScreen;
         private bool suppressDeactivate;
 
@@ -3007,12 +3333,27 @@ namespace WinPanel
             var wa = openScreen.WorkingArea;
 
             var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
-            var titleLbl = new Label
+            backBtn = new Button
+            {
+                Text = "‹",
+                Width = 30,
+                Height = 30,
+                Dock = DockStyle.Left,
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = textColor,
+                BackColor = panelColor,
+                Visible = false,
+                Font = new Font("Segoe UI", 11f, FontStyle.Bold)
+            };
+            backBtn.FlatAppearance.BorderSize = 0;
+            backBtn.Click += (s, e) => NavigateBack();
+            titleBar.Controls.Add(backBtn);
+            titleLbl = new Label
             {
                 Text = folderItem.Name,
                 ForeColor = textColor,
                 AutoSize = true,
-                Location = new Point(10, 7),
+                Location = new Point(42, 7),
                 Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize)
             };
             titleBar.Controls.Add(titleLbl);
@@ -3044,12 +3385,13 @@ namespace WinPanel
             {
                 var files = (string[])e.Data.GetData(DataFormats.FileDrop);
                 if (files == null || files.Length == 0) return;
-                if (folder.Children == null) folder.Children = new List<ShortcutItem>();
+                ShortcutItem current = CurrentFolder();
+                if (current.Children == null) current.Children = new List<ShortcutItem>();
                 foreach (var f in files)
                 {
                     var name = Path.GetFileNameWithoutExtension(f);
                     if (string.IsNullOrEmpty(name)) name = Path.GetFileName(f);
-                    folder.Children.Add(new ShortcutItem
+                    current.Children.Add(new ShortcutItem
                     {
                         Path = MainForm.ConsolidateFilePath(f),
                         Name = name
@@ -3070,13 +3412,42 @@ namespace WinPanel
             this.Deactivate += (s, e) => { if (!suppressDeactivate) this.Close(); };
         }
 
+        // The folder whose children are displayed right now (root when no navigation).
+        private ShortcutItem CurrentFolder()
+        {
+            return navStack.Count > 0 ? navStack[navStack.Count - 1] : folder;
+        }
+
+        // Opens a nested folder inside the popup.
+        private void NavigateInto(ShortcutItem sub)
+        {
+            try
+            {
+                if (sub == null || !sub.IsFolder) return;
+                navStack.Add(sub);
+                Rebuild();
+            }
+            catch { }
+        }
+
+        private void NavigateBack()
+        {
+            try
+            {
+                if (navStack.Count == 0) return;
+                navStack.RemoveAt(navStack.Count - 1);
+                Rebuild();
+            }
+            catch { }
+        }
+
         // Sizes the popup so that every row shows all its tiles: the last column is no
         // longer cut off (4 items = 4 tiles in a row). Scrolling appears only when the
         // folder has more rows than fit on the screen.
         private void LayoutPopup()
         {
             if (this.IsDisposed || flow == null || flow.IsDisposed) return;
-            var children = folder.Children != null ? folder.Children : new List<ShortcutItem>();
+            var children = CurrentFolder().Children != null ? CurrentFolder().Children : new List<ShortcutItem>();
             int count = children.Count;
             int cols = Math.Max(1, Math.Min(4, count));
             int rows = Math.Max(1, (int)Math.Ceiling(count / (double)cols));
@@ -3105,6 +3476,8 @@ namespace WinPanel
         private void Rebuild()
         {
             if (this.IsDisposed || flow == null || flow.IsDisposed) return;
+            if (titleLbl != null) titleLbl.Text = CurrentFolder().Name;
+            if (backBtn != null) backBtn.Visible = navStack.Count > 0;
             LayoutPopup();
             BuildTiles();
         }
@@ -3117,7 +3490,7 @@ namespace WinPanel
             flow.Controls.Clear();
             foreach (var c in old) c.Dispose();
 
-            var children = folder.Children != null ? folder.Children : new List<ShortcutItem>();
+            var children = CurrentFolder().Children != null ? CurrentFolder().Children : new List<ShortcutItem>();
             if (children.Count == 0)
             {
                 var emptyLbl = new Label
@@ -3146,10 +3519,16 @@ namespace WinPanel
         }
 
         // Drag to swap places (edit mode) + right-click menu for each tile.
+        // Left-click on a nested folder opens it inside the popup.
         private void AttachTileHandlers(PopupTile tile, ShortcutItem child)
         {
             bool dragging = false;
             Point down = Point.Empty;
+
+            tile.Click += (s, e) =>
+            {
+                if (child.IsFolder) NavigateInto(child);
+            };
 
             tile.MouseDown += (s, e) =>
             {
@@ -3190,12 +3569,13 @@ namespace WinPanel
 
         private void SwapItems(ShortcutItem a, ShortcutItem b)
         {
-            if (folder.Children == null || ReferenceEquals(a, b)) return;
-            int ia = folder.Children.IndexOf(a);
-            int ib = folder.Children.IndexOf(b);
+            ShortcutItem current = CurrentFolder();
+            if (current.Children == null || ReferenceEquals(a, b)) return;
+            int ia = current.Children.IndexOf(a);
+            int ib = current.Children.IndexOf(b);
             if (ia < 0 || ib < 0) return;
-            folder.Children[ia] = b;
-            folder.Children[ib] = a;
+            current.Children[ia] = b;
+            current.Children[ib] = a;
             if (onChanged != null) onChanged();
             BuildTiles();
         }
@@ -3207,13 +3587,16 @@ namespace WinPanel
             {
                 menu.MenuItems.Add("Open containing folder", (s2, e2) => MainForm.OpenContainingFolder(child));
             }
-            if (editMode)
+            if (editMode && navStack.Count == 0) // "move out" makes sense only for the root level
             {
                 menu.MenuItems.Add("Move out of folder", (s2, e2) =>
                 {
                     if (onMoveOutOfFolder != null) onMoveOutOfFolder(child);
                     Rebuild();
                 });
+            }
+            if (editMode)
+            {
                 menu.MenuItems.Add("Remove from Panel", (s2, e2) =>
                 {
                     suppressDeactivate = true;
@@ -3221,7 +3604,7 @@ namespace WinPanel
                     try { ok = ConfirmDialog.Show(this, child); }
                     finally { suppressDeactivate = false; }
                     if (!ok) return;
-                    if (folder.Children != null) folder.Children.Remove(child);
+                    CurrentFolder().Children.Remove(child);
                     if (onChanged != null) onChanged();
                     Rebuild();
                 });
@@ -3378,6 +3761,7 @@ namespace WinPanel
         public ShortcutItem Item { get; set; }
         public TabData TabData { get; set; }
         public bool IsHovered { get; set; }
+        public bool MultiSelected { get; set; }
         public Image IconImage { get; set; }
         public List<Image> ChildIcons { get; set; }
 
@@ -3531,6 +3915,17 @@ namespace WinPanel
                 }
             }
             if (labelFont != null) labelFont.Dispose();
+
+            // Multi-select highlight (red edit-button mode).
+            if (MultiSelected)
+            {
+                try
+                {
+                    using (var pen = new Pen(Color.FromArgb(235, 60, 40), 2f))
+                        e.Graphics.DrawPath(pen, path);
+                }
+                catch { }
+            }
         }
 
         private GraphicsPath GetRoundRectangle(Rectangle bounds, int radius)

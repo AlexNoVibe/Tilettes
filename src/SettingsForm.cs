@@ -164,7 +164,7 @@ namespace WinPanel
             y += 30;
 
             var lblDefSize = new Label { Text = "Def. Item Size:", Left = 20, Top = y, Width = 120 };
-            numDefaultItemSize = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 4, Minimum = 1, Value = settings.DefaultItemSize, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            numDefaultItemSize = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 6, Minimum = 1, Value = settings.DefaultItemSize, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             y += 30;
 
             // Icon scale, percent (100 = default)
@@ -588,6 +588,10 @@ namespace WinPanel
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.IsLightTheme = chkLightTheme.Checked;
             settings.EditMode = chkEditMode.Checked;
+            // The 3rd (red, multi-select) state changes only from the panel button;
+            // this checkbox just switches it on/off preserving state 2.
+            if (!chkEditMode.Checked) settings.EditModeState = 0;
+            else if (settings.EditModeState == 0) settings.EditModeState = 1;
             settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
             settings.SearchFuzzyLevel = (int)numFuzzy.Value;
             settings.SearchInMeta = chkSearchMeta.Checked;

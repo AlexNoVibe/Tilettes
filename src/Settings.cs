@@ -15,6 +15,8 @@ namespace WinPanel
         public bool MinimizeToTray { get; set; }
         public bool OpenFoldersInPopup { get; set; }
         public bool EditMode { get; set; }
+        // Edit button state: 0 = off, 1 = edit, 2 = multi-select (red).
+        public int EditModeState { get; set; }
 
         // Grid visibility: quick toggle button on the main panel
         public bool GridVisible { get; set; }
@@ -107,6 +109,7 @@ namespace WinPanel
             OpenFoldersInPopup = false;
             // First-run defaults: grid visible and adding icons (edit mode) allowed.
             EditMode = true;
+            EditModeState = 1;
             GridVisible = true;
             HotkeyShow = "Ctrl+J";
             MiniExplorerCtrlClick = true;
@@ -228,6 +231,8 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("MinimizeToTray"), out m)) s.MinimizeToTray = m;
                 if (bool.TryParse(ini.Read("OpenFoldersInPopup"), out fp)) s.OpenFoldersInPopup = fp;
                 if (bool.TryParse(ini.Read("EditMode"), out em)) s.EditMode = em;
+                int ems;
+                if (int.TryParse(ini.Read("EditModeState"), out ems) && ems >= 0 && ems <= 2) s.EditModeState = ems;
 
                 bool gv;
                 if (bool.TryParse(ini.Read("GridVisible"), out gv)) s.GridVisible = gv;
@@ -324,6 +329,7 @@ namespace WinPanel
                 ini.Write("MinimizeToTray", MinimizeToTray.ToString());
                 ini.Write("OpenFoldersInPopup", OpenFoldersInPopup.ToString());
                 ini.Write("EditMode", EditMode.ToString());
+                ini.Write("EditModeState", EditModeState.ToString());
                 ini.Write("GridVisible", GridVisible.ToString());
                 ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+J" : HotkeyShow);
                 ini.Write("MiniExplorerCtrlClick", MiniExplorerCtrlClick.ToString());
