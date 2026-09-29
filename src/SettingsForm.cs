@@ -190,7 +190,7 @@ namespace WinPanel
                 out numFontTabsSize, out btnFontTabsColor, out cmbFontTabs);
             y += 30;
             AddFontRow("UI Font:", y, settings.FontUiSize, settings.FontUiColor, settings.FontUiName,
-                out numFontUiSize, out btnFontItemsColor, out cmbFontUi);
+                out numFontUiSize, out btnFontUiColor, out cmbFontUi);
             y += 34;
             // ---- Search section ----
             var lblSearchSection = new Label { Text = "Search", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
@@ -204,11 +204,11 @@ namespace WinPanel
             y += 24;
             chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 530, Checked = settings.SearchInDesc, ForeColor = textColor };
             y += 26;
-            var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 120 };
+            var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 125 };
             numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            var lblSearchBoxFont = new Label { Text = "box", Left = 205, Top = y, Width = 35 };
-            numSearchResultsFont = new NumericUpDown { Left = 250, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            var lblSearchResultsFont = new Label { Text = "results", Left = 305, Top = y, Width = 60 };
+            var lblSearchBoxFont = new Label { Text = Loc.S("box", "строка поиска"), Left = 205, Top = y, Width = 150 };
+            numSearchResultsFont = new NumericUpDown { Left = 360, Top = y - 2, Width = 45, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblSearchResultsFont = new Label { Text = Loc.S("results", "результаты"), Left = 410, Top = y, Width = 150 };
             this.Controls.Add(lblSearchSection);
             this.Controls.Add(lblFuzzy);
             this.Controls.Add(numFuzzy);
@@ -217,6 +217,7 @@ namespace WinPanel
             this.Controls.Add(chkSearchDesc);
             this.Controls.Add(lblSearchFonts);
             this.Controls.Add(numSearchBoxFont);
+            this.Controls.Add(lblSearchBoxFont);
             this.Controls.Add(numSearchResultsFont);
             this.Controls.Add(lblSearchResultsFont);
 
