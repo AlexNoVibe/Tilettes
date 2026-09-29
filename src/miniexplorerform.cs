@@ -50,11 +50,13 @@ namespace WinPanel
         private ListBox bookmarksList, fileList;
         private RichTextBox consoleOut;
         private TextBox searchBox;
-        private Button btnScopeFolder, btnScopeAll;
+        private Button btnScope;
         private System.Windows.Forms.Timer searchTimer;
         private List<SearchItem> searchItems;
+        private List<string> searchVariants = new List<string>();
         private bool searchMode;
         private string searchScope = "folder";
+        private int topBarChipH = 24; // chip height follows the UI font
 
         // file list data
         private class DirEntry { public string Name; public string FullPath; public bool IsDir; public long Size; }
@@ -228,13 +230,12 @@ namespace WinPanel
             btnEditPath.Click += (s, e) => BeginPathEdit();
             this.Controls.Add(btnEditPath);
 
-            // Search: results replace the file list; scope = current folder or everywhere.
-            btnScopeFolder = FlatButton(Loc.S("Folder", "Папка"), 600, 32, 52, 26);
-            btnScopeFolder.Click += (s, e) => SetSearchScope("folder");
-            this.Controls.Add(btnScopeFolder);
-            btnScopeAll = FlatButton(Loc.S("All", "Везде"), 654, 32, 52, 26);
-            btnScopeAll.Click += (s, e) => SetSearchScope("all");
-            this.Controls.Add(btnScopeAll);
+            // Search: results replace the file list; one toggle button shows and
+            // switches the scope (current folder / everywhere).
+            btnScope = FlatButton(Loc.S("Folder", "Папка"), 540, 32, 64, 26);
+            btnScope.Click += (s, e) => SetSearchScope(searchScope == "all" ? "folder" : "all");
+            this.Controls.Add(btnScope);
+            tip.SetToolTip(btnScope, Loc.S("Search scope: click switches folder / everywhere", "Область поиска: клик переключает папка/везде"));
 
             searchBox = new TextBox { Left = 470, Top = 33, Width = 120, Height = 24, BorderStyle = BorderStyle.FixedSingle, BackColor = listColor, ForeColor = textColor };
             try
@@ -372,6 +373,8 @@ namespace WinPanel
                 DetectUrls = false,
                 Font = ConsoleFont()
             };
+            consoleOut.MouseWheel += ConsoleOut_MouseWheel;
+            tip.SetToolTip(consoleOut, Loc.S("Ctrl+mouse wheel - console font size", "Ctrl+колесо мыши — размер шрифта консоли"));
             this.Controls.Add(consoleOut);
 
             promptLbl = new Label { Text = "›", Left = 8, Top = 594, Width = 16, ForeColor = accentColor };
@@ -547,24 +550,26 @@ namespace WinPanel
             btnUp.SetBounds(158, top + 2, 28, 26);
             btnRefresh.SetBounds(196, top + 2, 28, 26);
 
-            statusLbl.SetBounds(rightEdge - 96, top + 7, 96, 18);
-            int editX = rightEdge - 96 - 6 - 44;
-            btnEditPath.SetBounds(editX, top + 2, 44, 26);
-            int searchW = Math.Min(200, Math.Max(130, W / 7));
-            int searchX = editX - 6 - searchW;
+            // Top-right is reserved for search: [scope toggle][search box][status].
+            statusLbl.SetBounds(rightEdge - 110, top + 7, 106, 18);
+            int searchW = Math.Min(280, Math.Max(150, W / 5));
+            int searchX = rightEdge - 110 - 6 - searchW;
             searchBox.SetBounds(searchX, top + 3, searchW, 24);
-            int scopeX = searchX - 6 - 52;
-            btnScopeAll.SetBounds(scopeX, top + 2, 52, 26);
-            btnScopeFolder.SetBounds(scopeX - 2 - 52, top + 2, 52, 26);
-            int crumbsX = 232;
-            int crumbsW = Math.Max(80, scopeX - 2 - 52 - 6 - crumbsX);
-            crumbHost.SetBounds(crumbsX, top + 1, crumbsW, 30);
-            pathEdit.SetBounds(crumbsX, top + 2, crumbsW, 24);
+            btnScope.SetBounds(searchX - 6 - 64, top + 2, 64, 26);
 
+            // The breadcrumb path bar sits on its own row below the nav row.
+            int crumbTop = top + 34;
+            btnEditPath.SetBounds(rightEdge - 50, crumbTop + 1, 44, 26);
+            int crumbW = Math.Max(80, rightEdge - 50 - 6 - 8);
+            crumbHost.SetBounds(8, crumbTop, crumbW, 28);
+            pathEdit.SetBounds(8, crumbTop + 2, crumbW, 24);
+            int crumbBottom = crumbTop + 30;
+
+            // Top bookmarks bar height follows the font so chip labels are not cut.
             topBarHost.Visible = topBarVisible;
-            topBarHost.SetBounds(8, top + 56, W - 16, 26);
+            topBarHost.SetBounds(8, crumbBottom + 2, W - 16, topBarChipH + 6);
 
-            int listTop = top + 58 + (topBarVisible ? 28 : 0);
+            int listTop = crumbBottom + 6 + (topBarVisible ? topBarChipH + 8 : 0);
             int contentH = H - top;
             int consArea = (int)(contentH * consoleFrac);
             if (consArea < 120) consArea = Math.Min(120, contentH / 2);
@@ -575,9 +580,11 @@ namespace WinPanel
             int listH = splitTop - 4 - listTop;
             if (listH < 60) listH = 60;
 
-            bmHeader.SetBounds(10, top + 40, 150, 16);
-            btnBmAdd.SetBounds(184, top + 36, 24, 20);
+            bmHeader.SetBounds(10, listTop - 18, 150, 16);
+            btnBmAdd.SetBounds(184, listTop - 22, 24, 20);
             bookmarksList.SetBounds(8, listTop, 200, listH);
+            int bmItemH = Math.Max(20, TextRenderer.MeasureText("Ag", this.Font).Height + 8);
+            if (bookmarksList.ItemHeight != bmItemH) bookmarksList.ItemHeight = bmItemH;
             bmHeader.Visible = bookmarksVisible;
             btnBmAdd.Visible = bookmarksVisible;
             bookmarksList.Visible = bookmarksVisible;
@@ -618,6 +625,8 @@ namespace WinPanel
             foreach (Control c in topBarFlow.Controls) old.Add(c);
             topBarFlow.Controls.Clear();
             foreach (var c in old) c.Dispose();
+            topBarChipH = Math.Max(22, TextRenderer.MeasureText("Ag", this.Font).Height + 9);
+            topBarFlow.Height = topBarChipH + 4;
             foreach (var b in bookmarks) topBarFlow.Controls.Add(MakeChip(b));
             topBarFlow.ResumeLayout();
             topBarHost.Visible = topBarVisible;
@@ -633,7 +642,7 @@ namespace WinPanel
             {
                 Text = text,
                 AutoSize = true,
-                Height = 20,
+                Height = topBarChipH, // follows the font so labels are not cut off
                 FlatStyle = FlatStyle.Flat,
                 BackColor = panelColor,
                 ForeColor = textColor,
@@ -680,6 +689,8 @@ namespace WinPanel
             }
             m.MenuItems.Add("-");
             m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(g));
+            m.MenuItems.Add(Loc.S("Move up", "Вверх"), (s2, e2) => MoveBookmark(g, -1));
+            m.MenuItems.Add(Loc.S("Move down", "Вниз"), (s2, e2) => MoveBookmark(g, 1));
             m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(g));
             m.Show(anchor, new Point(0, anchor.Height));
         }
@@ -696,7 +707,11 @@ namespace WinPanel
         private void ShowTopBarItemMenu(ExplorerBookmark b, Control anchor, Point loc)
         {
             var m = new ContextMenu();
+            if (b.Kind == "cmd")
+                m.MenuItems.Add(Loc.S("Edit command...", "Изменить команду..."), (s2, e2) => EditBookmarkCommand(b));
             m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(b));
+            m.MenuItems.Add(Loc.S("Move up", "Вверх"), (s2, e2) => MoveBookmark(b, -1));
+            m.MenuItems.Add(Loc.S("Move down", "Вниз"), (s2, e2) => MoveBookmark(b, 1));
             m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(b));
             m.MenuItems.Add("-");
             m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
@@ -757,11 +772,32 @@ namespace WinPanel
 
         private Font ConsoleFont()
         {
-            try { return new Font("Consolas", 8.5f); }
+            float size = 8.5f;
+            try { size = Math.Max(6f, Math.Min(28f, settings.ConsoleFontSizeX10 / 10f)); } catch { }
+            try { return new Font("Consolas", size); }
             catch { }
-            try { return new Font("Courier New", 9f); }
+            try { return new Font("Courier New", size); }
             catch { }
-            return new Font(FontFamily.GenericMonospace, 9f);
+            return new Font(FontFamily.GenericMonospace, size);
+        }
+
+        // Ctrl+mouse wheel over the console changes its font size; the size is
+        // remembered in the settings (the built-in RichTextBox zoom is suppressed).
+        private void ConsoleOut_MouseWheel(object sender, MouseEventArgs e)
+        {
+            try
+            {
+                if ((Control.ModifierKeys & Keys.Control) == 0) return;
+                var he = e as HandledMouseEventArgs;
+                if (he != null) he.Handled = true;
+                float cur = Math.Max(6f, Math.Min(28f, settings.ConsoleFontSizeX10 / 10f));
+                float ns = Math.Max(6f, Math.Min(28f, cur + (e.Delta > 0 ? 1f : -1f)));
+                if (Math.Abs(ns - cur) < 0.05f) return;
+                settings.ConsoleFontSizeX10 = (int)Math.Round(ns * 10);
+                consoleOut.Font = ConsoleFont();
+                SaveWindowState();
+            }
+            catch { }
         }
 
         private Button FlatButton(string text, int x, int y, int w, int h)
@@ -960,7 +996,7 @@ namespace WinPanel
             {
                 Text = text,
                 AutoSize = true,
-                Height = 22,
+                Height = Math.Max(22, TextRenderer.MeasureText("Ag", this.Font).Height + 8),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = bgColor,
                 ForeColor = textColor,
@@ -1378,11 +1414,10 @@ namespace WinPanel
         {
             try
             {
-                bool folder = searchScope != "all";
-                btnScopeFolder.BackColor = folder ? accentColor : panelColor;
-                btnScopeFolder.ForeColor = folder ? Color.White : textColor;
-                btnScopeAll.BackColor = folder ? panelColor : accentColor;
-                btnScopeAll.ForeColor = folder ? textColor : Color.White;
+                bool all = searchScope == "all";
+                btnScope.Text = all ? Loc.S("All", "Везде") : Loc.S("Folder", "Папка");
+                btnScope.BackColor = all ? accentColor : panelColor;
+                btnScope.ForeColor = all ? Color.White : textColor;
             }
             catch { }
         }
@@ -1405,6 +1440,7 @@ namespace WinPanel
                 SearchCoreMini.LastQueryLower = q.ToLowerInvariant();
                 SearchCoreMini.ApplyMiniSearchToggles(res, settings.SearchInMeta, settings.SearchInPaths, settings.SearchInDesc);
                 searchItems = res;
+                searchVariants = SearchCore.Variants(q);
                 searchMode = true;
                 fileList.BeginUpdate();
                 fileList.Items.Clear();
@@ -1430,6 +1466,7 @@ namespace WinPanel
             bool was = searchMode;
             searchMode = false;
             searchItems = null;
+            searchVariants = new List<string>();
             try { searchTimer.Stop(); searchTimer.Interval = 250; } catch { }
             if (was) LoadDir();
         }
@@ -1480,15 +1517,31 @@ namespace WinPanel
             }
             catch { }
             int ty = e.Bounds.Top + 5;
-            TextRenderer.DrawText(g, it.Name, this.Font, new Point(e.Bounds.Left + 28, ty), textColor);
+
+            // Name with the matched characters highlighted.
+            int hStart, hLen;
+            bool nameHl = UiText.FindHighlight((it.Name ?? "").ToLowerInvariant(), searchVariants, out hStart, out hLen);
+            UiText.DrawHighlighted(g, it.Name, nameHl ? hStart : -1, nameHl ? hLen : 0,
+                this.Font, boldFont, new Point(e.Bounds.Left + 28, ty), textColor, accentColor);
+
             string sub = it.Dir;
             if (!string.IsNullOrEmpty(sub))
             {
                 var nameSz = TextRenderer.MeasureText(it.Name, this.Font);
-                var subSz = TextRenderer.MeasureText(sub, this.Font);
-                int sx = e.Bounds.Right - subSz.Width - 10;
+                int maxSubW = (e.Bounds.Width / 2);
+                string subDisplay = UiText.FitTail(sub, this.Font, maxSubW);
+                int subW = TextRenderer.MeasureText(subDisplay, this.Font).Width;
+                int sx = e.Bounds.Right - subW - 10;
                 if (sx > e.Bounds.Left + 28 + nameSz.Width + 24)
-                    TextRenderer.DrawText(g, sub, this.Font, new Point(sx, ty), dimColor);
+                {
+                    int pStart, pLen;
+                    bool subHl = UiText.FindHighlight(sub.ToLowerInvariant(), searchVariants, out pStart, out pLen);
+                    int cut = sub.Length - (subDisplay.Length - 1);
+                    if (subHl && pStart >= cut)
+                        UiText.DrawHighlighted(g, subDisplay, pStart - cut, pLen, this.Font, boldFont, new Point(sx, ty), dimColor, accentColor);
+                    else
+                        TextRenderer.DrawText(g, subDisplay, this.Font, new Point(sx, ty), dimColor);
+                }
             }
         }
 
@@ -1615,7 +1668,11 @@ namespace WinPanel
             {
                 bookmarksList.SelectedIndex = i;
                 var b = bmRows[i].Bm;
+                if (b.Kind == "cmd")
+                    m.MenuItems.Add(Loc.S("Edit command...", "Изменить команду..."), (s2, e2) => EditBookmarkCommand(b));
                 m.MenuItems.Add(Loc.S("Rename..."), (s2, e2) => RenameBookmark(b));
+                m.MenuItems.Add(Loc.S("Move up", "Вверх"), (s2, e2) => MoveBookmark(b, -1));
+                m.MenuItems.Add(Loc.S("Move down", "Вниз"), (s2, e2) => MoveBookmark(b, 1));
                 m.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveBookmark(b));
             }
             m.MenuItems.Add(Loc.S("Add current folder"), (s2, e2) => AddFolderBookmark(currentPath, FolderNameOf(currentPath)));
@@ -1672,6 +1729,46 @@ namespace WinPanel
             b.Name = name.Trim();
             SaveBookmarks();
             RebuildBookmarks();
+        }
+
+        // Edits the command itself of a "cmd" bookmark (Rename only changes the label).
+        private void EditBookmarkCommand(ExplorerBookmark b)
+        {
+            string cmd = Prompt.ShowDialog(Loc.S("Command:", "Команда:"), Loc.S("Edit command", "Изменить команду"), b.Value);
+            if (string.IsNullOrWhiteSpace(cmd)) return;
+            string old = b.Value;
+            b.Value = cmd.Trim();
+            // Keep the list label in sync when it simply mirrored the command.
+            if (string.IsNullOrEmpty(b.Name) || string.Equals(b.Name, old, StringComparison.Ordinal))
+                b.Name = b.Value;
+            SaveBookmarks();
+            RebuildBookmarks();
+        }
+
+        // Moves a bookmark one slot up/down within its own list (top level or group).
+        private void MoveBookmark(ExplorerBookmark b, int delta)
+        {
+            var list = FindOwningList(bookmarks, b);
+            if (list == null) return;
+            int i = list.IndexOf(b);
+            int j = i + delta;
+            if (i < 0 || j < 0 || j >= list.Count) return;
+            list[i] = list[j];
+            list[j] = b;
+            SaveBookmarks();
+            RebuildBookmarks();
+        }
+
+        private static List<ExplorerBookmark> FindOwningList(List<ExplorerBookmark> list, ExplorerBookmark target)
+        {
+            if (list.Contains(target)) return list;
+            foreach (var b in list)
+            {
+                if (b.Children == null || b.Children.Count == 0) continue;
+                var r = FindOwningList(b.Children, target);
+                if (r != null) return r;
+            }
+            return null;
         }
 
         private void RemoveBookmark(ExplorerBookmark b)

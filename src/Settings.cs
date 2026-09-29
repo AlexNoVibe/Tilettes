@@ -33,6 +33,8 @@ namespace WinPanel
         // Top bookmarks bar visibility; console height percent (default 40)
         public bool MiniExplorerTopBar { get; set; }
         public int MiniExplorerConsole { get; set; }
+        // Mini explorer console font size, stored x10 (85 = 8.5pt); Ctrl+wheel zooms
+        public int ConsoleFontSizeX10 { get; set; }
 
         // Folder auto-exit: while inside a folder (same-window mode), return back
         // after this many seconds without any mouse/keyboard activity (0 = off)
@@ -92,6 +94,7 @@ namespace WinPanel
             MiniExplorerBookmarks = true;
             MiniExplorerTopBar = true;
             MiniExplorerConsole = 40;
+            ConsoleFontSizeX10 = 85;
             FolderAutoExitSeconds = 15;
             Language = "ru";
             AutoStart = false;
@@ -218,6 +221,8 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("MiniExplorerTopBar"), out mtb)) s.MiniExplorerTopBar = mtb;
                 int mcon;
                 if (int.TryParse(ini.Read("MiniExplorerConsole"), out mcon)) s.MiniExplorerConsole = mcon;
+                int cfs;
+                if (int.TryParse(ini.Read("ConsoleFontSizeX10"), out cfs) && cfs >= 60 && cfs <= 280) s.ConsoleFontSizeX10 = cfs;
 
                 int faеx;
                 if (int.TryParse(ini.Read("FolderAutoExitSeconds"), out faеx)) s.FolderAutoExitSeconds = faеx;
@@ -290,6 +295,7 @@ namespace WinPanel
                 ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
                 ini.Write("MiniExplorerTopBar", MiniExplorerTopBar.ToString());
                 ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
+                ini.Write("ConsoleFontSizeX10", ConsoleFontSizeX10.ToString());
                 ini.Write("FolderAutoExitSeconds", FolderAutoExitSeconds.ToString());
                 ini.Write("Language", string.IsNullOrEmpty(Language) ? "ru" : Language);
                 ini.Write("AutoStart", AutoStart.ToString());
