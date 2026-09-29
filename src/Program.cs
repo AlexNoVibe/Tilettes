@@ -154,6 +154,7 @@ namespace WinPanel
             this.Location = new Point(settings.WindowX, settings.WindowY);
             this.FormBorderStyle = FormBorderStyle.None;
             this.MinimumSize = new Size(300, 200);
+            this.DoubleBuffered = true;
             UpdateWindowRegion();
 
             this.BackColor = bgColor;
@@ -325,14 +326,72 @@ namespace WinPanel
             LoadTabs();
 
             ApplyHotkey();
+
+            AddEdgeGrips();
         }
+
+        // WS_EX_COMPOSITED: the window (with all children) paints double-buffered,
+        // which removes the blink/re-render flash while the window is moved or resized.
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000;
+                return cp;
+            }
+        }
+
+        private bool sizing;
+        private int lastRegionW = -1, lastRegionH = -1;
 
         private void UpdateWindowRegion()
         {
             if (this.WindowState == FormWindowState.Maximized)
+            {
                 this.Region = null;
-            else
-                this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+                lastRegionW = -1;
+                return;
+            }
+            // Recreate the rounded region only when the size actually changed, so a
+            // plain window move never churns the region (another flicker source).
+            if (Width == lastRegionW && Height == lastRegionH && this.Region != null) return;
+            lastRegionW = Width;
+            lastRegionH = Height;
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+        }
+
+        // Invisible edge grips: the borderless window is resizable from any edge or
+        // corner even over child controls (panels cover the client area, so the form
+        // itself never receives the hit-test messages there).
+        private readonly List<Panel> edgeGrips = new List<Panel>();
+
+        private void AddEdgeGrip(int x, int y, int w, int h, Cursor cur, int hitTest, AnchorStyles anchor)
+        {
+            var p = new Panel { Size = new Size(w, h), Location = new Point(x, y), Cursor = cur, BackColor = bgColor, Anchor = anchor };
+            p.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, 0xA1, hitTest, 0); // WM_NCLBUTTONDOWN with an edge hit-test code
+                }
+            };
+            this.Controls.Add(p);
+            p.BringToFront();
+            edgeGrips.Add(p);
+        }
+
+        private void AddEdgeGrips()
+        {
+            AddEdgeGrip(0, 0, Width, 6, Cursors.SizeNS, 12, AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
+            AddEdgeGrip(0, 0, 6, Height, Cursors.SizeWE, 10, AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Bottom);
+            AddEdgeGrip(Width - 6, 0, 6, Height, Cursors.SizeWE, 11, AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom);
+            AddEdgeGrip(0, Height - 6, Width, 6, Cursors.SizeNS, 15, AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
+            AddEdgeGrip(0, 0, 14, 14, Cursors.SizeNWSE, 13, AnchorStyles.Top | AnchorStyles.Left);
+            AddEdgeGrip(Width - 14, 0, 14, 14, Cursors.SizeNESW, 14, AnchorStyles.Top | AnchorStyles.Right);
+            AddEdgeGrip(0, Height - 14, 14, 14, Cursors.SizeNESW, 16, AnchorStyles.Bottom | AnchorStyles.Left);
+            AddEdgeGrip(Width - 14, Height - 14, 14, 14, Cursors.SizeNWSE, 17, AnchorStyles.Bottom | AnchorStyles.Right);
         }
 
         // Edge resizing for the borderless window
@@ -374,6 +433,28 @@ namespace WinPanel
                     else if (bottom) m.Result = (IntPtr)HTBOTTOM;
                 }
                 return;
+            }
+            const int WM_SIZING = 0x0214;
+            const int WM_EXITSIZEMOVE = 0x0232;
+            if (m.Msg == WM_SIZING)
+            {
+                // While the user drags a border: drop the rounded region so the whole
+                // window paints with no clipping gaps (this removed the resize flicker
+                // in the mini explorer; same fix here).
+                if (!sizing)
+                {
+                    sizing = true;
+                    try { this.Region = null; } catch { }
+                    lastRegionW = -1;
+                }
+            }
+            else if (m.Msg == WM_EXITSIZEMOVE)
+            {
+                if (sizing)
+                {
+                    sizing = false;
+                    UpdateWindowRegion();
+                }
             }
             base.WndProc(ref m);
         }
@@ -487,6 +568,7 @@ namespace WinPanel
             if (tabBar != null) tabBar.BackColor = bgColor;
             if (rightPanel != null) rightPanel.BackColor = bgColor;
             if (contentPanel != null) contentPanel.BackColor = bgColor;
+            foreach (var grip in edgeGrips) grip.BackColor = bgColor;
 
             // Custom UI text color overrides the theme color
             Color uiOverride = Settings.ParseColor(settings != null ? settings.FontUiColor : "", Color.Empty);
