@@ -53,6 +53,12 @@ namespace WinPanel
         private TextBox searchBox;
         private Button btnScope;
         private System.Windows.Forms.Timer searchTimer;
+        // Mini explorer search is disabled for now: each query indexed whole drives
+        // (SearchCore.GetIndex, up to 200k entries per root) and re-scanned the index
+        // on the UI thread every 700 ms while it was still building. All the search
+        // code stays in place for a possible re-enable - only the controls are hidden
+        // and the entry points short-circuit. The panel search does not use this path.
+        internal static readonly bool SearchEnabled = false;
         private List<SearchItem> searchItems;
         private List<string> searchVariants = new List<string>();
         private bool searchMode;
@@ -267,6 +273,11 @@ namespace WinPanel
             searchTimer.Interval = 250;
             searchTimer.Tick += (s, e) => { searchTimer.Stop(); RunSearch(false); };
             UpdateScopeButtons();
+            if (!SearchEnabled)
+            {
+                btnScope.Visible = false;
+                searchBox.Visible = false;
+            }
 
             statusLbl = new Label { Left = 812, Top = 37, Width = 120, Height = 18, ForeColor = dimColor, TextAlign = ContentAlignment.MiddleRight, AutoEllipsis = true };
             this.Controls.Add(statusLbl);
@@ -1423,7 +1434,7 @@ namespace WinPanel
 
         private void FileList_KeyPress(object sender, KeyPressEventArgs e)
         {
-            if (searchMode) return;
+            if (!SearchEnabled || searchMode) return; // search disabled: the list keeps native key handling
             if (char.IsControl(e.KeyChar)) return;
             e.Handled = true;
             BeginSearchTyping(e.KeyChar);
@@ -1486,6 +1497,7 @@ namespace WinPanel
         {
             try
             {
+                if (!SearchEnabled || searchBox == null || searchBox.IsDisposed) return; // disabled: never build/scan the file index
                 if (searchBox == null || searchBox.IsDisposed) return;
                 string q = searchBox.Text.Trim();
                 if (q.Length == 0) { ExitSearch(); return; }
