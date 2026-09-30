@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
 
@@ -74,9 +75,53 @@ namespace WinPanel
         private const int SHIL_EXTRALARGE = 2;
         private const int ILD_TRANSPARENT = 1;
 
+        // Session icon cache. Shell extraction is expensive (SHGetFileInfo + jumbo
+        // image list + a full-pixel transparency scan) and every panel rebuild used
+        // to ask for the same icons again. Results are stored by path and handed out
+        // as clones: callers own and dispose their copy, the cached original is
+        // never disposed. Stale icons are possible if a file's icon is changed
+        // externally mid-session - an app restart refreshes them.
+        private static readonly object CacheGate = new object();
+        private static readonly Dictionary<string, Image> IconCache = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
+        private const int IconCacheCap = 1000;
+
+        private static Image CacheGet(string key)
+        {
+            lock (CacheGate)
+            {
+                Image hit;
+                if (!IconCache.TryGetValue(key, out hit)) return null;
+                try { return (Image)hit.Clone(); }
+                catch { IconCache.Remove(key); return null; }
+            }
+        }
+
+        private static void CachePut(string key, Image img)
+        {
+            if (img == null) return;
+            lock (CacheGate)
+            {
+                Image old;
+                if (IconCache.TryGetValue(key, out old)) { try { old.Dispose(); } catch { } }
+                if (IconCache.Count >= IconCacheCap) IconCache.Clear();
+                IconCache[key] = img;
+            }
+        }
+
         // Icon for any item path: shell: namespace paths (UWP apps) go through the
         // IShellItemImageFactory, everything else through the regular extraction.
+        // Cached by path+size; see the note above the cache fields.
         public static Image GetIconAuto(string path, bool large)
+        {
+            string key = (large ? "L|" : "S|") + path;
+            Image hit = CacheGet(key);
+            if (hit != null) return hit;
+            Image img = ExtractIconAuto(path, large);
+            CachePut(key, img);
+            return img != null ? (Image)img.Clone() : null;
+        }
+
+        private static Image ExtractIconAuto(string path, bool large)
         {
             try
             {
@@ -145,15 +190,24 @@ public static Image GetIcon(string path, bool large)
         }
 
         // Loads an icon (.ico/.exe) or an image file (.png/.jpg/.bmp) as an Image.
+        // Cached like GetIconAuto: custom tile icons would otherwise re-read and
+        // re-decode the file on every panel rebuild.
         public static Image LoadAny(string path)
         {
             try
             {
                 if (string.IsNullOrEmpty(path)) return null;
+                string key = "A|" + path;
+                Image hit = CacheGet(key);
+                if (hit != null) return hit;
+                Image img = null;
                 string lower = path.ToLowerInvariant();
                 if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
-                    return GetIcon(path, true);
-                return Image.FromFile(path);
+                    img = GetIcon(path, true);
+                else
+                    img = Image.FromFile(path);
+                CachePut(key, img);
+                return img != null ? (Image)img.Clone() : null;
             }
             catch (Exception ex)
             {

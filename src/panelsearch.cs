@@ -162,7 +162,13 @@ namespace WinPanel
             entry.MaskA = a;
             entry.MaskB = b;
 
-            lock (Gate) { cache[it] = entry; }
+            // Soft cap: "Past search" rows are fresh objects, so their entries would
+            // accumulate forever. 800 entries is far beyond any realistic panel.
+            lock (Gate)
+            {
+                if (cache.Count > 800) cache.Clear();
+                cache[it] = entry;
+            }
             return entry;
         }
 

@@ -49,6 +49,27 @@ namespace WinPanel
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
+        // Fully measured row layouts (see PreparePanelSearchRow): rebuilt per query
+        // and per list width, reused across the many repaints of the same results.
+        private readonly Dictionary<int, PanelSearchRowLayout> panelSearchPrepared = new Dictionary<int, PanelSearchRowLayout>();
+        private int panelSearchPreparedWidth = -1;
+        private int panelSearchPreparedLeft = -1;
+
+        private class PanelSearchRowLayout
+        {
+            public int TextH;
+            public string PathCombo, PathDisplay;
+            public int PathW;
+            public bool HasDesc;
+            public string Desc;
+            public string NameDisplay;
+            public int NameHlStart, NameHlLen; // start -1 = no highlight
+            public int DescX, DescSpace;
+            public string DescDisplay;         // null = does not fit / not drawn
+            public int DescHlStart, DescHlLen;
+            public bool PathTailHl;
+            public int PathHlStart, PathHlLen; // measured on PathCombo, shifted for the tail cut
+        }
         private string lastSearchTip = null;
         private ToolTip itemTip;   // 0.3 s hover tooltip: descriptions + full search paths
         private string settingsPath = "settings.ini";
@@ -1194,6 +1215,22 @@ namespace WinPanel
                 panelSearchList.ClearSelected();
                 panelSearchList.Invalidate();
                 panelSearchVariants = new List<string>();
+                InvalidatePreparedSearchRows();
+                // Resolve .lnk targets on a worker thread ahead of time: otherwise
+                // the first paint of each row builds the COM target on the UI thread.
+                var warm = new List<ShortcutItem>(panelSearchResults);
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    foreach (var w in warm)
+                    {
+                        try
+                        {
+                            string wp = w.Path ?? "";
+                            if (wp.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) PanelSearch.GetTarget(w);
+                        }
+                        catch { }
+                    }
+                });
                 panelSearchStatus.Text = Loc.IsRu
                     ? "Прошлый поиск · " + panelSearchResults.Count + " · Enter — открыть, Esc — закрыть"
                     : "Past search · " + panelSearchResults.Count + " · Enter to open, Esc to close";
@@ -1458,6 +1495,7 @@ namespace WinPanel
                 panelSearchResults.Clear();
                 int n = Math.Min(200, found.Count);
                 for (int i = 0; i < n; i++) panelSearchResults.Add(found[i].Value);
+                InvalidatePreparedSearchRows();
                 panelSearchList.BeginUpdate();
                 panelSearchList.Items.Clear();
                 foreach (var it in panelSearchResults) panelSearchList.Items.Add(it.Name);
@@ -1477,6 +1515,7 @@ namespace WinPanel
             panelSearchActive = false;
             if (panelSearchResults != null) panelSearchResults.Clear();
             panelSearchVariants = new List<string>();
+            InvalidatePreparedSearchRows();
             lastSearchTip = null;
         }
 
@@ -1538,6 +1577,98 @@ namespace WinPanel
             }
         }
 
+        // Measuring a result row is expensive (GetTarget may resolve a .lnk through
+        // COM; FitTail/FitEnd are binary searches of MeasureText). All of it depends
+        // only on (item, query variants, font, row width), so it is computed once on
+        // the row's first paint and reused for every hover/scroll repaint.
+        private void InvalidatePreparedSearchRows()
+        {
+            panelSearchPrepared.Clear();
+            panelSearchPreparedWidth = -1;
+            panelSearchPreparedLeft = -1;
+        }
+
+        private PanelSearchRowLayout PreparePanelSearchRow(int index, int width, int boundsLeft)
+        {
+            if (width != panelSearchPreparedWidth || boundsLeft != panelSearchPreparedLeft)
+            {
+                panelSearchPrepared.Clear();
+                panelSearchPreparedWidth = width;
+                panelSearchPreparedLeft = boundsLeft;
+            }
+            PanelSearchRowLayout r;
+            if (panelSearchPrepared.TryGetValue(index, out r)) return r;
+
+            r = new PanelSearchRowLayout();
+            var it = panelSearchResults[index];
+            Font f = this.Font;
+            int left = boundsLeft + 32;
+
+            // Right column: for shortcuts both paths are shown (lnk -> target), the
+            // query can match either of them; when it does not fit, only its tail.
+            string path = it.Path ?? "";
+            string targetPath = "";
+            try { if (path.ToLowerInvariant().EndsWith(".lnk")) targetPath = PanelSearch.GetTarget(it); }
+            catch { }
+            r.PathCombo = path;
+            if (targetPath.Length > 0 && !string.Equals(targetPath, path, StringComparison.OrdinalIgnoreCase))
+                r.PathCombo = path + "  →  " + targetPath;
+            int maxPathW = (int)(width * 0.45);
+            r.PathDisplay = r.PathCombo.Length > 0 ? UiText.FitTail(r.PathCombo, f, maxPathW) : "";
+            r.PathW = r.PathDisplay.Length > 0 ? TextRenderer.MeasureText(r.PathDisplay, f).Width : 0;
+            int pathX = boundsLeft + width - 8 - r.PathW;
+
+            // Middle column: the user description
+            r.Desc = PanelSearch.GetDescription(it);
+            r.HasDesc = !string.IsNullOrEmpty(r.Desc);
+
+            // Left column: name (the query match is highlighted)
+            int hlStart, hlLen;
+            bool nameHl = UiText.FindHighlight((it.Name ?? "").ToLowerInvariant(), panelSearchVariants, out hlStart, out hlLen);
+            int maxNameW = (r.HasDesc ? boundsLeft + (int)(width * 0.38) - 24 : pathX - 16) - left;
+            r.NameDisplay = it.Name;
+            if (TextRenderer.MeasureText(r.NameDisplay, f).Width > maxNameW && maxNameW > 30)
+                r.NameDisplay = UiText.FitEnd(it.Name, f, maxNameW);
+            UiText.ClampHighlight(r.NameDisplay, ref nameHl, ref hlStart, ref hlLen);
+            r.NameHlStart = nameHl ? hlStart : -1;
+            r.NameHlLen = nameHl ? hlLen : 0;
+
+            if (r.HasDesc)
+            {
+                int descX = Math.Max(left + TextRenderer.MeasureText(r.NameDisplay, f).Width + 24,
+                                     boundsLeft + (int)(width * 0.38));
+                r.DescX = descX;
+                int descSpace = pathX - 16 - descX;
+                r.DescSpace = descSpace;
+                if (descSpace > 40)
+                {
+                    int dStart, dLen;
+                    bool descHl = UiText.FindHighlight(r.Desc.ToLowerInvariant(), panelSearchVariants, out dStart, out dLen);
+                    string descDisplay = r.Desc;
+                    if (TextRenderer.MeasureText(r.Desc, f).Width > descSpace)
+                        descDisplay = UiText.FitEnd(r.Desc, f, descSpace);
+                    UiText.ClampHighlight(descDisplay, ref descHl, ref dStart, ref dLen);
+                    r.DescDisplay = descDisplay;
+                    r.DescHlStart = descHl ? dStart : -1;
+                    r.DescHlLen = descHl ? dLen : 0;
+                }
+            }
+
+            if (r.PathDisplay.Length > 0)
+            {
+                int pStart, pLen;
+                bool pathHl = UiText.FindHighlight(r.PathCombo.ToLowerInvariant(), panelSearchVariants, out pStart, out pLen);
+                int cut = r.PathCombo.Length - (r.PathDisplay.Length - 1); // chars hidden by the leading "…"
+                r.PathTailHl = pathHl && pStart >= cut;
+                r.PathHlStart = r.PathTailHl ? pStart - cut : -1;
+                r.PathHlLen = r.PathTailHl ? pLen : 0;
+            }
+
+            r.TextH = TextRenderer.MeasureText("Ag", f).Height;
+            panelSearchPrepared[index] = r;
+            return r;
+        }
+
         private void PanelSearchList_DrawItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0 || e.Index >= panelSearchResults.Count) return;
@@ -1549,6 +1680,13 @@ namespace WinPanel
             try
             {
                 string key = ((it.IsFolder ? "d:" : "f:") + (it.Path ?? "")).ToLowerInvariant();
+                // The icon cache is session-long and small rows add up: start over
+                // instead of growing without bound.
+                if (panelSearchIcons.Count > 600)
+                {
+                    foreach (var b in panelSearchIcons.Values) { try { b.Dispose(); } catch { } }
+                    panelSearchIcons.Clear();
+                }
                 Bitmap ic;
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
@@ -1577,67 +1715,22 @@ namespace WinPanel
             Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
             bool light = settings.IsLightTheme;
             Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
-            int textH = TextRenderer.MeasureText("Ag", f).Height;
-            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - textH) / 2);
+            var r = PreparePanelSearchRow(e.Index, e.Bounds.Width, e.Bounds.Left);
+            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - r.TextH) / 2);
             int left = e.Bounds.Left + 32;
+            int pathX = e.Bounds.Right - 8 - r.PathW;
 
-            // Right column: for shortcuts both paths are shown (lnk -> target), the
-            // query can match either of them; when it does not fit, only its tail.
-            string path = it.Path ?? "";
-            string targetPath = "";
-            try { if (path.ToLowerInvariant().EndsWith(".lnk")) targetPath = PanelSearch.GetTarget(it); }
-            catch { }
-            string pathCombo = path;
-            if (targetPath.Length > 0 && !string.Equals(targetPath, path, StringComparison.OrdinalIgnoreCase))
-                pathCombo = path + "  →  " + targetPath;
-            int maxPathW = (int)(e.Bounds.Width * 0.45);
-            string pathDisplay = pathCombo.Length > 0 ? UiText.FitTail(pathCombo, f, maxPathW) : "";
-            int pathW = pathDisplay.Length > 0 ? TextRenderer.MeasureText(pathDisplay, f).Width : 0;
-            int pathX = e.Bounds.Right - 8 - pathW;
+            UiText.DrawHighlighted(g, r.NameDisplay, r.NameHlStart, r.NameHlLen, f, new Point(left, ty), textColor, acc, light);
 
-            // Middle column: the user description
-            string desc = PanelSearch.GetDescription(it);
-            bool hasDesc = !string.IsNullOrEmpty(desc);
+            if (r.HasDesc && r.DescDisplay != null)
+                UiText.DrawHighlighted(g, r.DescDisplay, r.DescHlStart, r.DescHlLen, f, new Point(r.DescX, ty), subColor, acc, light);
 
-            // Left column: name (the query match is highlighted)
-            int hlStart, hlLen;
-            bool nameHl = UiText.FindHighlight((it.Name ?? "").ToLowerInvariant(), panelSearchVariants, out hlStart, out hlLen);
-            int maxNameW = (hasDesc
-                ? e.Bounds.Left + (int)(e.Bounds.Width * 0.38) - 24
-                : pathX - 16) - left;
-            string nameDisplay = it.Name;
-            if (TextRenderer.MeasureText(nameDisplay, f).Width > maxNameW && maxNameW > 30)
-                nameDisplay = UiText.FitEnd(it.Name, f, maxNameW);
-            UiText.ClampHighlight(nameDisplay, ref nameHl, ref hlStart, ref hlLen);
-            UiText.DrawHighlighted(g, nameDisplay, nameHl ? hlStart : -1, nameHl ? hlLen : 0, f, new Point(left, ty), textColor, acc, light);
-
-            if (hasDesc)
+            if (r.PathDisplay.Length > 0)
             {
-                int descX = Math.Max(left + TextRenderer.MeasureText(nameDisplay, f).Width + 24,
-                                     e.Bounds.Left + (int)(e.Bounds.Width * 0.38));
-                int descSpace = pathX - 16 - descX;
-                if (descSpace > 40)
-                {
-                    int dStart, dLen;
-                    bool descHl = UiText.FindHighlight(desc.ToLowerInvariant(), panelSearchVariants, out dStart, out dLen);
-                    string descDisplay = desc;
-                    if (TextRenderer.MeasureText(desc, f).Width > descSpace)
-                        descDisplay = UiText.FitEnd(desc, f, descSpace);
-                    UiText.ClampHighlight(descDisplay, ref descHl, ref dStart, ref dLen);
-                    UiText.DrawHighlighted(g, descDisplay, descHl ? dStart : -1, descHl ? dLen : 0, f, new Point(descX, ty), subColor, acc, light);
-                }
-            }
-
-            if (pathDisplay.Length > 0)
-            {
-                int pStart, pLen;
-                bool pathHl = UiText.FindHighlight(pathCombo.ToLowerInvariant(), panelSearchVariants, out pStart, out pLen);
-                int cut = pathCombo.Length - (pathDisplay.Length - 1); // chars hidden by the leading "…"
-                bool tailHl = pathHl && pStart >= cut;
-                if (tailHl)
-                    UiText.DrawHighlighted(g, pathDisplay, pStart - cut, pLen, f, new Point(pathX, ty), subColor, acc, light);
+                if (r.PathTailHl)
+                    UiText.DrawHighlighted(g, r.PathDisplay, r.PathHlStart, r.PathHlLen, f, new Point(pathX, ty), subColor, acc, light);
                 else
-                    TextRenderer.DrawText(g, pathDisplay, f, new Point(pathX, ty), subColor);
+                    TextRenderer.DrawText(g, r.PathDisplay, f, new Point(pathX, ty), subColor);
             }
         }
 
@@ -1648,6 +1741,7 @@ namespace WinPanel
             {
                 panelSearchList.Font = Settings.MakeFont(panelSearchList.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)));
                 panelSearchList.ItemHeight = Math.Max(26, TextRenderer.MeasureText("Ag", panelSearchList.Font).Height + 10);
+                InvalidatePreparedSearchRows();
             }
             catch { }
         }
@@ -1987,9 +2081,10 @@ namespace WinPanel
 
         // The closed-folder icon is fetched from the shell once and cloned per use:
         // folder children would otherwise repeat the (slow) shell lookup per tile.
+        // Shared with the folder popup tiles (which used to leak a shell Icon each).
         private static Image _closedFolderIcon;
 
-        private static Image GetFolderIconImage()
+        internal static Image GetFolderIconImage()
         {
             if (_closedFolderIcon == null)
             {
@@ -3924,6 +4019,46 @@ namespace WinPanel
         private Button backBtn;
         private Screen openScreen;
         private bool suppressDeactivate;
+        // Popup-local icon queue: same time-budgeted idea as the main panel's
+        // queue, so child icons fill in without blocking the popup on show.
+        private readonly Queue<Action> iconTasks = new Queue<Action>();
+        private System.Windows.Forms.Timer iconTimer;
+
+        private void EnqueuePopupIcon(Action task)
+        {
+            iconTasks.Enqueue(task);
+            if (iconTimer == null)
+            {
+                iconTimer = new System.Windows.Forms.Timer { Interval = 15 };
+                iconTimer.Tick += (s, e) =>
+                {
+                    if (this.IsDisposed)
+                    {
+                        iconTasks.Clear();
+                        iconTimer.Stop();
+                        return;
+                    }
+                    if (iconTasks.Count == 0) { iconTimer.Stop(); return; }
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    while (iconTasks.Count > 0 && sw.ElapsedMilliseconds < 15)
+                    {
+                        Action t = iconTasks.Dequeue();
+                        try { t(); } catch { }
+                    }
+                };
+            }
+            if (!iconTimer.Enabled) iconTimer.Start();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                iconTasks.Clear();
+                if (iconTimer != null) { try { iconTimer.Stop(); iconTimer.Dispose(); } catch { } iconTimer = null; }
+            }
+            base.Dispose(disposing);
+        }
 
         private const int TileSize = 84;
         private const int TileGap = 6;
@@ -4153,6 +4288,15 @@ namespace WinPanel
             foreach (var child in children)
             {
                 var tile = new PopupTile(child, panelColor, hoverColor, textColor);
+                if (!child.IsFolder)
+                {
+                    var t = tile;
+                    EnqueuePopupIcon(delegate
+                    {
+                        if (t.IsDisposed || this.IsDisposed) return;
+                        try { t.AssignIcon(IconExtractor.GetIconAuto(child.Path, true)); } catch { }
+                    });
+                }
                 tile.Margin = new Padding(TileGap / 2);
                 AttachTileHandlers(tile, child);
                 if (!string.IsNullOrEmpty(child.ShortDescription))
@@ -4286,19 +4430,82 @@ namespace WinPanel
             this.ForeColor = textColor;
             this.DoubleBuffered = true;
 
+            // Non-folder icons load asynchronously (AssignIcon from the popup's icon
+            // queue): building the tiles must not block the popup on one shell
+            // extraction per child. Folders reuse the shared cached folder icon.
             if (!item.IsFolder)
             {
-                try { IconImage = IconExtractor.GetIconAuto(item.Path, true); } catch { }
-                if (IconImage == null) IconImage = SystemIcons.Application.ToBitmap();
+                IconImage = SystemIcons.Application.ToBitmap();
             }
             else
             {
-                var folderIcon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                IconImage = folderIcon != null ? folderIcon.ToBitmap() : SystemIcons.WinLogo.ToBitmap();
+                IconImage = MainForm.GetFolderIconImage();
+                if (IconImage == null) IconImage = SystemIcons.WinLogo.ToBitmap();
             }
         }
 
         public Image IconImage { get; private set; }
+
+        // Shared label font/format and a cached rounded outline, same idea as in
+        // TileControl: no per-repaint Font/StringFormat/GraphicsPath allocations.
+        private static Font sharedLabelFont;
+        private static string sharedLabelName;
+        private static int sharedLabelSize;
+        private static readonly Font FallbackLabelFont = new Font("Segoe UI", 8f);
+        private static readonly StringFormat TileLabelFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+
+        private static Font GetSharedLabelFont(string name, int size)
+        {
+            if (sharedLabelFont == null || sharedLabelName != name || sharedLabelSize != size)
+            {
+                Font nf = null;
+                try { nf = Settings.MakeFont(name, size); } catch { }
+                if (nf != null)
+                {
+                    var old = sharedLabelFont;
+                    sharedLabelFont = nf;
+                    sharedLabelName = name;
+                    sharedLabelSize = size;
+                    if (old != null) { try { old.Dispose(); } catch { } }
+                }
+            }
+            return sharedLabelFont != null ? sharedLabelFont : FallbackLabelFont;
+        }
+
+        private GraphicsPath roundPath;
+        private Size roundPathSize;
+
+        private GraphicsPath RoundPath()
+        {
+            Size s = new Size(this.Width, this.Height);
+            if (roundPath == null || roundPathSize != s)
+            {
+                var old = roundPath;
+                roundPath = new GraphicsPath();
+                Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
+                int d = 16;
+                Rectangle arc = new Rectangle(rect.Location, new Size(d, d));
+                roundPath.AddArc(arc, 180, 90);
+                arc.X = rect.Right - d; roundPath.AddArc(arc, 270, 90);
+                arc.Y = rect.Bottom - d; roundPath.AddArc(arc, 0, 90);
+                arc.X = rect.Left; roundPath.AddArc(arc, 90, 90);
+                roundPath.CloseFigure();
+                roundPathSize = s;
+                if (old != null) { try { old.Dispose(); } catch { } }
+            }
+            return roundPath;
+        }
+
+        // Swaps the placeholder for the real icon once the queue delivers it.
+        public void AssignIcon(Image img)
+        {
+            if (img == null) return;
+            if (IsDisposed) { try { img.Dispose(); } catch { } return; }
+            var old = IconImage;
+            IconImage = img;
+            if (old != null) { try { old.Dispose(); } catch { } }
+            Invalidate();
+        }
 
         protected override void OnMouseEnter(EventArgs e)
         {
@@ -4337,20 +4544,10 @@ namespace WinPanel
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-                Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-                using (var path = new GraphicsPath())
+                var path = RoundPath();
+                using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
                 {
-                    int d = 16;
-                    Rectangle arc = new Rectangle(rect.Location, new Size(d, d));
-                    path.AddArc(arc, 180, 90);
-                    arc.X = rect.Right - d; path.AddArc(arc, 270, 90);
-                    arc.Y = rect.Bottom - d; path.AddArc(arc, 0, 90);
-                    arc.X = rect.Left; path.AddArc(arc, 90, 90);
-                    path.CloseFigure();
-                    using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
-                    {
-                        e.Graphics.FillPath(brush, path);
-                    }
+                    e.Graphics.FillPath(brush, path);
                 }
 
                 if (IconImage != null)
@@ -4382,26 +4579,25 @@ namespace WinPanel
                 }
 
                 Color tColor = this.ForeColor;
-                Font labelFont = null;
+                string labelName = null;
+                int labelSize = 0;
                 Settings cfg = MainForm.CurrentSettings;
                 if (cfg != null)
                 {
                     try { tColor = Settings.ParseColor(cfg.FontItemsColor, tColor); }
                     catch { }
-                    try { labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize); }
-                    catch { }
+                    labelName = cfg.FontItemsName;
+                    labelSize = cfg.FontItemsSize;
                 }
                 try
                 {
+                    Font font = labelName != null ? GetSharedLabelFont(labelName, labelSize) : FallbackLabelFont;
                     using (var brush = new SolidBrush(tColor))
-                    using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 8f))
                     {
-                        var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
-                        e.Graphics.DrawString(item.Name, font, brush, new Rectangle(2, this.Height - 18, this.Width - 4, 16), sf);
+                        e.Graphics.DrawString(item.Name, font, brush, new Rectangle(2, this.Height - 18, this.Width - 4, 16), TileLabelFormat);
                     }
                 }
                 catch { }
-                if (labelFont != null) { try { labelFont.Dispose(); } catch { } }
             }
             catch (Exception ex)
             {
@@ -4411,7 +4607,11 @@ namespace WinPanel
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && IconImage != null) IconImage.Dispose();
+            if (disposing)
+            {
+                if (IconImage != null) IconImage.Dispose();
+                if (roundPath != null) { try { roundPath.Dispose(); } catch { } roundPath = null; }
+            }
             base.Dispose(disposing);
         }
     }
@@ -4432,6 +4632,49 @@ namespace WinPanel
             ChildIcons = new List<Image>();
         }
 
+        // Per-paint GDI allocations were heavy on big grids: the label font (a new
+        // Font every repaint), the fallback font, the StringFormat and the rounded
+        // outline path are shared/cached now.
+        private static Font sharedLabelFont;
+        private static string sharedLabelName;
+        private static int sharedLabelSize;
+        private static readonly Font FallbackLabelFont = new Font("Segoe UI", 9f);
+        private static readonly StringFormat TileLabelFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+
+        private static Font GetSharedLabelFont(string name, int size)
+        {
+            if (sharedLabelFont == null || sharedLabelName != name || sharedLabelSize != size)
+            {
+                Font nf = null;
+                try { nf = Settings.MakeFont(name, size); } catch { }
+                if (nf != null)
+                {
+                    var old = sharedLabelFont;
+                    sharedLabelFont = nf;
+                    sharedLabelName = name;
+                    sharedLabelSize = size;
+                    if (old != null) { try { old.Dispose(); } catch { } }
+                }
+            }
+            return sharedLabelFont != null ? sharedLabelFont : FallbackLabelFont;
+        }
+
+        private GraphicsPath roundPath;
+        private Size roundPathSize;
+
+        private GraphicsPath RoundPath()
+        {
+            Size s = new Size(this.Width, this.Height);
+            if (roundPath == null || roundPathSize != s)
+            {
+                var old = roundPath;
+                roundPath = GetRoundRectangle(new Rectangle(0, 0, this.Width - 1, this.Height - 1), 15);
+                roundPathSize = s;
+                if (old != null) { try { old.Dispose(); } catch { } }
+            }
+            return roundPath;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -4442,6 +4685,7 @@ namespace WinPanel
                     foreach (var img in ChildIcons) if (img != null) img.Dispose();
                     ChildIcons.Clear();
                 }
+                if (roundPath != null) { try { roundPath.Dispose(); } catch { } roundPath = null; }
             }
             base.Dispose(disposing);
         }
@@ -4475,9 +4719,7 @@ namespace WinPanel
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-                Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-                int radius = 15;
-                var path = GetRoundRectangle(rect, radius);
+                var path = RoundPath();
 
                 if (Item.IsFolder)
                 {
@@ -4578,31 +4820,30 @@ namespace WinPanel
                 }
 
                 Color tColor = this.Parent != null ? this.Parent.ForeColor : Color.White;
-                Font labelFont = null;
+                string labelName = null;
+                int labelSize = 0;
                 Settings cfg = MainForm.CurrentSettings;
                 if (cfg != null)
                 {
                     try { tColor = Settings.ParseColor(cfg.FontItemsColor, tColor); }
                     catch { }
-                    try { labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize); }
-                    catch { }
+                    labelName = cfg.FontItemsName;
+                    labelSize = cfg.FontItemsSize;
                 }
                 int labelSpace = GetTextSpace();
                 if (labelSpace > 0)
                 {
                     try
                     {
+                        Font font = labelName != null ? GetSharedLabelFont(labelName, labelSize) : FallbackLabelFont;
                         using (var brush = new SolidBrush(tColor))
-                        using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 9f))
                         {
-                            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
                             Rectangle textRect = new Rectangle(4, this.Height - labelSpace - 1, this.Width - 8, labelSpace);
-                            e.Graphics.DrawString(Item.Name, font, brush, textRect, sf);
+                            e.Graphics.DrawString(Item.Name, font, brush, textRect, TileLabelFormat);
                         }
                     }
                     catch { }
                 }
-                if (labelFont != null) { try { labelFont.Dispose(); } catch { } }
 
                 // Multi-select highlight (red edit-button mode).
                 if (MultiSelected)

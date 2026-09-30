@@ -28,6 +28,11 @@ namespace WinPanel
             }
         }
 
+        // Identical-message collapsing state (see Write).
+        private static string lastMsg;
+        private static DateTime lastMsgUtc;
+        private static int lastMsgSkipped;
+
         public static void Write(string message)
         {
             try
@@ -36,6 +41,26 @@ namespace WinPanel
                 if (string.IsNullOrEmpty(p)) return;
                 lock (Gate)
                 {
+                    // A recurring error (e.g. a paint exception firing every frame)
+                    // would otherwise pay a file open/close per entry and flood
+                    // log.txt. Collapse identical messages inside a 10 s window.
+                    DateTime now = DateTime.UtcNow;
+                    if (message == lastMsg && (now - lastMsgUtc).TotalSeconds < 10)
+                    {
+                        lastMsgSkipped++;
+                        return;
+                    }
+                    try
+                    {
+                        if (lastMsgSkipped > 0)
+                        {
+                            File.AppendAllText(p, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] (the previous message repeated " + lastMsgSkipped + " more times, suppressed)" + Environment.NewLine, Encoding.UTF8);
+                            lastMsgSkipped = 0;
+                        }
+                    }
+                    catch { }
+                    lastMsg = message;
+                    lastMsgUtc = now;
                     // Keep the log bounded: start a fresh file past ~512 KB.
                     try
                     {

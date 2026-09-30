@@ -59,6 +59,10 @@ namespace WinPanel
             Tabs = new List<TabData>();
         }
 
+        // One shared serializer: constructing XmlSerializer is expensive and Save is
+        // called after every drag/rename/move with a ~300 KB document on the UI thread.
+        private static readonly XmlSerializer serializer = new XmlSerializer(typeof(Records));
+
         public static Records Load(string path)
         {
             if (!File.Exists(path))
@@ -66,7 +70,6 @@ namespace WinPanel
 
             try
             {
-                var serializer = new XmlSerializer(typeof(Records));
                 using (var fs = new FileStream(path, FileMode.Open))
                 {
                     var r = (Records)serializer.Deserialize(fs);
@@ -91,7 +94,6 @@ namespace WinPanel
         {
             try
             {
-                var serializer = new XmlSerializer(typeof(Records));
                 using (var fs = new FileStream(path, FileMode.Create))
                 {
                     serializer.Serialize(fs, this);
