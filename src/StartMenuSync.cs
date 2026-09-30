@@ -267,6 +267,10 @@ namespace WinPanel
                 // subfolders copied as quick-access tiles across the field.
                 LayoutStartTab(tab, cols, rows);
 
+                // The sync is a bulk add event: collect search metadata for the
+                // (re)merged items once, on a worker thread.
+                form.WarmAllSearchMeta(true);
+
                 // The layout uses the whole grid; the generic overflow packing
                 // (EnsureTabFits) is skipped for this tab and would fight it.
 

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace WinPanel
 {
@@ -108,15 +110,103 @@ namespace WinPanel
             }
         }
 
+        // ---------- persistent disk cache ----------
+        // Extracted icons are saved as PNG files in iconcache\ next to the exe.
+        // The file name hashes the path, the size flag and the source file's mtime,
+        // so changing an icon externally invalidates its entry automatically
+        // (folder and shell: paths have no mtime component).
+        private static readonly string IconCacheDir = BuildIconCacheDir();
+        private static int diskCleanupDone;
+
+        private static string BuildIconCacheDir()
+        {
+            try { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "iconcache"); }
+            catch { return null; }
+        }
+
+        private static string DiskCacheFile(string path, bool large)
+        {
+            if (IconCacheDir == null || string.IsNullOrEmpty(path)) return null;
+            try
+            {
+                string src = path.ToLowerInvariant();
+                if (!src.StartsWith("shell:", StringComparison.Ordinal) && !Directory.Exists(path))
+                    src += "|" + File.GetLastWriteTimeUtc(path).Ticks.ToString("x");
+                string key = (large ? "L" : "S") + "|" + src;
+                using (var md5 = System.Security.Cryptography.MD5.Create())
+                {
+                    var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(key));
+                    var sb = new StringBuilder(bytes.Length * 2);
+                    foreach (var b in bytes) sb.Append(b.ToString("x2"));
+                    return Path.Combine(IconCacheDir, sb + ".png");
+                }
+            }
+            catch { return null; }
+        }
+
+        private static Image DiskCacheGet(string file)
+        {
+            try
+            {
+                if (file == null || !File.Exists(file)) return null;
+                // Decode from bytes: new Bitmap(file) would keep the file locked.
+                using (var ms = new MemoryStream(File.ReadAllBytes(file)))
+                    return new Bitmap(ms);
+            }
+            catch { return null; }
+        }
+
+        private static void DiskCachePut(string file, Image img)
+        {
+            try
+            {
+                if (file == null || img == null) return;
+                Directory.CreateDirectory(IconCacheDir);
+                string tmp = file + "." + Guid.NewGuid().ToString("N").Substring(0, 6) + ".tmp";
+                img.Save(tmp, System.Drawing.Imaging.ImageFormat.Png);
+                if (File.Exists(file)) File.Delete(file);
+                File.Move(tmp, file);
+                if (System.Threading.Interlocked.Exchange(ref diskCleanupDone, 1) == 0)
+                    System.Threading.ThreadPool.QueueUserWorkItem(delegate { DiskCacheCleanup(); });
+            }
+            catch { }
+        }
+
+        // Keeps the cache folder bounded; past the caps the oldest half goes.
+        private static void DiskCacheCleanup()
+        {
+            try
+            {
+                var dir = new DirectoryInfo(IconCacheDir);
+                if (!dir.Exists) return;
+                var files = dir.GetFiles("*.png");
+                long total = 0;
+                foreach (var f in files) total += f.Length;
+                if (files.Length <= 3000 && total <= 64L * 1024 * 1024) return;
+                Array.Sort(files, delegate(FileInfo a, FileInfo b) { return a.LastWriteTimeUtc.CompareTo(b.LastWriteTimeUtc); });
+                int keep = files.Length / 2;
+                for (int i = 0; i < files.Length - keep; i++) { try { files[i].Delete(); } catch { } }
+            }
+            catch { }
+        }
+
         // Icon for any item path: shell: namespace paths (UWP apps) go through the
         // IShellItemImageFactory, everything else through the regular extraction.
-        // Cached by path+size; see the note above the cache fields.
+        // Cached twice: in memory per session, and as a PNG next to the exe so an
+        // icon is pulled from the shell exactly once per tile lifetime (at add
+        // time) and every restart just decodes the file. See the disk cache note.
         public static Image GetIconAuto(string path, bool large)
         {
             string key = (large ? "L|" : "S|") + path;
             Image hit = CacheGet(key);
             if (hit != null) return hit;
-            Image img = ExtractIconAuto(path, large);
+            string diskFile = DiskCacheFile(path, large);
+            Image img = DiskCacheGet(diskFile);
+            if (img == null)
+            {
+                img = ExtractIconAuto(path, large);
+                if (img != null) DiskCachePut(diskFile, img);
+            }
             CachePut(key, img);
             return img != null ? (Image)img.Clone() : null;
         }
@@ -203,7 +293,7 @@ public static Image GetIcon(string path, bool large)
                 Image img = null;
                 string lower = path.ToLowerInvariant();
                 if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
-                    img = GetIcon(path, true);
+                    img = GetIconAuto(path, true);
                 else
                     img = Image.FromFile(path);
                 CachePut(key, img);

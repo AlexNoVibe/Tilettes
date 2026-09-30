@@ -21,6 +21,11 @@ namespace WinPanel
         private Button activeTabBtn;
         private Panel activeLayoutPanel;
         private TabData activeTabData;
+        // Tabs whose tiles are built. LoadTabs used to render EVERY tab up front
+        // (tearing down and recreating every TileControl, re-requesting every icon)
+        // on startup and on each settings change; now only the active tab is built
+        // and the rest render on their first activation.
+        private readonly HashSet<TabData> renderedTabs = new HashSet<TabData>();
         private readonly Dictionary<Button, TabData> tabDataByButton = new Dictionary<Button, TabData>();
         private TextBox panelSearchBox;
         private System.Windows.Forms.Timer panelSearchTimer;
@@ -911,6 +916,7 @@ namespace WinPanel
                 };
                 MainForm.PlaceIntoGridStatic(tab.Items, it, settings.GridColumns, settings.GridRows);
                 tab.Items.Add(it);
+                WarmSearchMeta(it);
             }
             catch { }
         }
@@ -1249,6 +1255,51 @@ namespace WinPanel
                 outList.Add(it);
                 if (it.Children != null && it.Children.Count > 0) CollectAllItems(it.Children, outList);
             }
+        }
+
+        // ---------- search metadata warm-up ----------
+        // Metadata (name, paths, .lnk target, version info) is collected ONCE per
+        // item, when the item appears: drag&drop, folder creation, example tiles,
+        // Start Menu sync, plus a single pass over already-existing items at
+        // startup. Nothing refreshes it afterwards - an edited item is invalidated
+        // explicitly (PanelSearch.Invalidate) and rebuilds on the next search.
+        internal static void WarmSearchMeta(ShortcutItem item)
+        {
+            if (item == null) return;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { ulong a, b; PanelSearch.GetMask(item, out a, out b); } catch { }
+            });
+        }
+
+        internal static void WarmSearchMeta(List<ShortcutItem> items)
+        {
+            if (items == null || items.Count == 0) return;
+            var snapshot = new List<ShortcutItem>(items);
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                foreach (var it in snapshot)
+                {
+                    try { ulong a, b; PanelSearch.GetMask(it, out a, out b); } catch { }
+                }
+            });
+        }
+
+        private bool metaWarmedOnce;
+
+        // One background pass over every item of every tab. `force` is for bulk
+        // add events (Start Menu sync copies); at startup it runs exactly once.
+        internal void WarmAllSearchMeta(bool force)
+        {
+            if (!force && metaWarmedOnce) return;
+            metaWarmedOnce = true;
+            try
+            {
+                var snapshot = new List<ShortcutItem>();
+                foreach (var tab in records.Tabs) CollectAllItems(tab.Items, snapshot);
+                WarmSearchMeta(snapshot);
+            }
+            catch { }
         }
 
         // The mirrored Start Menu tab: by kind, or by its canonical names for tabs
@@ -2376,6 +2427,7 @@ namespace WinPanel
             DisposeControlTree(contentPanel);
             DisposeControlTree(tabBar);
             DisposeControlTree(rightPanel);
+            renderedTabs.Clear();
             tabBar.Controls.Clear();
             rightPanel.Controls.Clear();
             contentPanel.Controls.Clear();
@@ -2746,26 +2798,15 @@ namespace WinPanel
             if (startBtn == null && buttons.Count > 0) startBtn = buttons[0];
             if (startBtn != null) ActivateTab(startBtn, layoutPanels, buttons);
 
-            // Render tiles for every tab (kept in hidden panels)
-            foreach (var tabData in records.Tabs)
-            {
-                Panel lp = null;
-                foreach (var kv in layoutPanels) if (tabByButton[kv.Key] == tabData) { lp = kv.Value; break; }
-                if (lp == null) continue;
-                // Docking layout never sizes hidden panels (they keep the 200x100
-                // default), so tiles rendered "in the dark" end up squashed in the
-                // top-left corner of the tab. Make each panel briefly visible while
-                // rendering so it lays out to its real bounds.
-                // Only the active tab may stay visible afterwards — Control.Visible
-                // GETTER reports the effective visibility (false while the form itself
-                // is still hidden during startup), so it can NOT be used to remember
-                // the previous state: doing so hid every panel, including the active
-                // one, and the panel stayed empty until the next window move.
-                bool keepVisible = ReferenceEquals(lp, activeLayoutPanel);
-                lp.Visible = true;
-                RenderCurrentFolder(lp, tabData);
-                lp.Visible = keepVisible;
-            }
+            // Tiles render lazily: ActivateTab built the active tab above, every
+            // other tab renders on its first activation. Per-tab folder state
+            // lives in tabNavigations and the search works on the data, so nothing
+            // is lost by not pre-rendering hidden panels (which never get real
+            // docking bounds anyway).
+
+            // Search metadata is collected once per item (at its add event) plus
+            // one pass over already-existing items at startup - see WarmAllSearchMeta.
+            WarmAllSearchMeta(false);
         }
 
         private void ActivateTab(Button tabBtn, Dictionary<Button, Panel> layoutPanels, List<Button> buttons)
@@ -2801,6 +2842,10 @@ namespace WinPanel
                     try { settings.Save(settingsPath); } catch { }
                 }
             }
+            // Lazy rendering: build this tab's tiles on its first activation. The
+            // panel is visible now, so the layout has real bounds to work with.
+            if (td != null && !renderedTabs.Contains(td))
+                RenderCurrentFolder(layoutPanels[tabBtn], td);
         }
 
         // Drag a tab button to reorder it inside its row or move it to another row.
@@ -2933,6 +2978,7 @@ namespace WinPanel
 
         private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
         {
+            renderedTabs.Add(tabData);
             ClearMultiSelection();
             DisposeControlTree(layoutPanel);
             layoutPanel.Controls.Clear();
@@ -3247,6 +3293,7 @@ namespace WinPanel
                 }
                 targetList.Add(folder);
                 records.Save(recordsPath);
+                WarmSearchMeta(folder);
                 RenderCurrentFolder(layoutPanel, tabData);
             }
         }
@@ -3295,6 +3342,7 @@ namespace WinPanel
             int rows = Math.Max(1, settings.GridRows);
 
             int offset = 0;
+            var dropped = new List<ShortcutItem>();
             foreach (var file in files)
             {
                 var shortcut = new ShortcutItem
@@ -3322,9 +3370,11 @@ namespace WinPanel
                     }
                     targetList.Add(shortcut);
                 }
+                dropped.Add(shortcut);
                 offset += 20; // stagger drops
             }
             records.Save(recordsPath);
+            WarmSearchMeta(dropped);
             RenderCurrentFolder(layoutPanel, tabData);
         }
 
@@ -4165,16 +4215,20 @@ namespace WinPanel
                 if (files == null || files.Length == 0) return;
                 ShortcutItem current = CurrentFolder();
                 if (current.Children == null) current.Children = new List<ShortcutItem>();
+                var added = new List<ShortcutItem>();
                 foreach (var f in files)
                 {
                     var name = Path.GetFileNameWithoutExtension(f);
                     if (string.IsNullOrEmpty(name)) name = Path.GetFileName(f);
-                    current.Children.Add(new ShortcutItem
+                    var it = new ShortcutItem
                     {
                         Path = MainForm.ConsolidateFilePath(f),
                         Name = name
-                    });
+                    };
+                    current.Children.Add(it);
+                    added.Add(it);
                 }
+                MainForm.WarmSearchMeta(added);
                 if (onChanged != null) onChanged();
                 Rebuild();
             };
