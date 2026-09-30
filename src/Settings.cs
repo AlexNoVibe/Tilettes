@@ -101,6 +101,16 @@ namespace WinPanel
         // Decorative skin id ("" = disabled); see Skins.cs
         public string SkinName { get; set; }
 
+        // First-start welcome window was shown and answered (the flag makes it
+        // strictly once per data folder, also for users upgrading from older builds).
+        public bool FirstRunDone { get; set; }
+
+        // Update check (GitHub Releases; install is a stub — see UpdateChecker).
+        public bool UpdateCheckEnabled { get; set; }
+        public int UpdateCheckDays { get; set; }
+        public bool UpdateAutoInstall { get; set; }
+        public string LastUpdateCheck { get; set; }
+
         public Settings()
         {
             StartupWidth = 900;
@@ -161,6 +171,11 @@ namespace WinPanel
             SearchSaveHistory = true;
             HotkeyWin = true;
             SkinName = "";
+            FirstRunDone = false;
+            UpdateCheckEnabled = true;
+            UpdateCheckDays = 1;
+            UpdateAutoInstall = false;
+            LastUpdateCheck = "";
         }
 
         public static System.Drawing.Color ParseColor(string hex, System.Drawing.Color fallback)
@@ -313,6 +328,13 @@ namespace WinPanel
                 bool hkw;
                 if (bool.TryParse(ini.Read("HotkeyWin"), out hkw)) s.HotkeyWin = hkw;
                 val = ini.Read("SkinName"); if (val != null) s.SkinName = val;
+                bool frd, uce, uai;
+                if (bool.TryParse(ini.Read("FirstRunDone"), out frd)) s.FirstRunDone = frd;
+                if (bool.TryParse(ini.Read("UpdateCheckEnabled"), out uce)) s.UpdateCheckEnabled = uce;
+                if (bool.TryParse(ini.Read("UpdateAutoInstall"), out uai)) s.UpdateAutoInstall = uai;
+                int ucd;
+                if (int.TryParse(ini.Read("UpdateCheckDays"), out ucd)) s.UpdateCheckDays = Math.Max(1, Math.Min(365, ucd));
+                val = ini.Read("LastUpdateCheck"); if (val != null) s.LastUpdateCheck = val;
             }
             catch
             {
@@ -387,6 +409,11 @@ namespace WinPanel
                 ini.Write("SearchSaveHistory", SearchSaveHistory.ToString());
                 ini.Write("HotkeyWin", HotkeyWin.ToString());
                 ini.Write("SkinName", SkinName == null ? "" : SkinName);
+                ini.Write("FirstRunDone", FirstRunDone.ToString());
+                ini.Write("UpdateCheckEnabled", UpdateCheckEnabled.ToString());
+                ini.Write("UpdateCheckDays", UpdateCheckDays.ToString());
+                ini.Write("UpdateAutoInstall", UpdateAutoInstall.ToString());
+                ini.Write("LastUpdateCheck", LastUpdateCheck == null ? "" : LastUpdateCheck);
             }
             catch (Exception ex)
             {

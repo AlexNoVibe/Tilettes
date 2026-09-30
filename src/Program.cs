@@ -60,6 +60,10 @@ namespace WinPanel
         private NotifyIcon trayIcon;
         private Icon appIcon;
 
+        // "Update available" plate: set by UpdateChecker when a newer GitHub
+        // release exists; LoadTabs builds the plate into the top-right corner.
+        private string updateAvailableVersion;
+
         // Colors for modern dark theme
         private Color bgColor;
         private Color panelColor;
@@ -158,6 +162,15 @@ namespace WinPanel
                     this.Shown += (s, e) => OpenSettings();
             }
             catch { }
+
+            // First start: the welcome window (thanks + beta note + language and
+            // update-check questions + optional example tiles). The FirstRunDone
+            // flag makes it strictly once per data folder; skipped for the
+            // screenshot autotest and when autostart put us straight into the tray.
+            bool autotestMode = false;
+            try { autotestMode = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WINPANEL_AUTOTEST")); } catch { }
+            if (!settings.FirstRunDone && !autotestMode && !(startHidden && settings.AutoStartMinimized))
+                this.Shown += (s, e) => RunFirstStartWelcome();
 
             // Copy user shortcuts/icons that live outside the panel folder into <exe>\ico
             // so they are not lost when the originals are moved or deleted.
@@ -293,7 +306,7 @@ namespace WinPanel
             };
 
             trayIcon = new NotifyIcon();
-            trayIcon.Text = Loc.S("Tilettes", "Плиточки");
+            trayIcon.Text = Loc.S("Tilettes", "Плиточки") + " v" + AppInfo.AppVersion;
             appIcon = CreateAppIcon();
             if (appIcon != null) trayIcon.Icon = appIcon;
             trayIcon.DoubleClick += (s, e) => RestoreWindow();
@@ -393,6 +406,10 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("Backup schedule", ex); }
             try { StartMenuSync.ScheduleIfNeeded(this, settings); }
             catch (Exception ex) { AppLog.Write("Sync schedule", ex); }
+
+            // Update check: GitHub Releases only, the download/install part is a stub.
+            try { UpdateChecker.ScheduleCheck(this, settings); }
+            catch (Exception ex) { AppLog.Write("Update schedule", ex); }
         }
 
         // WS_EX_COMPOSITED: the window (with all children) paints double-buffered,
@@ -771,8 +788,96 @@ namespace WinPanel
                     // "Do it now" requests from the settings dialog.
                     if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, true);
                     if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
+
+                    // Update settings may have changed: re-evaluate the schedule.
+                    try { UpdateChecker.ScheduleCheck(this, this.settings); }
+                    catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
             }
+        }
+
+        // ---- First start: welcome window and example tiles ----
+
+        private void RunFirstStartWelcome()
+        {
+            try
+            {
+                bool createExamples = false;
+                using (var wf = new WelcomeForm(settings))
+                {
+                    wf.ShowDialog(this);
+                    createExamples = wf.CreateExamples;
+                }
+                // Standard settings land in settings.ini right on the first start,
+                // together with the welcome answers (language, update check).
+                settings.FirstRunDone = true;
+                settings.Save(settingsPath);
+
+                Loc.Lang = string.IsNullOrEmpty(settings.Language) ? "ru" : settings.Language;
+                ApplyThemeColors();
+                mainFont = Settings.MakeFont(settings.FontUiName, settings.FontUiSize);
+                this.Font = mainFont;
+                try { trayIcon.Text = Loc.S("Tilettes", "Плиточки") + " v" + AppInfo.AppVersion; } catch { }
+
+                if (createExamples) CreateExampleTiles();
+                LoadTabs();
+
+                // The welcome window may have allowed the update check.
+                try { UpdateChecker.ScheduleCheck(this, settings); }
+                catch (Exception ex) { AppLog.Write("Update schedule", ex); }
+            }
+            catch (Exception ex) { AppLog.Write("First start welcome", ex); }
+        }
+
+        // A few ready tiles (standard Windows programs) so the panel is not empty
+        // when the user chose "create examples" in the welcome window.
+        private void CreateExampleTiles()
+        {
+            try
+            {
+                if (records.Tabs.Count == 0) return;
+                var tab = records.Tabs[0];
+                if (tab.Items.Count > 0) return; // content exists — add nothing
+                string sys = Environment.SystemDirectory;
+                string windir = Environment.GetEnvironmentVariable("windir") ?? "C:\\Windows";
+                AddExampleTile(tab, Path.Combine(sys, "notepad.exe"), Loc.S("Notepad", "Блокнот"), Loc.S("Simple text editor", "Простой текстовый редактор"));
+                AddExampleTile(tab, Path.Combine(sys, "calc.exe"), Loc.S("Calculator", "Калькулятор"), Loc.S("Windows calculator", "Калькулятор Windows"));
+                AddExampleTile(tab, Path.Combine(windir, "mspaint.exe"), "Paint", null);
+                AddExampleTile(tab, Path.Combine(windir, "explorer.exe"), Loc.S("Explorer", "Проводник"), Loc.S("File manager", "Файловый менеджер"));
+                records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("Example tiles", ex); }
+        }
+
+        private void AddExampleTile(TabData tab, string path, string name, string desc)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+                var it = new ShortcutItem
+                {
+                    Path = path,
+                    Name = name,
+                    Size = Math.Max(2, settings.DefaultItemSize),
+                    ShortDescription = desc
+                };
+                MainForm.PlaceIntoGridStatic(tab.Items, it, settings.GridColumns, settings.GridRows);
+                tab.Items.Add(it);
+            }
+            catch { }
+        }
+
+        // ---- Update plate ("Обновить" next to the settings button) ----
+
+        public void ShowUpdatePlate(string version)
+        {
+            try
+            {
+                updateAvailableVersion = version;
+                ShowBalloon(Loc.S("New version available: ", "Доступна новая версия: ") + version);
+                LoadTabs();
+            }
+            catch { }
         }
 
         private void ApplyThemeColors()
@@ -2157,7 +2262,17 @@ namespace WinPanel
             // Tab rows sit directly above the search row: no filler space between them.
             topPanel.Height = tabRows * tabPitch + searchRowH;
 
-            // ---- Right stack: row 1 = min / max / close, row 2 = settings / edit ----
+            // ---- Right stack: row 1 = min / max / close, row 2 = grid / edit / [update] / settings ----
+            // The "Update" plate appears when UpdateChecker found a newer release;
+            // both rows grow by the plate width so min/max/close stay in the corner.
+            int plateW = 0;
+            string plateCaption = "⟳ " + Loc.S("Update", "Обновить");
+            if (updateAvailableVersion != null)
+            {
+                using (var pf = new Font("Segoe UI", 9f, FontStyle.Bold))
+                    plateW = Math.Max(64, TextRenderer.MeasureText(plateCaption, pf).Width + 18);
+                rightPanel.Width = 105 + plateW;
+            }
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
             var actionRow = new Panel { Location = new Point(0, 31), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
             winRow.MouseDown += (s, e) => DragWindow(e);
@@ -2182,6 +2297,15 @@ namespace WinPanel
             minBtn.Click += (s, e) => this.WindowState = FormWindowState.Minimized;
             winRow.Controls.Add(minBtn);
 
+            if (plateW > 0)
+            {
+                // Added last = docks first = leftmost: keeps min/max/close pinned
+                // to the right corner while the rows carry the extra update plate.
+                var winFiller = new Panel { Width = plateW, Height = 31, Dock = DockStyle.Left, BackColor = bgColor };
+                winFiller.MouseDown += (s, e) => DragWindow(e);
+                winRow.Controls.Add(winFiller);
+            }
+
             var settingsBtn = new Button
             {
                 Text = "⚙️",
@@ -2198,6 +2322,36 @@ namespace WinPanel
             settingsBtn.FlatAppearance.MouseOverBackColor = hoverColor;
             settingsBtn.Click += (s, e) => OpenSettings();
             actionRow.Controls.Add(settingsBtn);
+
+            // Added after settings and before edit/grid, so the visual order is
+            // grid | edit | update-plate | settings — the plate sits right next
+            // to the gear in the corner.
+            if (plateW > 0 && updateAvailableVersion != null)
+            {
+                string v = updateAvailableVersion;
+                var updateBtn = new Button
+                {
+                    Text = plateCaption,
+                    Width = plateW,
+                    Height = 31,
+                    Dock = DockStyle.Left,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.FromArgb(39, 174, 96),
+                    ForeColor = Color.White,
+                    Cursor = Cursors.Hand,
+                    Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+                };
+                updateBtn.FlatAppearance.BorderSize = 0;
+                updateBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(46, 204, 113);
+                updateBtn.Click += (s, e) =>
+                {
+                    try { System.Diagnostics.Process.Start(AppInfo.ReleasesLatestUrl); }
+                    catch { }
+                };
+                itemTip.SetToolTip(updateBtn, Loc.S("Version " + v + " is available - click to open the download page",
+                    "Доступна версия " + v + " — нажмите, чтобы открыть страницу загрузок"));
+                actionRow.Controls.Add(updateBtn);
+            }
 
             var editBtn = new Button
             {

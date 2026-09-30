@@ -1,0 +1,12 @@
+# GitHub shows these as "Sponsor this project" links in the repo sidebar.
+# They point at the "Donate" section anchors of the English README, where the
+# full wallet list lives.
+custom:
+  - name: EVM (ETH, Polygon, Base, Monad, HyperEVM)
+    url: https://github.com/AlexNoVibe/Tilettes#donate-evm
+  - name: Bitcoin (BTC)
+    url: https://github.com/AlexNoVibe/Tilettes#donate-btc
+  - name: Solana (SOL)
+    url: https://github.com/AlexNoVibe/Tilettes#donate-sol
+  - name: Sui (SUI)
+    url: https://github.com/AlexNoVibe/Tilettes#donate-sui

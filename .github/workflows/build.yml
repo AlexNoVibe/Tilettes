@@ -1,0 +1,47 @@
+name: build
+
+# Builds Tilettes with the OS-shipped csc.exe (.NET Framework 4.8), packs a
+# portable zip and attaches it to the GitHub Release on every v* tag.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build (csc.exe, same as build.bat)
+        shell: cmd
+        run: build.bat
+
+      - name: Pack zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item Tilettes.exe dist/
+          Copy-Item README.md dist/
+          Copy-Item LICENSE dist/
+          $zip = "Tilettes-$($env:GITHUB_REF_NAME).zip"
+          Compress-Archive -Path dist/* -DestinationPath $zip -Force
+          Remove-Item -Recurse -Force dist
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tilettes-${{ github.ref_name }}
+          path: Tilettes-*.zip
+
+      - name: Attach to release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-ghrelease@v2
+        with:
+          files: ${{ env.ZIP }}
+          generate_release_notes: true

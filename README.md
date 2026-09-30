@@ -1,29 +1,29 @@
-# Tilettes / Плиточки
+# Tilettes
 
-**EN** — A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
+**English** · [Русский](README.ru.md)
 
-**RU** — Панель быстрого запуска для Windows: сетка плиток с ярлыками, папками и вкладками, встроенный fuzzy-поиск и мини-проводник с консолью. Один портативный EXE, без установки, .NET Framework 4.8 (WinForms).
+<!-- Adding a language: create README.<code>.md (translate), then extend the
+     language line above and the one at the top of README.ru.md. GitHub shows
+     README.md (English) on the repo home; every other language is one file
+     plus one link. -->
 
----
+A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 
-## [Documentation in English](#english) · [Документация на русском](#русский)
-
-<a name="english"></a>
-# English
-
-## Overview
-
-Tilettes replaces the desktop-shortcut mess with one borderless panel: tiles launch programs, folders hold groups, tabs organize everything. Every item can carry a description that is searchable and shown as a hover tooltip. The integrated mini explorer adds file browsing, bookmarks and a working console to the same launcher.
-
-Current version: **v0.3** (see the repository history for the changelog).
+Current version: **v0.5** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
 
 ## Features
 
-- **Panel** — tiles sized 1×1…4×4, unlimited tabs (draggable, multi-row), folders opened in-place or as popups, drag-and-drop from Explorer, custom grid (columns/rows/transparency), icon scaling.
+- **Panel** — tiles sized 1×1…6×6, unlimited tabs (draggable, multi-row), folders opened in-place or as popups, drag-and-drop from Explorer, custom grid (columns/rows/transparency), icon scaling.
 - **Search** — searches names, file names, program metadata (FileDescription / ProductName / CompanyName), full paths and user descriptions; fuzzy matching with adjustable accuracy and wrong-keyboard-layout correction (`руддщ` → `hello`); results are ranked by match quality and matched characters are highlighted.
 - **Mini explorer** — breadcrumb navigation, folder/command/group bookmarks, file search (current folder or all fixed drives) with a background index, and an embedded `cmd.exe` console with command history, saved commands and Ctrl+wheel font zoom.
 - **File type rules** — per-extension/per-mask icons and "open with" associations, import/export.
 - **Desktop integration** — tray icon, autostart with Windows, global hotkey, native Explorer context menus, borderless window with edge resizing.
+- **First start & updates** — a one-time welcome window (beta note, language choice, update-check permission, example tiles) and an update check against GitHub Releases with a corner plate when a newer version exists.
+
+## First start & updates
+
+- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (RU/EN flags), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles).
+- **Update check** — the app asks the public GitHub Releases API every N days. When a newer tag exists, a green **⟳ Update** plate appears next to the settings button and opens the [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) page. Automatic installation is a stub (TODO) for now.
 
 ## Settings reference
 
@@ -45,10 +45,10 @@ All settings live in one dialog (⚙ button / tray menu) and are stored in `sett
 | Grid Transparency | 0–255 | 50 | Alpha of the grid lines. 0 = invisible. Only drawn when the grid toggle (▦) is on. |
 | Grid Columns | 1–100 | 16 | Horizontal cells. Tile positions snap to this grid. |
 | Grid Rows | 1–100 | 16 | Vertical cells. |
-| Def. Item Size | 1–4 | 2 | Size of newly added tiles (1×1 … 4×4 cells). |
+| Def. Item Size | 1–6 | 2 | Size of newly added tiles (1×1 … 6×6 cells). |
 | Icon Scale (%) | 25–400 | 100 | Icon size inside a tile, percent of the default. |
 | Allow adding icons | on/off | on | Edit mode: dragging tiles, creating folders, dropping files. When off, tiles simply launch on click. |
-| Light Theme | on/off | off | Light or dark color scheme. |
+| Skin & theme | None (dark) / Light / skins | None (dark) | Dark or light classic theme, or a decorative skin (own colors + window border). |
 
 ### Folders
 
@@ -78,6 +78,15 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Search font: box | 7–30 | 9 | Font size of the search input. |
 | Search font: results | 7–30 | 9 | Font size of result rows (row height follows the font). |
 
+### Updates
+
+| Setting | Range | Default | Description |
+|---|---|---|---|
+| Check for updates automatically | on/off | on | Ask GitHub Releases for a newer version. |
+| Check every N days | 1–365 | 1 | How often to check. |
+| Install updates automatically | on/off | off | **Stub (TODO)** — not implemented yet. |
+| ♥ Donate | button | — | Popup wallet list (a click copies the address) plus the GitHub donate section. |
+
 ### Mini explorer (INI keys)
 
 | Key | Range | Default | Description |
@@ -99,10 +108,12 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Always keep tray icon | on/off | on | Tray icon visible at all times. |
 | Remember active tab | on/off | on | Restores the last active tab on launch. |
 
-### Backup
+### Backup & Start Menu sync
 
-- **Save backup** — saves the whole `settings.ini` to any file.
-- **Restore backup** — copies a saved INI back; takes effect when the settings dialog is closed with Save. Covers settings only, not `records.xml` / `bookmarks.xml` / `filetypes.xml`.
+- **Backup now** — full backup zip into `autoBackup\` (settings, tiles, icons, bookmarks, search history, the exe); scheduled by "Backup every N days" (0 = off), created ~3 minutes after launch when due.
+- **Save backup (zip)** — the same archive into a user-chosen file.
+- **Restore archive…** — expects a zip created by Tilettes itself; files unpack into the working folder, `Tilettes.exe` is never replaced.
+- **Sync Start Menu now** / every N hours (0 = off) — rebuilds the mirrored Start Menu tab.
 
 ## Hotkeys & commands
 
@@ -119,7 +130,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Ctrl+Click a folder tile | Open the mini explorer (if enabled). |
 | Drag a tile (edit mode) | Move it; drop onto a folder to move it inside. |
 | Drop files onto the panel (edit mode) | Add as tiles (drop onto a folder to add inside). |
-| Right-click a tile | Native Explorer menu plus: Description…, Size 1×1–4×4, Rename, Change Icon, Remove, Move out of folder, Open in Mini Explorer (folders). |
+| Right-click a tile | Native Explorer menu plus: Description…, Size 1×1–6×6, Rename, Change Icon, Remove, Move out of folder, Open in Mini Explorer (folders). |
 | Right-click a tab | Delete (last tab is protected), Rename, Toggle free/grid layout. |
 | Drag a tab | Reorder within a row or move to another row. |
 | Right-click empty panel | Create Folder, Settings. |
@@ -160,7 +171,7 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 - **Drag & drop and tile moving require edit mode** ("Allow adding icons" / ✅ button).
 - Folder tiles preview at most **9** child icons; the folder popup shows at most **4** columns per row.
 - `.lnk`/`.ico` items added to the panel are **copied into `ico\`** so they survive moving of the originals.
-- **Backup covers settings only** — shortcuts (`records.xml`), bookmarks and file-type rules are not included.
+- **Restore archive** accepts only zips created by Tilettes ("Backup now" / "Save backup (zip)").
 - Rounded window corners are temporarily removed while resizing (technique to avoid flicker) and restored on release.
 - The layout fix covers the EN↔RU QWERTY pair; other layouts are passed through untouched.
 - **Single instance**: launching a second copy just shows the existing window.
@@ -179,6 +190,8 @@ or directly:
 ```
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
 ```
+
+Releases are built automatically by GitHub Actions on every `v*` tag (the workflow packs `Tilettes.exe` + `README.md` + `LICENSE` into a zip and attaches it to the release).
 
 ## Data files (created next to the EXE)
 
@@ -202,202 +215,72 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 | `FileTypes.cs` / `FileTypesForm.cs` | File type rules and their editors |
 | `bookmarks.cs` | Bookmark storage |
 | `loc.cs` | RU/EN localization |
-| `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Icons, native menus, INI I/O, records I/O, autostart/single-instance |
+| `UpdateChecker.cs` / `WelcomeForm.cs` | Update check (GitHub Releases) and the first-start welcome window |
+| `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Icons, native menus, INI I/O, records I/O, autostart/single-instance/wallets |
 
----
+## License
 
-<a name="русский"></a>
-# Русский
+[MIT](LICENSE) — free to use, modify and distribute.
 
-## Обзор
+<a name="donate"></a>
+## Donate
 
-Плиточки (Tilettes) заменяют захламлённый рабочий стол одной безрамочной панелью: плитки запускают программы, папки группируют, вкладки наводят порядок. У каждого элемента есть описание — оно ищется поиском и всплывает подсказкой при наведении. Встроенный мини-проводник добавляет к лаунчеру просмотр файлов, закладки и рабочую консоль.
+If Tilettes is useful, you can support the development with crypto. EVM-compatible networks share one address — send on whichever network is convenient:
 
-Текущая версия: **v0.3** (история изменений — в коммитах репозитория).
-
-## Возможности
-
-- **Панель** — плитки 1×1…4×4, неограниченные вкладки (перетаскиваются, в несколько рядов), папки внутри вкладки или всплывающим окном, drag-and-drop из Проводника, настраиваемая сетка (колонки/строки/прозрачность), масштаб иконок.
-- **Поиск** — по именам, именам файлов, метаданным программ (FileDescription / ProductName / CompanyName), полным путям и пользовательским описаниям; fuzzy-поиск с настраиваемой точностью и исправлением неверной раскладки (`руддщ` → `hello`); результаты ранжируются по качеству совпадения, совпавшие символы подсвечиваются.
-- **Мини-проводник** — навигация по «хлебным крошкам», закладки (папки / команды / группы), поиск файлов (текущая папка или все диски) с фоновым индексом, встроенная консоль `cmd.exe` с историей команд, сохранёнными командами и зумом шрифта Ctrl+колесом.
-- **Правила типов файлов** — иконки и «открывать через» по расширению или маске, импорт/экспорт.
-- **Интеграция с системой** — значок в трее, автозапуск с Windows, глобальная горячая клавиша, системные контекстные меню Проводника, безрамочное окно с ресайзом за края.
-
-## Описание всех настроек
-
-Все настройки — в одном окне (кнопка ⚙ / меню трея), хранятся в `settings.ini`.
-
-### Запуск и окно
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Размер при запуске (W × H) | 200–4000 | 900 × 800 | Размер панели при каждом запуске. Изменение размера в сессии не запоминается — только позиция. |
-| Позиция окна (X, Y) | −4000…4000 | 100, 100 | Позиция на экране при запуске. Обновляется автоматически при перемещении окна. |
-| Горячая клавиша показа | пресеты + своя | Ctrl+J | Глобальная горячая клавиша показа/активации панели. Пресеты: None, Ctrl+J, Ctrl+Shift+J, Ctrl+Alt+J, Ctrl+K, Ctrl+Shift+K, Alt+J; свою комбинацию `Мод+Клавиша` можно вписать в `HotkeyShow` в INI. |
-| Язык | ru / en | ru | Язык интерфейса, применяется сразу. |
-
-### Сетка и плитки
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Прозрачность сетки | 0–255 | 50 | Альфа-канал линий сетки. 0 = невидима. Рисуется только при включённой сетке (кнопка ▦). |
-| Колонки сетки | 1–100 | 16 | Горизонтальные ячейки. Позиции плиток привязаны к сетке. |
-| Строки сетки | 1–100 | 16 | Вертикальные ячейки. |
-| Размер элемента | 1–4 | 2 | Размер новых плиток (1×1 … 4×4 ячейки). |
-| Масштаб иконок (%) | 25–400 | 100 | Размер иконки внутри плитки в процентах от стандартного. |
-| Разрешать добавлять значки | вкл/выкл | вкл | Режим редактирования: перетаскивание плиток, создание папок, приём файлов. Когда выключен — плитки просто запускаются по клику. |
-| Светлая тема | вкл/выкл | выкл | Светлая или тёмная цветовая схема. |
-
-### Папки
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Папки при открытии | В этом же окне / Во всплывающем окне | В этом же окне | Клик по папке открывает её внутри вкладки или всплывающим окном поверх всего. |
-| сек простоя | 0–600 | 15 | Только для режима «в этом же окне»: автоматически выйти из папки после N секунд без активности мыши/клавиатуры. 0 = выключено. |
-
-### Шрифты
-
-По строке на группу: **плитки**, **вкладки**, **интерфейс**.
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| размер | 6–24 | 9 | Размер шрифта группы. |
-| цвет | любой | пусто | Свой цвет текста; пусто = цвет темы. Действует на подписи плиток, названия вкладок или весь текст интерфейса. |
-| гарнитура | любой установленный шрифт | Segoe UI | Шрифтовое семейство группы. |
-
-### Поиск
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Точность fuzzy (0–3) | 0–3 | 2 | 0 = только подстроки; 1–3 — всё более терпимый fuzzy-поиск с опечатками. Цифры весят вдвое, поэтому числовые коды сопоставляются строго. |
-| Искать в метаданных | вкл/выкл | вкл | Имя файла, цель ярлыка, сведения о версии (описание, продукт, компания). |
-| Искать в полных путях | вкл/выкл | вкл | Текст полного пути, включая родительские папки. |
-| Искать в описаниях | вкл/выкл | вкл | Пользовательские описания (ПКМ → Описание…). |
-| Шрифт строки поиска | 7–30 | 9 | Размер шрифта поля поиска. |
-| Шрифт результатов | 7–30 | 9 | Размер шрифта строк результатов (высота строки следует за шрифтом). |
-
-### Мини-проводник (ключи INI)
-
-| Ключ | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Ctrl+ЛКМ по папке — мини-проводник | вкл/выкл | вкл | Сочетание Ctrl+клик на плитке папки. |
-| `MiniExplorerW/H/X/Y` | W≥760, H≥520 | авто | Геометрия окна, запоминается при закрытии. |
-| `MiniExplorerBookmarks` | вкл/выкл | вкл | Видимость боковой панели закладок. |
-| `MiniExplorerTopBar` | вкл/выкл | вкл | Видимость верхней полосы закладок. |
-| `MiniExplorerConsole` | 15–85 | 40 | Высота консоли в процентах от окна. |
-| `ConsoleFontSizeX10` | 60–280 | 85 | Размер шрифта консоли ×10 (85 = 8.5 pt), меняется Ctrl+колесом. |
-
-### Автозагрузка и трей
-
-| Настройка | Диапазон | По умолчанию | Описание |
-|---|---|---|---|
-| Автозапуск с Windows | вкл/выкл | выкл | Запись в `HKCU\...\Run` («Tilettes»). |
-| После автозапуска — сразу в трей | вкл/выкл | выкл | Добавляет `--minimized`: панель стартует скрытой в трее. |
-| Сворачивать в трей вместо закрытия | вкл/выкл | вкл | ✕ / Alt+F4 скрывает в трей (или минимизирует), а не завершает. Выход — в меню трея. |
-| Держать значок в трее | вкл/выкл | вкл | Значок в трее виден всегда. |
-| Запоминать активную вкладку | вкл/выкл | вкл | Восстанавливает последнюю активную вкладку при запуске. |
-
-### Бекап
-
-- **Сохранить бекап** — сохраняет весь `settings.ini` в выбранный файл.
-- **Восстановить бекап** — копирует сохранённый INI обратно; применяется при закрытии окна настроек. Охватывает только настройки — не `records.xml` / `bookmarks.xml` / `filetypes.xml`.
-
-## Горячие клавиши и команды
-
-### Основная панель
-
-| Клавиши / действие | Результат |
-|---|---|
-| Горячая клавиша (по умолчанию Ctrl+J) | Показать / активировать панель. |
-| Просто начните печатать, или Ctrl+F | Открыть поиск по панели. |
-| ↓ | Перейти к списку результатов. |
-| Enter | Открыть выбранный результат (папка — перейти, файл — запустить). |
-| Esc | Закрыть поиск. |
-| Клик по плитке | Запуск элемента; папка открывается (или попап — по настройке). |
-| Ctrl+клик по плитке папки | Открыть мини-проводник (если включён). |
-| Перетаскивание плитки (режим редактирования) | Переместить; бросить на папку — переместится внутрь. |
-| Бросок файлов на панель (режим редактирования) | Добавить плитками (бросок на папку — внутрь неё). |
-| ПКМ по плитке | Системное меню Проводника плюс: Описание…, Размер 1×1–4×4, Переименовать, Сменить иконку, Удалить, Вынести из папки, Открыть в мини-проводнике (папки). |
-| ПКМ по вкладке | Удалить (последнюю нельзя), Переименовать, Переключить свободная/сетка. |
-| Перетаскивание вкладки | Порядок в ряду или перенос в другой ряд. |
-| ПКМ по пустому месту панели | Создать папку, Настройки. |
-| Кнопки ▦ / ✅ / ⚙ | Видимость сетки, режим редактирования, настройки. |
-
-### Мини-проводник
-
-| Клавиши / действие | Результат |
-|---|---|
-| Ctrl+L / F4 / Изменить | Редактировать путь. |
-| F5 | Обновить папку. |
-| Backspace | На уровень вверх. |
-| Alt+← / Alt+→ | Назад / вперёд. |
-| Enter / двойной клик | Открыть (папка — перейти, файл — запустить). |
-| Esc | Выйти из поиска → отменить правку пути → закрыть окно. |
-| Печать в списке файлов | Начинает поиск (фокус в поле поиска). |
-| ↓ / ↑ (в поиске) | Перемещение по результатам. |
-| Ctrl+колесо мыши | Размер шрифта консоли (сохраняется). |
-| Перетаскивание сплиттера | Высота консоли (сохраняется). |
-| Кнопки ≡ / ☰ | Боковая панель закладок / верхняя полоса закладок. |
-| ПКМ по файлу | Открыть, Показать в Проводнике, Копировать путь. |
-| ПКМ по папке | Открыть, Добавить в закладки, Открыть в Проводнике. |
-| ПКМ по пустому месту | Обновить, Копировать путь папки, Открыть в Проводнике, Добавить текущую папку в закладки, Открыть окно консоли здесь. |
-| ПКМ по закладке | Изменить команду… (только для команд), Переименовать…, Вверх / Вниз, Удалить. |
-
-### Консоль
-
-Любую однострочную команду `cmd.exe` можно ввести и выполнить (Enter или кнопка **Выполнить**). Перед каждой командой рабочая папка синхронизируется с текущей. **+ Команда** сохраняет введённую команду закладкой (опционально в группу); сохранённые команды запускаются кликом. Кнопки: **Очистить** (стереть вывод), **Перезапуск** (новый cmd.exe), **Новое окно** (настоящее окно консоли в текущей папке). История команд доступна по ↑ / ↓ в течение сессии.
-
-## Ограничения
-
-- **Только Windows + .NET Framework 4.8** (GDI/WinForms). Нет per-monitor DPI — на сильно масштабированных экранах интерфейс может быть слегка размытым.
-- **Область «Везде»** индексирует **только локальные фиксированные диски** (USB/сеть не входят), лимит **200 000 объектов на диск**; индекс строится в фоне — результаты пополняются по мере работы (в строке статуса видно «индексация: N»).
-- **Поиск по панели** показывает лучшие **200** совпадений; **поиск мини-проводника** — до **400**; в списке файлов — максимум **800** записей на папку.
-- **Консоль — только `cmd.exe`**: однострочные команды; интерактивные/TUI-программы (редакторы, пейджеры с вводом с клавиатуры) корректно не работают; буфер вывода автоматически очищается после ~150 000 символов; кодировка — системная OEM (например, CP866).
-- **Глобальная горячая клавиша** — одна буква/цифра плюс модификаторы; если комбинация уже занята другой программой, регистрация не удастся (появится всплывающее уведомление).
-- **Размер панели сбрасывается к «Размеру при запуске» при каждом старте** — запоминается только позиция (сделано намеренно).
-- **Перетаскивание плиток и приём файлов требуют режима редактирования** («Разрешать добавлять значки» / кнопка ✅).
-- Плитка папки показывает не более **9** мини-иконок; попап папки — не более **4** колонок в ряду.
-- Добавленные на панель `.lnk`/`.ico` **копируются в `ico\`**, чтобы не терялись при перемещении оригиналов.
-- **Бекап охватывает только настройки** — ярлыки (`records.xml`), закладки и правила типов файлов в него не входят.
-- Скруглённые углы окна временно отключаются при ресайзе (техника против мерцания) и возвращаются после.
-- Исправление раскладки работает для пары EN↔RU (QWERTY/ЙЦУКЕН); другие раскладки проходят без изменений.
-- **Один экземпляр**: повторный запуск просто показывает уже открытое окно.
-- Авто-выход из папки по простою работает только в режиме «В этом же окне» и только находясь внутри папки.
-
-## Сборка
-
-Нужна любая Windows с .NET Framework 4.x (компилятор входит в состав системы):
+<a name="donate-evm"></a>
+### EVM — Ethereum · Polygon · Base · Monad · HyperEVM
 
 ```
-build.bat
+0xf84897FA0b74083c16865315A5b148f4d92e6C2a
 ```
 
-или напрямую:
+<a name="donate-btc"></a>
+### Bitcoin (BTC)
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
+bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5
 ```
 
-## Файлы данных (создаются рядом с EXE)
+<a name="donate-sol"></a>
+### Solana (SOL)
 
-| Файл | Назначение |
-|---|---|
-| `settings.ini` | Все настройки |
-| `records.xml` | Вкладки, папки, ярлыки, описания |
-| `bookmarks.xml` | Закладки мини-проводника |
-| `filetypes.xml` | Правила по типам файлов |
-| `ico\` | Копии .lnk/.ico и пользовательских иконок |
+```
+7ffCFnJBNVaF268FsZGKBPEWe3UNrWbasgt3aidiCw68
+```
 
-## Структура исходников (`src/`)
+<a name="donate-sui"></a>
+### Sui (SUI)
 
-| Файл | Назначение |
-|---|---|
-| `Program.cs` | Главное окно: вкладки, плитки, поиск по панели, попапы папок, один экземпляр |
-| `MiniExplorerForm.cs` | Мини-проводник: навигация, закладки, встроенная консоль |
-| `SearchCore.cs` | Индексация дисков, битовые маски-префильтры, fuzzy-скоринг |
-| `PanelSearch.cs` | Метаданные сохранённых элементов для поиска |
-| `Settings.cs` / `SettingsForm.cs` | Модель и окно настроек |
-| `FileTypes.cs` / `FileTypesForm.cs` | Правила по типам файлов и их редакторы |
-| `bookmarks.cs` | Хранение закладок |
-| `loc.cs` | Локализация RU/EN |
-| `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Иконки, системные меню, INI, хранение записей, автозапуск/один экземпляр |
+```
+0x3ca194b355bb00a1f5f646786407ebbcdaee361c6f56fb92f8df9abd73b0c3b1
+```
+
+Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoVibe/Tilettes/issues), star the repository, spread the word.
+
+<a name="changelog"></a>
+## Changelog
+
+### v0.5 (2026-09-30)
+
+- First-start welcome window (once per data folder): thanks, beta notice + issue link, painted mini-diagram, language choice (RU/EN flags), update-check permission, donation addresses (click to copy); exit via "Close" or "Close & create example tiles" (Notepad / Calculator / Explorer / Paint as ready tiles).
+- Update check (stub): the app asks the public GitHub Releases API for the latest tag (interval configurable in days); when a newer version exists a green "Update" plate appears next to the settings button and opens the releases page. Auto-install is a stub (TODO).
+- Settings: new "Updates" section (check toggle + TODO note, interval in days, auto-install toggle) and a donate line with a popup wallet menu (a click copies the address).
+- Real donation wallet list grouped by chain: EVM networks (ETH · Polygon · Base · Monad · HyperEVM) share one address; plus Bitcoin, Solana and Sui.
+- Version is now a single constant (`AppInfo.AppVersion`); the tray tooltip and the welcome window show it.
+- GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), bilingual README split into per-language files (`README.md` EN + `README.ru.md`) for easy extension, GitHub Actions build workflow (release zip on `v*` tags), docs landing page for GitHub Pages.
+
+### v0.4 (2026-09-29)
+
+- Rebrand: Tilettes / «Плиточки», new icon (exe resource + code-drawn tray icon).
+- Backup feature completed: "Save backup (zip)" packs settings, tiles, icons, bookmarks, search history and the exe; "Restore archive" unpacks app-created zips into the working folder without replacing Tilettes.exe; scheduled full backups into autoBackup\.
+- Settings dialog rework: vertically resizable via a bottom grip, tooltips on every item, labeled X/Y fields for startup size and window position, grid columns/rows on one row, skin combobox replaces the duplicated light-theme checkbox.
+- Start Menu mirror tab fixes (folder contents no longer clump; simplified auto-layout).
+- Layout fixes for fonts 14–20 (tabs, search status height, dialogs, mini explorer bars, window corner step).
+
+### v0.3 (2026-09-28)
+
+- Start Menu sync (mirror tab, scheduled), search toggle shrink ladders, quick search settings strip, multi-select edit mode, "Move to tab" menus, Win-key capture, folder popup navigation, search result path highlighting.
+
+### v0.1 – v0.2 (2026-09-27)
+
+- Initial builds of the launcher panel: tiles, tabs, folders, panel search, mini explorer with console, file type rules, tray/autostart/hotkey, grid customization.

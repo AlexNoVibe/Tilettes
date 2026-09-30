@@ -81,4 +81,53 @@ namespace WinPanel
             catch { }
         }
     }
+
+    // Central app identity: bump AppVersion on every release tag (v0.5 = "0.5").
+    public static class AppInfo
+    {
+        public const string AppVersion = "0.5";
+        public const string RepoUrl = "https://github.com/AlexNoVibe/Tilettes";
+        public const string IssuesUrl = RepoUrl + "/issues";
+        public const string ReleasesUrl = RepoUrl + "/releases";
+        public const string ReleasesLatestUrl = ReleasesUrl + "/latest";
+        // Public REST endpoint used by UpdateChecker (no auth, needs a User-Agent).
+        public const string ReleasesApiUrl = "https://api.github.com/repos/AlexNoVibe/Tilettes/releases/latest";
+        public const string DonateUrl = RepoUrl + "#donate";
+    }
+
+    // Crypto donation wallets: one shared source for the welcome window, the
+    // settings dialog popup and README.md ("Donate" section). EVM-compatible
+    // networks share a single address, so they are grouped into one entry.
+    public static class DonateWallets
+    {
+        public class Wallet
+        {
+            public string Label;    // short name ("Bitcoin (BTC)")
+            public string Networks; // network list ("" when single-network)
+            public string Address;
+        }
+
+        public static readonly Wallet[] All = new[]
+        {
+            new Wallet { Label = "EVM", Networks = "ETH · Polygon · Base · Monad · HyperEVM",
+                         Address = "0xf84897FA0b74083c16865315A5b148f4d92e6C2a" },
+            new Wallet { Label = "Bitcoin (BTC)", Networks = "",
+                         Address = "bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5" },
+            new Wallet { Label = "Solana (SOL)", Networks = "",
+                         Address = "7ffCFnJBNVaF268FsZGKBPEWe3UNrWbasgt3aidiCw68" },
+            new Wallet { Label = "Sui (SUI)", Networks = "",
+                         Address = "0x3ca194b355bb00a1f5f646786407ebbcdaee361c6f56fb92f8df9abd73b0c3b1" }
+        };
+
+        // Row/menu caption: label, optional network list, mid-truncated address
+        // (clicking always copies the full Address).
+        public static string Display(Wallet w)
+        {
+            string addr = w.Address;
+            if (addr.Length > 50)
+                addr = addr.Substring(0, 8) + "…" + addr.Substring(addr.Length - 6);
+            string net = string.IsNullOrEmpty(w.Networks) ? "" : " (" + w.Networks + ")";
+            return w.Label + net + " — " + addr;
+        }
+    }
 }

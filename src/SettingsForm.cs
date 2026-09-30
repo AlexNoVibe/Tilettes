@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -59,6 +60,10 @@ namespace WinPanel
         private NumericUpDown numSyncHours;
         private CheckBox chkSaveHistory;
         private CheckBox chkWinKey;
+        // Updates section (v0.5): check is live, install is a stub.
+        private CheckBox chkUpdateCheck;
+        private NumericUpDown numUpdateDays;
+        private CheckBox chkAutoInstall;
         public bool RunBackupNow { get; private set; }
         public bool RunSyncNow { get; private set; }
 
@@ -462,6 +467,62 @@ namespace WinPanel
 
             y += 44;
 
+            // ---- Updates: check = live (GitHub Releases), install = TODO stub ----
+            var lblUpdateSection = new Label { Text = Loc.S("Updates", "Обновления"), Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
+            y += 24;
+            chkUpdateCheck = new CheckBox { Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически"), Left = 20, Top = y, Width = 260, Checked = settings.UpdateCheckEnabled, ForeColor = textColor };
+            Tip(chkUpdateCheck, "Periodically ask GitHub Releases for a newer version (no auto-download yet)", "Периодически спрашивать GitHub Releases о новой версии (автозагрузки пока нет)");
+            var lblUpdateStub = new Label { Text = "TODO", Left = 290, Top = y + 3, Width = 120, ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155) };
+            Tip(lblUpdateStub, "Stub: the automatic part is limited to the check and the corner plate; installing updates is not implemented yet",
+                "Заглушка: автоматически — только проверка и плашка в углу; установка обновлений пока не реализована");
+            scrollPanel.Controls.Add(chkUpdateCheck);
+            scrollPanel.Controls.Add(lblUpdateStub);
+            y += 26;
+
+            var lblUpdateDays = new Label { Text = Loc.S("Check every N days:", "Проверять раз в N дней:"), Left = 20, Top = y, Width = 210 };
+            numUpdateDays = new NumericUpDown { Left = 235, Top = y - 2, Width = 50, Minimum = 1, Maximum = 365, Value = Math.Max(1, Math.Min(365, settings.UpdateCheckDays)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numUpdateDays, "How often to check for a new version, in days", "Как часто проверять новую версию, в днях");
+            scrollPanel.Controls.Add(lblUpdateDays);
+            scrollPanel.Controls.Add(numUpdateDays);
+            y += 28;
+
+            chkAutoInstall = new CheckBox { Text = Loc.S("Install updates automatically", "Автоустановка обновлений"), Left = 20, Top = y, Width = 260, Checked = settings.UpdateAutoInstall, ForeColor = textColor };
+            Tip(chkAutoInstall, "Not implemented yet (stub): for now the corner button only opens the releases page", "Пока не реализовано (заглушка): кнопка в углу лишь открывает страницу загрузок");
+            scrollPanel.Controls.Add(chkAutoInstall);
+            y += 26;
+
+            // Donate line: the button opens a popup menu with the wallet list
+            // (a click copies the address) and the GitHub donate section.
+            var lblDonate = new Label { Text = Loc.S("Like Tilettes? Support the author with crypto:", "Понравились Плиточки? Поддержать автора криптой:"), Left = 20, Top = y, Width = 420 };
+            scrollPanel.Controls.Add(lblDonate);
+            y += 26;
+
+            var btnDonate = new Button { Text = Loc.S("♥ Donate", "♥ Донат"), Left = 20, Top = y - 3, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleCenter };
+            btnDonate.FlatAppearance.BorderSize = 0;
+            btnDonate.FlatAppearance.MouseOverBackColor = hoverColor;
+            var donateMenu = new ContextMenu();
+            foreach (var wlt in DonateWallets.All)
+            {
+                var w = wlt;
+                donateMenu.MenuItems.Add(DonateWallets.Display(w), (s2, e2) =>
+                {
+                    try { Clipboard.SetText(w.Address); } catch { }
+                    FlashCopied(btnDonate);
+                });
+            }
+            donateMenu.MenuItems.Add("-");
+            donateMenu.MenuItems.Add(Loc.S("Open the donate section on GitHub", "Открыть раздел доната на GitHub"), (s2, e2) =>
+            {
+                try { Process.Start(AppInfo.DonateUrl); } catch { }
+            });
+            btnDonate.Click += (s2, e2) => donateMenu.Show(btnDonate, new Point(0, btnDonate.Height));
+            Tip(btnDonate, "Pick a wallet - its address is copied to the clipboard; the last item opens the GitHub donate section",
+                "Выберите кошелёк — адрес скопируется в буфер; последний пункт открывает раздел доната на GitHub");
+            var lblDonateHint = new Label { Text = "github.com/AlexNoVibe/Tilettes#donate", Left = 160, Top = y + 3, Width = 300, ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155) };
+            scrollPanel.Controls.Add(btnDonate);
+            scrollPanel.Controls.Add(lblDonateHint);
+            y += 32;
+
             // Save/Cancel live on the fixed bottom bar (outside the scroll), so
             // they are visible at any window height.
             btnSave = new Button { Text = "Save", Left = 378, Top = 11, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
@@ -545,6 +606,17 @@ namespace WinPanel
         private void Tip(Control c, string en, string ru)
         {
             tips.SetToolTip(c, Loc.S(en, ru));
+        }
+
+        // Brief feedback after a wallet address was copied: the button caption
+        // flashes "Copied" and then returns to normal.
+        private void FlashCopied(Button b)
+        {
+            string orig = b.Text;
+            b.Text = Loc.S("Copied ✓", "Скопировано ✓");
+            var t = new System.Windows.Forms.Timer { Interval = 1200 };
+            t.Tick += (s, e) => { t.Stop(); t.Dispose(); b.Text = orig; };
+            t.Start();
         }
 
         // Shows the actual (current) window numbers at the bottom, but only when at
@@ -735,6 +807,9 @@ namespace WinPanel
             settings.SearchSaveHistory = chkSaveHistory.Checked;
             settings.BackupDays = (int)numBackupDays.Value;
             settings.StartMenuSyncHours = (int)numSyncHours.Value;
+            settings.UpdateCheckEnabled = chkUpdateCheck.Checked;
+            settings.UpdateCheckDays = (int)numUpdateDays.Value;
+            settings.UpdateAutoInstall = chkAutoInstall.Checked;
             // Items 0/1 are the classic themes (dark/light, no skin), the rest
             // map back to Skin.All entries (Skin.All[0] is None itself).
             int si = cmbSkin.SelectedIndex;

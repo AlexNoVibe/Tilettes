@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tilettes — fast-launch panel for Windows</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #18181c; color: #e8e8ea;
+    font: 16px/1.6 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .logo { display: grid; grid-template-columns: 18px 18px; gap: 3px; }
+  .logo i { width: 18px; height: 18px; border-radius: 4px; }
+  .logo i:nth-child(1) { background: #2ecc71; }
+  .logo i:nth-child(2) { background: #f1c40f; }
+  .logo i:nth-child(3) { background: #e74c3c; }
+  .logo i:nth-child(4) { background: #3498db; }
+  h1 { font-size: 30px; margin: 0; }
+  .ver { color: #9aa0a6; font-size: 14px; }
+  .langswitch { margin-left: auto; display: flex; gap: 8px; }
+  .langswitch button {
+    background: #26262c; color: #e8e8ea; border: 1px solid #3a3a42;
+    border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit;
+  }
+  .langswitch button.active { border-color: #2ecc71; color: #7ee2a8; }
+  .badge {
+    display: inline-block; background: #26262c; border: 1px solid #3a3a42;
+    border-radius: 999px; padding: 2px 12px; font-size: 13px; color: #f1c40f;
+    margin-top: 10px;
+  }
+  .cta { margin: 26px 0 8px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 10px 22px; border-radius: 10px;
+    text-decoration: none; font-weight: 600;
+  }
+  .btn.primary { background: #2eaf60; color: #fff; }
+  .btn.primary:hover { background: #37cc72; }
+  .btn.ghost { background: #26262c; color: #e8e8ea; border: 1px solid #3a3a42; }
+  .btn.ghost:hover { border-color: #5a5a66; }
+  h2 { font-size: 20px; margin-top: 40px; border-bottom: 1px solid #2b2b32; padding-bottom: 6px; }
+  ul { padding-left: 22px; }
+  li { margin: 5px 0; }
+  code, pre {
+    background: #202026; border: 1px solid #2b2b32; border-radius: 8px;
+  }
+  code { padding: 1px 6px; font-size: 14px; }
+  pre { padding: 12px 14px; overflow-x: auto; font-size: 14px; }
+  .wallet { margin: 6px 0 14px; }
+  .wallet b { color: #9aa0a6; font-weight: 600; }
+  a { color: #6cb2f7; }
+  footer { margin-top: 56px; color: #9aa0a6; font-size: 13px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><i></i><i></i><i></i><i></i></div>
+    <h1>Tilettes</h1>
+    <span class="ver">v0.5</span>
+    <div class="langswitch">
+      <button id="btn-en" class="active" onclick="setLang('en')">EN</button>
+      <button id="btn-ru" onclick="setLang('ru')">RU</button>
+    </div>
+  </header>
+  <span class="badge">beta</span>
+
+  <!-- ===================== ENGLISH ===================== -->
+  <div id="en">
+    <p>A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. One portable EXE, no installer, .NET Framework 4.8 (WinForms).</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/AlexNoVibe/Tilettes/releases/latest">Download</a>
+      <a class="btn ghost" href="https://github.com/AlexNoVibe/Tilettes">GitHub · README</a>
+      <a class="btn ghost" href="https://github.com/AlexNoVibe/Tilettes/issues">Issues</a>
+    </div>
+    <h2>Highlights</h2>
+    <ul>
+      <li>Just drag a shortcut or a file onto the panel — it becomes a tile.</li>
+      <li>Fuzzy search across names, metadata, paths and descriptions (fixes the wrong keyboard layout: <code>руддщ</code> → <code>hello</code>).</li>
+      <li>Folders, tabs, custom grid, icon scaling, dark/light themes and skins.</li>
+      <li>Mini explorer with bookmarks and a working <code>cmd.exe</code> console.</li>
+      <li>First-start welcome window and an update check against GitHub Releases.</li>
+    </ul>
+    <h2>Donate</h2>
+    <p>If Tilettes is useful, you can support the development with crypto (the full list lives in the <a href="https://github.com/AlexNoVibe/Tilettes#donate">README</a>):</p>
+    <div class="wallet"><b>EVM</b> — Ethereum · Polygon · Base · Monad · HyperEVM<br><code>0xf84897FA0b74083c16865315A5b148f4d92e6C2a</code></div>
+    <div class="wallet"><b>BTC</b><br><code>bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5</code></div>
+    <div class="wallet"><b>SOL</b><br><code>7ffCFnJBNVaF268FsZGKBPEWe3UNrWbasgt3aidiCw68</code></div>
+    <div class="wallet"><b>SUI</b><br><code>0x3ca194b355bb00a1f5f646786407ebbcdaee361c6f56fb92f8df9abd73b0c3b1</code></div>
+  </div>
+
+  <!-- ===================== РУССКИЙ ===================== -->
+  <div id="ru" class="hidden">
+    <p>Панель быстрого запуска для Windows: сетка плиток с ярлыками, папками и вкладками, встроенный fuzzy-поиск и мини-проводник с консолью. Один портативный EXE, без установки, .NET Framework 4.8 (WinForms).</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/AlexNoVibe/Tilettes/releases/latest">Скачать</a>
+      <a class="btn ghost" href="https://github.com/AlexNoVibe/Tilettes/blob/master/README.ru.md">GitHub · README (RU)</a>
+      <a class="btn ghost" href="https://github.com/AlexNoVibe/Tilettes/issues">Issues</a>
+    </div>
+    <h2>Коротко</h2>
+    <ul>
+      <li>Просто перетащите ярлык или файл на панель — появится плитка.</li>
+      <li>Fuzzy-поиск по именам, метаданным, путям и описаниям (чинит неверную раскладку: <code>руддщ</code> → <code>hello</code>).</li>
+      <li>Папки, вкладки, своя сетка, масштаб иконок, тёмная/светлая темы и шкурки.</li>
+      <li>Мини-проводник с закладками и рабочей консолью <code>cmd.exe</code>.</li>
+      <li>Приветственное окно при первом старте и проверка обновлений через GitHub Releases.</li>
+    </ul>
+    <h2>Поддержать автора</h2>
+    <p>Если Плиточки оказались полезными — можно поддержать разработку криптой (полный список — в <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/README.ru.md#donate">README</a>):</p>
+    <div class="wallet"><b>EVM</b> — Ethereum · Polygon · Base · Monad · HyperEVM<br><code>0xf84897FA0b74083c16865315A5b148f4d92e6C2a</code></div>
+    <div class="wallet"><b>BTC</b><br><code>bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5</code></div>
+    <div class="wallet"><b>SOL</b><br><code>7ffCFnJBNVaF268FsZGKBPEWe3UNrWbasgt3aidiCw68</code></div>
+    <div class="wallet"><b>SUI</b><br><code>0x3ca194b355bb00a1f5f646786407ebbcdaee361c6f56fb92f8df9abd73b0c3b1</code></div>
+  </div>
+
+  <footer>Tilettes · MIT License · <a href="https://github.com/AlexNoVibe/Tilettes">github.com/AlexNoVibe/Tilettes</a></footer>
+</div>
+<script>
+  function setLang(l) {
+    document.getElementById('en').classList.toggle('hidden', l !== 'en');
+    document.getElementById('ru').classList.toggle('hidden', l !== 'ru');
+    document.getElementById('btn-en').classList.toggle('active', l === 'en');
+    document.getElementById('btn-ru').classList.toggle('active', l === 'ru');
+  }
+</script>
+</body>
+</html>
