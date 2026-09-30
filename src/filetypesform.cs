@@ -319,7 +319,7 @@ namespace WinPanel
             using (var ofd = new OpenFileDialog())
             {
                 ofd.Title = "Import file type rules";
-                ofd.Filter = "WinPanel rules (*.xml)|*.xml|All files (*.*)|*.*";
+                ofd.Filter = Loc.S("Tilettes rules (*.xml)|*.xml|All files (*.*)|*.*", "Правила Tilettes (*.xml)|*.xml|Все файлы (*.*)|*.*");
                 if (ofd.ShowDialog(this) != DialogResult.OK) return;
                 var imported = FileTypes.ImportFrom(ofd.FileName);
                 if (imported == null)
@@ -337,7 +337,7 @@ namespace WinPanel
             using (var sfd = new SaveFileDialog())
             {
                 sfd.Title = "Export file type rules";
-                sfd.Filter = "WinPanel rules (*.xml)|*.xml|All files (*.*)|*.*";
+                sfd.Filter = Loc.S("Tilettes rules (*.xml)|*.xml|All files (*.*)|*.*", "Правила Tilettes (*.xml)|*.xml|Все файлы (*.*)|*.*");
                 sfd.FileName = "winpanel-filetypes.xml";
                 if (sfd.ShowDialog(this) != DialogResult.OK) return;
                 FileTypes.ExportTo(sfd.FileName, work);

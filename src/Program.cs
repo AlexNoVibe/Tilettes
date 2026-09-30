@@ -171,7 +171,7 @@ namespace WinPanel
 
             ApplyThemeColors();
 
-            this.Text = "WinPanel";
+            this.Text = Loc.S("Tilettes", "Плиточки");
             this.Width = settings.StartupWidth;
             this.Height = settings.StartupHeight;
             this.StartPosition = FormStartPosition.Manual;
@@ -290,7 +290,7 @@ namespace WinPanel
             };
 
             trayIcon = new NotifyIcon();
-            trayIcon.Text = "WinPanel";
+            trayIcon.Text = Loc.S("Tilettes", "Плиточки");
             appIcon = CreateAppIcon();
             if (appIcon != null) trayIcon.Icon = appIcon;
             trayIcon.DoubleClick += (s, e) => RestoreWindow();
@@ -694,7 +694,7 @@ namespace WinPanel
                         int n;
                         string err = BackupManager.RestoreZip(sf.RestoreZipPath, out n);
                         if (err != null)
-                            MessageBox.Show(this, Loc.S("Restore failed: ", "Восстановление не удалось: ") + err, "WinPanel");
+                            MessageBox.Show(this, Loc.S("Restore failed: ", "Восстановление не удалось: ") + err, Loc.S("Tilettes", "Плиточки"));
                         else
                         {
                             restored = true;
@@ -840,7 +840,7 @@ namespace WinPanel
             try
             {
                 if (trayIcon == null) return;
-                trayIcon.ShowBalloonTip(3000, "WinPanel", text ?? "", ToolTipIcon.Info);
+                trayIcon.ShowBalloonTip(3000, Loc.S("Tilettes", "Плиточки"), text ?? "", ToolTipIcon.Info);
             }
             catch { }
         }
@@ -1483,7 +1483,7 @@ namespace WinPanel
             if (!ParseHotkey(settings != null ? settings.HotkeyShow : null, out mods, out vk)) { ApplyWinKeyHotkey(); return; }
             hotkeyRegistered = RegisterHotKey(this.Handle, HotkeyId, mods | 0x4000 /* MOD_NOREPEAT */, vk);
             if (!hotkeyRegistered && trayIcon != null)
-                trayIcon.ShowBalloonTip(2500, "WinPanel", "Hotkey " + settings.HotkeyShow + " is already in use by another program.", ToolTipIcon.Warning);
+                trayIcon.ShowBalloonTip(2500, Loc.S("Tilettes", "Плиточки"), "Hotkey " + settings.HotkeyShow + " is already in use by another program.", ToolTipIcon.Warning);
             ApplyWinKeyHotkey();
         }
 
@@ -4776,7 +4776,7 @@ namespace WinPanel
                 // Startup crash: log it and let the user see what happened instead of
                 // a silent process exit.
                 AppLog.Write("Fatal startup exception", ex);
-                try { MessageBox.Show("WinPanel: " + ex.Message + "\n\n" + Loc.S("Details in log.txt", "Подробности в log.txt"), "WinPanel", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                try { MessageBox.Show(Loc.S("Tilettes", "Плиточки") + ": " + ex.Message + "\n\n" + Loc.S("Details in log.txt", "Подробности в log.txt"), Loc.S("Tilettes", "Плиточки"), MessageBoxButtons.OK, MessageBoxIcon.Error); }
                 catch { }
             }
         }

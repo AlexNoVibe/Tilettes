@@ -271,7 +271,7 @@ namespace WinPanel
                 ForeColor = textColor
             };
             btnClearHistory.FlatAppearance.BorderSize = 0;
-            btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), "WinPanel"); };
+            btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), Loc.S("Tilettes", "Плиточки")); };
             scrollPanel.Controls.Add(chkSaveHistory);
             scrollPanel.Controls.Add(btnClearHistory);
             y += 26;
@@ -391,8 +391,8 @@ namespace WinPanel
             btnRestore.FlatAppearance.BorderSize = 0;
             btnRestore.Click += BtnRestore_Click;
             var restoreTip = new ToolTip();
-            restoreTip.SetToolTip(btnRestore, Loc.S("Expects a .zip created by \"Backup now\" / scheduled backup; files are unpacked into the working folder, WinPanel.exe is not replaced",
-                "Ожидается .zip, созданный «Бэкапом сейчас» или по расписанию; файлы распаковываются в рабочую папку, WinPanel.exe не заменяется"));
+            restoreTip.SetToolTip(btnRestore, Loc.S("Expects a .zip created by \"Backup now\" / scheduled backup; files are unpacked into the working folder, Tilettes.exe is not replaced",
+                "Ожидается .zip, созданный «Бэкапом сейчас» или по расписанию; файлы распаковываются в рабочую папку, Tilettes.exe не заменяется"));
 
             y += 44;
 
@@ -695,8 +695,8 @@ namespace WinPanel
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = Loc.S("WinPanel backup archives (*.zip)|*.zip|All files (*.*)|*.*",
-                                   "Архивы бэкапа WinPanel (*.zip)|*.zip|Все файлы (*.*)|*.*");
+                ofd.Filter = Loc.S("Tilettes backup archives (*.zip)|*.zip|All files (*.*)|*.*",
+                                   "Архивы бэкапа Tilettes (*.zip)|*.zip|Все файлы (*.*)|*.*");
                 ofd.Title = Loc.S("Restore from a backup archive", "Восстановление из архива бэкапа");
                 try
                 {
@@ -709,7 +709,7 @@ namespace WinPanel
                     string reject = BackupManager.ValidateBackupZip(ofd.FileName);
                     if (reject != null)
                     {
-                        MessageBox.Show(this, reject, "WinPanel");
+                        MessageBox.Show(this, reject, Loc.S("Tilettes", "Плиточки"));
                         return;
                     }
                     RestoreZipPath = ofd.FileName;

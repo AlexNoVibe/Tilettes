@@ -1,4 +1,4 @@
-# WinPanel
+# Tilettes / Плиточки
 
 **EN** — A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 
@@ -13,7 +13,7 @@
 
 ## Overview
 
-WinPanel replaces the desktop-shortcut mess with one borderless panel: tiles launch programs, folders hold groups, tabs organize everything. Every item can carry a description that is searchable and shown as a hover tooltip. The integrated mini explorer adds file browsing, bookmarks and a working console to the same launcher.
+Tilettes replaces the desktop-shortcut mess with one borderless panel: tiles launch programs, folders hold groups, tabs organize everything. Every item can carry a description that is searchable and shown as a hover tooltip. The integrated mini explorer adds file browsing, bookmarks and a working console to the same launcher.
 
 Current version: **v0.3** (see the repository history for the changelog).
 
@@ -93,7 +93,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 
 | Setting | Range | Default | Description |
 |---|---|---|---|
-| Autostart with Windows | on/off | off | Writes `HKCU\...\Run` ("WinPanel"). |
+| Autostart with Windows | on/off | off | Writes `HKCU\...\Run` ("Tilettes"). |
 | After autostart - go to tray | on/off | off | Adds `--minimized`: the panel starts hidden in the tray. |
 | Minimize instead of close | on/off | on | ✕ / Alt+F4 hides to tray (or minimizes) instead of exiting. Exit is in the tray menu. |
 | Always keep tray icon | on/off | on | Tray icon visible at all times. |
@@ -177,7 +177,7 @@ build.bat
 or directly:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:WinPanel.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
 ```
 
 ## Data files (created next to the EXE)
@@ -211,7 +211,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 
 ## Обзор
 
-WinPanel заменяет захламлённый рабочий стол одной безрамочной панелью: плитки запускают программы, папки группируют, вкладки наводят порядок. У каждого элемента есть описание — оно ищется поиском и всплывает подсказкой при наведении. Встроенный мини-проводник добавляет к лаунчеру просмотр файлов, закладки и рабочую консоль.
+Плиточки (Tilettes) заменяют захламлённый рабочий стол одной безрамочной панелью: плитки запускают программы, папки группируют, вкладки наводят порядок. У каждого элемента есть описание — оно ищется поиском и всплывает подсказкой при наведении. Встроенный мини-проводник добавляет к лаунчеру просмотр файлов, закладки и рабочую консоль.
 
 Текущая версия: **v0.3** (история изменений — в коммитах репозитория).
 
@@ -291,7 +291,7 @@ WinPanel заменяет захламлённый рабочий стол од�
 
 | Настройка | Диапазон | По умолчанию | Описание |
 |---|---|---|---|
-| Автозапуск с Windows | вкл/выкл | выкл | Запись в `HKCU\...\Run` («WinPanel»). |
+| Автозапуск с Windows | вкл/выкл | выкл | Запись в `HKCU\...\Run` («Tilettes»). |
 | После автозапуска — сразу в трей | вкл/выкл | выкл | Добавляет `--minimized`: панель стартует скрытой в трее. |
 | Сворачивать в трей вместо закрытия | вкл/выкл | вкл | ✕ / Alt+F4 скрывает в трей (или минимизирует), а не завершает. Выход — в меню трея. |
 | Держать значок в трее | вкл/выкл | вкл | Значок в трее виден всегда. |
@@ -375,7 +375,7 @@ build.bat
 или напрямую:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:WinPanel.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
 ```
 
 ## Файлы данных (создаются рядом с EXE)

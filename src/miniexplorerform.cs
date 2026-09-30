@@ -1916,7 +1916,7 @@ namespace WinPanel
                 shell.Exited += (s, e) => Ui(delegate { AppendConsole(Loc.S("[console process exited - press Restart]", "[процесс консоли завершён — нажмите «Перезапуск»]"), dimColor); });
 
                 if (Directory.Exists(currentPath)) SendCmd("cd /d \"" + currentPath + "\"");
-                AppendConsole("WinPanel console · " + currentPath, dimColor);
+                AppendConsole(Loc.S("Tilettes console · ", "Консоль Плиточек · ") + currentPath, dimColor);
                 AppendConsole(PromptText(), accentColor);
             }
             catch (Exception ex)

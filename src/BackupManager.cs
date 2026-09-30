@@ -69,7 +69,7 @@ namespace WinPanel
                 TryAdd(files, "bookmarks.xml", Path.Combine(baseDir, "bookmarks.xml"));
                 TryAdd(files, "filetypes.xml", Path.Combine(baseDir, "filetypes.xml"));
                 TryAdd(files, "searchHistory.xml", Path.Combine(baseDir, "searchHistory.xml"));
-                TryAdd(files, "WinPanel.exe", Path.Combine(baseDir, "WinPanel.exe"));
+                TryAdd(files, "Tilettes.exe", Path.Combine(baseDir, "Tilettes.exe"));
                 // Custom icons and panel-local shortcut copies: without them a
                 // restored records.xml would point at missing icon files.
                 TryAddFolder(files, "ico", Path.Combine(baseDir, "ico"));
@@ -193,8 +193,8 @@ namespace WinPanel
                     if (n.Equals("records.xml", StringComparison.OrdinalIgnoreCase)) hasRecords = true;
                 }
                 if (!hasSettings && !hasRecords)
-                    return Loc.S("This archive has no settings.ini / records.xml - it is not a WinPanel backup.",
-                                 "В архиве нет settings.ini / records.xml — это не бэкап WinPanel.");
+                    return Loc.S("This archive has no settings.ini / records.xml - it is not a Tilettes backup.",
+                                 "В архиве нет settings.ini / records.xml — это не бэкап Tilettes.");
                 return null;
             }
             catch (Exception ex)
@@ -206,7 +206,7 @@ namespace WinPanel
 
         // Restores a backup zip created by RunBackup into the working directory
         // (the exe folder): settings, records, bookmarks, file types, search
-        // history and the whole ico folder. WinPanel.exe is never replaced —
+        // history and the whole ico folder. The exe is never replaced —
         // a running instance cannot overwrite itself anyway, and an old exe
         // inside the archive must not clobber the installed one.
         // Returns null on success, otherwise a user-readable error.
@@ -226,7 +226,9 @@ namespace WinPanel
                     {
                         string name = e.Name.Replace('\\', '/');
                         if (name.EndsWith("/") || name.Length == 0) continue;              // folder entry
-                        if (name.Equals("WinPanel.exe", StringComparison.OrdinalIgnoreCase)) continue; // never replace the exe
+                        // Old archives carry WinPanel.exe, current ones Tilettes.exe: never replace the exe.
+                        if (name.Equals("Tilettes.exe", StringComparison.OrdinalIgnoreCase) ||
+                            name.Equals("WinPanel.exe", StringComparison.OrdinalIgnoreCase)) continue;
                         if (name.IndexOf("..") >= 0 || Path.IsPathRooted(name)) continue;  // stay inside the working dir
                         string dest = Path.Combine(baseDir, name.Replace('/', Path.DirectorySeparatorChar));
                         ZipReader.Extract(zipPath, e, dest);

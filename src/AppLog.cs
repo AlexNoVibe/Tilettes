@@ -63,7 +63,7 @@ namespace WinPanel
                 Application.ThreadException += delegate(object s, System.Threading.ThreadExceptionEventArgs e)
                 {
                     Write("UI exception", e.Exception);
-                    try { MessageBox.Show(Loc.S("An error occurred but WinPanel keeps running.", "Произошла ошибка, но WinPanel продолжает работать.") + "\n\n" + e.Exception.Message, "WinPanel", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+                    try { MessageBox.Show(Loc.S("An error occurred but Tilettes keeps running.", "Произошла ошибка, но Плиточки продолжают работать.") + "\n\n" + e.Exception.Message, Loc.S("Tilettes", "Плиточки"), MessageBoxButtons.OK, MessageBoxIcon.Warning); }
                     catch { }
                 };
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
