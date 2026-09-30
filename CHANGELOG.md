@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.6beta — 2026-10-01
+## v0.6.0-beta — 2026-10-01
 
 Performance and hardening release. / Релиз производительности и защиты.
 Release assets are now plain exe files per CPU: `Tilettes.exe` (universal),
@@ -14,4 +14,4 @@ Release assets are now plain exe files per CPU: `Tilettes.exe` (universal),
 - **hardening:** strong name, VERSIONINFO, explicit manifest, Win-key capture is opt-in — 0 detections on VirusTotal / подпись, версия, манифест, Win-клавиша — по включению
 - **build:** GitHub Actions attaches exe builds (AnyCPU/x86/x64) instead of a zip
 
-**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v0.5...v0.6beta
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v0.5...v0.6.0-beta
