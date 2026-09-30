@@ -1,9 +1,9 @@
 name: build
 
-# A v* tag push = release. The workflow verifies that the tagged sources
-# compile (same csc call as build.bat), packs a portable zip (Tilettes.exe +
-# README.md + LICENSE) and attaches it to the release; GitHub's automatic
-# Source code archives are on the release as well.
+# A v* tag push = release. The workflow builds the tagged sources with the
+# same csc call as build.bat and attaches plain exe files to the release
+# (no zip archive): the universal AnyCPU build plus x86 and x64 variants.
+# GitHub's automatic Source code archives are on the release as well.
 # The release is created with the preinstalled gh CLI (no third-party action:
 # action resolution kept failing on the runner).
 on:
@@ -23,22 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify build (csc.exe, same as build.bat)
+      # Three failing csc runs in a row also serve as the build verification:
+      # any of them failing fails the whole workflow.
+      - name: Build exes (AnyCPU universal + x86 + x64, same as build.bat)
         shell: cmd
-        run: build.bat
-
-      - name: Pack portable zip (exe + README + LICENSE)
-        shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item Tilettes.exe dist/
-          Copy-Item README.md dist/
-          Copy-Item LICENSE dist/
-          $zip = "Tilettes-$($env:GITHUB_REF_NAME).zip"
-          Compress-Archive -Path dist/* -DestinationPath $zip -Force
-          Remove-Item -Recurse -Force dist
+          build.bat
+          build.bat x86
+          build.bat x64
 
-      - name: Create release and attach zip (tag builds only)
+      - name: Create release and attach exes (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
@@ -48,7 +42,7 @@ jobs:
             # edit: the older gh on the runner has no --generate-notes here;
             # the notes were already generated when the release was created.
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME"
-            gh release upload "$GITHUB_REF_NAME" "Tilettes-$GITHUB_REF_NAME.zip" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "Tilettes-$GITHUB_REF_NAME.zip" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --generate-notes
           fi
