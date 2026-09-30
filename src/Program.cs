@@ -39,6 +39,8 @@ namespace WinPanel
         private Panel panelSearchSettingsRow;
         private readonly Dictionary<Button, Action<int>> searchToggleRestylers = new Dictionary<Button, Action<int>>();
         private readonly Dictionary<Button, Func<int, string>> searchToggleLabels = new Dictionary<Button, Func<int, string>>();
+        private readonly Dictionary<Button, int> searchToggleVariants = new Dictionary<Button, int>();
+        private readonly Dictionary<Button, int> searchToggleDelay = new Dictionary<Button, int>();
         // Snapshot of the "Search" settings used by the background worker thread
         // (plain fields: the worker cannot touch the settings object safely).
         private static int fuzzyLevel = 2;
@@ -1072,10 +1074,12 @@ namespace WinPanel
         // `flip` switches it; both go through Settings so the state survives
         // restarts. `label` is re-evaluated on restyle (the fuzzy button shows the
         // current level).
-        // `label(tier)` gives the caption per shrink tier: 0 = full, 1 = short,
-        // 2 = one/two letters. The whole strip degrades uniformly when the window
-        // is too narrow for the full captions.
-        private void AddSearchToggle(Font font, int height, Func<int, string> label, Func<bool> get, Action flip, string tooltip)
+        // `label(variant)` gives the caption per shrink step. `variants` is the
+        // ladder length, `delay` orders the degradation: a toggle with a larger
+        // delay keeps its full caption while others (smaller delay) shrink first.
+        // Measurements use TextFormatFlags.NoPadding - the default padding double
+        // counted here and shrank the strip even when the window had enough room.
+        private void AddSearchToggle(Font font, int height, Func<int, string> label, int variants, int delay, Func<bool> get, Action flip, string tooltip)
         {
             var b = new Button
             {
@@ -1090,9 +1094,7 @@ namespace WinPanel
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = hoverColor;
             b.Text = label(0);
-            // `height` already follows the search box font (sBox.PreferredHeight);
-            // a fixed 23px here clipped the labels at bigger UI fonts.
-            b.Width = TextRenderer.MeasureText(b.Text, b.Font).Width + 14;
+            b.Width = TextRenderer.MeasureText(b.Text, b.Font, new Size(int.MaxValue, int.MaxValue), System.Windows.Forms.TextFormatFlags.NoPadding).Width + 14;
             if (!string.IsNullOrEmpty(tooltip)) itemTip.SetToolTip(b, tooltip);
             b.Click += delegate
             {
@@ -1103,15 +1105,18 @@ namespace WinPanel
             };
             panelSearchSettingsRow.Controls.Add(b);
             searchToggleLabels[b] = label;
-            searchToggleRestylers[b] = delegate(int tier)
+            searchToggleVariants[b] = variants;
+            searchToggleDelay[b] = delay;
+            searchToggleRestylers[b] = delegate(int deg)
             {
-                string text = label(tier);
+                int vi = Math.Max(0, Math.Min(searchToggleVariants[b] - 1, deg - searchToggleDelay[b]));
+                string text = label(vi);
                 bool active;
                 try { active = get(); } catch { active = false; }
                 if (b.Text != text)
                 {
                     b.Text = text;
-                    b.Width = TextRenderer.MeasureText(text, b.Font).Width + 14;
+                    b.Width = TextRenderer.MeasureText(text, b.Font, new Size(int.MaxValue, int.MaxValue), System.Windows.Forms.TextFormatFlags.NoPadding).Width + 14;
                 }
                 b.BackColor = active ? panelColor : bgColor;
                 b.ForeColor = active ? textColor
@@ -1119,28 +1124,35 @@ namespace WinPanel
             };
         }
 
-        // Picks the caption tier that fits between the search box and the window edge.
-        private int SearchToggleTier()
+        // Picks the degradation level that fits between the search box and the
+        // window edge: level 0 = everything full, higher levels shrink toggles
+        // in the order of their `delay` (metadata first, Start last).
+        private int SearchToggleDeg()
         {
             var row = panelSearchSettingsRow != null ? panelSearchSettingsRow.Parent as Panel : null;
             if (row == null || panelSearchBox == null) return 0;
-            int avail = row.ClientSize.Width - (panelSearchBox.Right + 14);
-            if (avail <= 0) return 2;
-            for (int tier = 0; tier < 2; tier++)
+            int avail = row.ClientSize.Width - (panelSearchBox.Right + 10);
+            int maxDeg = 0;
+            foreach (var kv in searchToggleDelay)
+                maxDeg = Math.Max(maxDeg, kv.Value + searchToggleVariants[kv.Key] - 1);
+            for (int d = 0; d <= maxDeg; d++)
             {
                 int total = 0;
                 foreach (var kv in searchToggleLabels)
-                    total += TextRenderer.MeasureText(kv.Value(tier), kv.Key.Font).Width + 16;
-                if (total <= avail) return tier;
+                {
+                    int vi = Math.Max(0, Math.Min(searchToggleVariants[kv.Key] - 1, d - searchToggleDelay[kv.Key]));
+                    total += TextRenderer.MeasureText(kv.Value(vi), kv.Key.Font, new Size(int.MaxValue, int.MaxValue), System.Windows.Forms.TextFormatFlags.NoPadding).Width + 18;
+                }
+                if (total <= avail) return d;
             }
-            return 2;
+            return maxDeg;
         }
 
         private void StyleSearchToggles()
         {
             if (panelSearchSettingsRow == null) return;
-            int tier = SearchToggleTier();
-            foreach (var kv in searchToggleRestylers) kv.Value(tier);
+            int deg = SearchToggleDeg();
+            foreach (var kv in searchToggleRestylers) kv.Value(deg);
         }
 
         // Re-runs the search right away so a toggle click updates the results.
@@ -1171,50 +1183,52 @@ namespace WinPanel
             };
             searchToggleRestylers.Clear();
 
-            Func<int, string> fuzzyLabel = delegate(int tier)
+            // Degradation ladders: metadata shrinks first, then descriptions,
+            // then paths (folder icon), Start last (Windows-like glyph).
+            Func<int, string> fuzzyLabel = delegate(int v)
             {
                 int lvl = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 return lvl == 0 ? Loc.S("Exact", "Точно") : "~ " + lvl;
             };
-            Func<int, string> startLabel = delegate(int tier)
+            Func<int, string> startLabel = delegate(int v)
             {
-                return tier == 0 ? Loc.S("Start", "Пуск") : (tier == 1 ? Loc.S("St", "Пу") : Loc.S("S", "П"));
+                return v == 0 ? Loc.S("Start", "Пуск") : "\u229E";
             };
-            Func<int, string> pathsLabel = delegate(int tier)
+            Func<int, string> pathsLabel = delegate(int v)
             {
-                return tier == 0 ? Loc.S("Paths", "Пути") : (tier == 1 ? Loc.S("Pa", "Пу") : Loc.S("P", "П"));
+                return v == 0 ? Loc.S("Paths", "Пути") : "C:\\";
             };
-            Func<int, string> descLabel = delegate(int tier)
+            Func<int, string> descLabel = delegate(int v)
             {
-                return tier == 0 ? Loc.S("Descriptions", "Описания") : (tier == 1 ? Loc.S("Desc", "Опи") : Loc.S("D", "О"));
+                return v == 0 ? Loc.S("Descriptions", "Описания") : (v == 1 ? Loc.S("Desc", "Опи") : Loc.S("D", "О"));
             };
-            Func<int, string> metaLabel = delegate(int tier)
+            Func<int, string> metaLabel = delegate(int v)
             {
-                return tier == 0 ? Loc.S("Metadata", "Метаданные") : (tier == 1 ? Loc.S("Meta", "Мета") : Loc.S("M", "М"));
+                return v == 0 ? Loc.S("Metadata", "Метаданные") : (v == 1 ? Loc.S("Meta", "Мета") : Loc.S("M", "М"));
             };
             // PreferredHeight is font-based (no handle needed): the toggles match the
             // search box even when a bigger search font grew it.
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, fuzzyLabel,
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, fuzzyLabel, 1, 0,
                 delegate { return settings.SearchFuzzyLevel > 0; },
                 delegate { settings.SearchFuzzyLevel = (Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)) + 1) % 4; },
                 Loc.S("Match precision: exact or fuzzy (0-3)", "Точность совпадения: точное или нечёткое (0-3)"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, startLabel,
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, startLabel, 2, 5,
                 delegate { return settings.SearchInStart; },
                 delegate { settings.SearchInStart = !settings.SearchInStart; },
                 Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, pathsLabel,
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, pathsLabel, 2, 4,
                 delegate { return settings.SearchInPaths; },
                 delegate { settings.SearchInPaths = !settings.SearchInPaths; },
                 Loc.S("Search in full paths", "Искать в полных путях"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, descLabel,
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, descLabel, 3, 2,
                 delegate { return settings.SearchInDesc; },
                 delegate { settings.SearchInDesc = !settings.SearchInDesc; },
                 Loc.S("Search in item descriptions", "Искать в описаниях элементов"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, metaLabel,
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, metaLabel, 3, 0,
                 delegate { return settings.SearchInMeta; },
                 delegate { settings.SearchInMeta = !settings.SearchInMeta; },
                 Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
