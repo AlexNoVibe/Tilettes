@@ -60,6 +60,6 @@ Altri modi per aiutare: segnalare bug e idee in [Issues](https://github.com/Alex
 build.bat
 ```
 
-Basta un qualsiasi Windows con .NET Framework 4.x — il compilatore è incluso nel sistema. Le versioni vengono create automaticamente da GitHub Actions a ogni tag `v*` e contengono solo l'archivio dei sorgenti (il workflow verifica anche la compilazione); compila l'exe con `build.bat`.
+Basta un qualsiasi Windows con .NET Framework 4.x — il compilatore è incluso nel sistema. Le versioni vengono create automaticamente da GitHub Actions a ogni tag `v*`: il workflow verifica la compilazione e allega uno zip portatile (Tilettes.exe + README + LICENSE); gli archivi dei sorgenti automatici sono comunque presenti. Puoi anche compilare l'exe con `build.bat`.
 
 Documentazione completa: [**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

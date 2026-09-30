@@ -195,7 +195,7 @@ or directly:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
 ```
 
-Releases are created automatically by GitHub Actions on every `v*` tag and contain the source archive only (GitHub's automatic Source code zip/tar.gz); the workflow also verifies that the tagged sources compile. Build the exe yourself with `build.bat`.
+Releases are created automatically by GitHub Actions on every `v*` tag: the workflow verifies the build and attaches a portable zip (Tilettes.exe + README + LICENSE); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
 
 ## Data files (created next to the EXE)
 
@@ -272,7 +272,7 @@ Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoV
 - Program UI localized into **10 languages**: English (source), Russian, Spanish, Portuguese, German, French, Italian, Polish, Chinese (simplified) and Japanese. The language is picked in the settings or via the painted flags in the welcome window; new languages are one table file + one line (see loc.cs).
 - Real donation wallet list grouped by chain: EVM networks (ETH · Polygon · Base · Monad · HyperEVM) share one address; plus Bitcoin, Solana and Sui.
 - Version is now a single constant (`AppInfo.AppVersion`); the tray tooltip and the welcome window show it.
-- GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), README split into per-language files (`README.md` EN + 9 translations) for easy extension, GitHub Actions workflow (source-only releases on `v*` tags), docs landing page for GitHub Pages. All commit messages in the history are English.
+- GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), README split into per-language files (`README.md` EN + 9 translations) for easy extension, GitHub Actions workflow (release with a portable zip on `v*` tags), docs landing page for GitHub Pages. All commit messages in the history are English.
 
 ### v0.4 (2026-09-29)
 
