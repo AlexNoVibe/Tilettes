@@ -169,7 +169,12 @@ namespace WinPanel
             StartMenuSyncHours = 24;
             LastSyncDate = "";
             SearchSaveHistory = true;
-            HotkeyWin = true;
+            // Opt-in (was true): the WH_KEYBOARD_LL global hook is a classic
+            // heuristic trigger for security software, and a fresh sandbox run
+            // used to install it immediately. Users who want the Win key to open
+            // the panel enable it in Settings; existing settings.ini values are
+            // untouched by this default.
+            HotkeyWin = false;
             SkinName = "";
             FirstRunDone = false;
             UpdateCheckEnabled = true;
