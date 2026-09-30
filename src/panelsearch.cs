@@ -77,6 +77,14 @@ namespace WinPanel
             return e.Target == null ? "" : e.Target;
         }
 
+        // Target of a .lnk without building the full metadata entry: a cheap local
+        // .lnk parse that never touches the network and never caches. Used by the
+        // icon loading to decide whether extraction has to leave the UI thread.
+        public static string ResolveTarget(string lnkPath)
+        {
+            return ResolveShortcut(lnkPath);
+        }
+
         private static MetaEntry GetEntry(ShortcutItem it)
         {
             lock (Gate)

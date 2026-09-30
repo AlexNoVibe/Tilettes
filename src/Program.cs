@@ -1741,21 +1741,70 @@ namespace WinPanel
                 Bitmap ic;
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
-                    Image big = null;
-                    try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIconAuto(it.Path, false); }
-                    catch { }
-                    ic = null;
-                    if (big != null)
+                    if (IsSlowIconPath(it.Path))
                     {
-                        ic = new Bitmap(16, 16);
-                        using (var gg = Graphics.FromImage(ic))
+                        // Network source: never extract on the UI thread. The icon is
+                        // fetched on a worker thread, cached by path and the list
+                        // repaints when it arrives.
+                        string gkey = key, gpath = it.Path;
+                        int gen = panelSearchGen;
+                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
                         {
-                            gg.Clear(Color.Transparent);
-                            IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
-                        }
-                        big.Dispose();
+                            Bitmap small = null;
+                            try
+                            {
+                                Image big = null;
+                                try { if (!string.IsNullOrEmpty(gpath)) big = IconExtractor.GetIconAuto(gpath, false); } catch { }
+                                if (big != null)
+                                {
+                                    small = new Bitmap(16, 16);
+                                    using (var gg = Graphics.FromImage(small))
+                                    {
+                                        gg.Clear(Color.Transparent);
+                                        IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
+                                    }
+                                    big.Dispose();
+                                }
+                            }
+                            catch { }
+                            try
+                            {
+                                if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
+                                this.BeginInvoke((MethodInvoker)delegate
+                                {
+                                    try
+                                    {
+                                        if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
+                                        Bitmap old;
+                                        if (panelSearchIcons.TryGetValue(gkey, out old) && old != null) old.Dispose();
+                                        panelSearchIcons[gkey] = small;
+                                        if (gen == panelSearchGen) panelSearchList.Invalidate();
+                                    }
+                                    catch { if (small != null) try { small.Dispose(); } catch { } }
+                                });
+                            }
+                            catch { if (small != null) try { small.Dispose(); } catch { } }
+                        });
+                        ic = null;
                     }
-                    panelSearchIcons[key] = ic;
+                    else
+                    {
+                        Image big = null;
+                        try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIconAuto(it.Path, false); }
+                        catch { }
+                        ic = null;
+                        if (big != null)
+                        {
+                            ic = new Bitmap(16, 16);
+                            using (var gg = Graphics.FromImage(ic))
+                            {
+                                gg.Clear(Color.Transparent);
+                                IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
+                            }
+                            big.Dispose();
+                        }
+                        panelSearchIcons[key] = ic;
+                    }
                 }
                 int iconY = e.Bounds.Top + Math.Max(3, (panelSearchList.ItemHeight - 16) / 2);
                 if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, iconY, 16, 16));
@@ -2099,34 +2148,99 @@ namespace WinPanel
             }
         }
 
+        // ---------- network / slow icon sources ----------
+        // A path on a network share (or a .lnk pointing into one) can block the
+        // shell for the SMB timeout on an unreachable server - seconds or tens of
+        // seconds. Such icons must never be extracted on the UI thread: the tile
+        // loaders hand them to a worker thread instead (see LoadTileIcon /
+        // LoadFolderChildIcon / the search row icons / the popup / mini explorer).
+
+        // True when the icon extraction for this ITEM may touch the network.
+        internal static bool IsSlowIconSource(ShortcutItem item)
+        {
+            try
+            {
+                if (item == null) return false;
+                if (!string.IsNullOrEmpty(item.CustomIconPath) && IconExtractor.IsNetworkPath(item.CustomIconPath)) return true;
+                string p = item.Path ?? "";
+                if (p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                    return IconExtractor.IsNetworkPath(p) || IconExtractor.IsNetworkPath(PanelSearch.ResolveTarget(p));
+                return IconExtractor.IsNetworkPath(p);
+            }
+            catch { }
+            return false;
+        }
+
+        // Same check for a raw path (search result rows, mini explorer entries).
+        internal static bool IsSlowIconPath(string path)
+        {
+            try
+            {
+                if (IconExtractor.IsNetworkPath(path)) return true;
+                if (path != null && path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                    return IconExtractor.IsNetworkPath(PanelSearch.ResolveTarget(path));
+            }
+            catch { }
+            return false;
+        }
+
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
         {
             if (tile.IsDisposed) return;
-            Image img = null;
+            if (IsSlowIconSource(item))
+            {
+                // Network source: extract on a worker thread - an unreachable share
+                // may stall it for the SMB timeout, the UI keeps running and the
+                // tile keeps its placeholder until the icon arrives.
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    Image img = null;
+                    try { img = LoadIconForItem(item); } catch { }
+                    if (img == null) { try { img = SystemIcons.Application.ToBitmap(); } catch { } }
+                    try
+                    {
+                        if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
+                        tile.BeginInvoke((MethodInvoker)delegate
+                        {
+                            if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
+                            try
+                            {
+                                if (tile.IconImage != null) tile.IconImage.Dispose();
+                                tile.IconImage = img;
+                                tile.Invalidate();
+                            }
+                            catch { if (img != null) try { img.Dispose(); } catch { } }
+                        });
+                    }
+                    catch { if (img != null) try { img.Dispose(); } catch { } }
+                });
+                return;
+            }
+            Image img2 = null;
             try
             {
-                img = LoadIconForItem(item);
+                img2 = LoadIconForItem(item);
             }
             catch (Exception ex)
             {
                 AppLog.Write("LoadTileIcon: LoadIconForItem", ex);
             }
-            if (img == null)
+            if (img2 == null)
             {
-                try { img = SystemIcons.Application.ToBitmap(); }
-                catch { img = SystemIcons.Error.ToBitmap(); }
+                try { img2 = SystemIcons.Application.ToBitmap(); }
+                catch { img2 = SystemIcons.Error.ToBitmap(); }
             }
-            if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
+            if (tile.IsDisposed) { if (img2 != null) img2.Dispose(); return; }
             try
             {
                 if (tile.IconImage != null) tile.IconImage.Dispose();
-                tile.IconImage = img;
+                tile.IconImage = img2;
                 tile.Invalidate();
             }
             catch (Exception ex)
             {
                 AppLog.Write("LoadTileIcon: assign IconImage", ex);
-                if (img != null) img.Dispose();
+                if (img2 != null) img2.Dispose();
             }
         }
 
@@ -2163,6 +2277,47 @@ namespace WinPanel
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
+            if (!child.IsFolder && IsSlowIconSource(child))
+            {
+                // Network source: extract on a worker thread (see LoadTileIcon).
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    Image bimg = null;
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
+                            bimg = IconExtractor.LoadAny(child.CustomIconPath);
+                        else
+                        {
+                            string typeIcon = FileTypes.GetIconForPath(child.Path);
+                            if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
+                                bimg = IconExtractor.LoadAny(typeIcon);
+                            else
+                                bimg = IconExtractor.GetIconAuto(child.Path, true);
+                        }
+                    }
+                    catch { }
+                    if (bimg == null) { try { bimg = SystemIcons.Application.ToBitmap(); } catch { } }
+                    try
+                    {
+                        if (tile.IsDisposed) { if (bimg != null) bimg.Dispose(); return; }
+                        tile.BeginInvoke((MethodInvoker)delegate
+                        {
+                            if (tile.IsDisposed || index >= tile.ChildIcons.Count) { if (bimg != null) bimg.Dispose(); return; }
+                            try
+                            {
+                                var old = tile.ChildIcons[index];
+                                if (old != null) old.Dispose();
+                                tile.ChildIcons[index] = bimg;
+                                tile.Invalidate();
+                            }
+                            catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
+                        });
+                    }
+                    catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
+                });
+                return;
+            }
             Image img = null;
             try
             {
@@ -4348,6 +4503,24 @@ namespace WinPanel
                     EnqueuePopupIcon(delegate
                     {
                         if (t.IsDisposed || this.IsDisposed) return;
+                        if (MainForm.IsSlowIconSource(child))
+                        {
+                            // Network source: extract off the UI thread so an
+                            // unreachable share can not stall the popup.
+                            string cpath = child.Path;
+                            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                            {
+                                Image img = null;
+                                try { img = IconExtractor.GetIconAuto(cpath, true); } catch { }
+                                try
+                                {
+                                    if (this.IsDisposed || t.IsDisposed) { if (img != null) img.Dispose(); return; }
+                                    this.BeginInvoke((MethodInvoker)delegate { t.AssignIcon(img); });
+                                }
+                                catch { if (img != null) try { img.Dispose(); } catch { } }
+                            });
+                            return;
+                        }
                         try { t.AssignIcon(IconExtractor.GetIconAuto(child.Path, true)); } catch { }
                     });
                 }

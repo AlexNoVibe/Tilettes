@@ -69,6 +69,8 @@ namespace WinPanel
         private class DirEntry { public string Name; public string FullPath; public bool IsDir; public long Size; }
         private readonly List<DirEntry> entries = new List<DirEntry>();
         private readonly Dictionary<string, Bitmap> iconCache = new Dictionary<string, Bitmap>();
+        // Keys whose (network) icon extraction is in flight - no duplicate workers.
+        private readonly HashSet<string> pendingIcons = new HashSet<string>();
         private int hoverFile = -1, hoverBm = -1;
         private Font boldFont;
         private ToolTip tip;
@@ -1410,14 +1412,67 @@ namespace WinPanel
         private Bitmap GetCachedIcon(string key, string path)
         {
             if (iconCache.ContainsKey(key)) return iconCache[key];
-            Bitmap b16 = null;
+            // A network path can block the shell for the SMB timeout (unreachable
+            // share) - never extract it on the UI thread. The icon arrives in the
+            // background, lands in the cache and the list repaints.
+            if (MainForm.IsSlowIconPath(path))
+            {
+                lock (pendingIcons)
+                {
+                    if (pendingIcons.Contains(key)) return null;
+                    pendingIcons.Add(key);
+                }
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    Bitmap b16 = null;
+                    try
+                    {
+                        Image big = IconExtractor.GetIcon(path, false);
+                        if (big != null)
+                        {
+                            b16 = new Bitmap(16, 16);
+                            using (var g = Graphics.FromImage(b16))
+                            {
+                                g.Clear(Color.Transparent);
+                                IconExtractor.DrawFit(g, big, new Rectangle(0, 0, 16, 16));
+                            }
+                            big.Dispose();
+                        }
+                    }
+                    catch { }
+                    try
+                    {
+                        if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
+                        this.BeginInvoke((MethodInvoker)delegate
+                        {
+                            lock (pendingIcons) { pendingIcons.Remove(key); }
+                            if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
+                            try
+                            {
+                                Bitmap old;
+                                if (iconCache.TryGetValue(key, out old) && old != null) old.Dispose();
+                                iconCache[key] = b16;
+                                fileList.Invalidate();
+                            }
+                            catch { if (b16 != null) try { b16.Dispose(); } catch { } }
+                        });
+                    }
+                    catch
+                    {
+                        lock (pendingIcons) { pendingIcons.Remove(key); }
+                        if (b16 != null) try { b16.Dispose(); } catch { }
+                    }
+                });
+                return null;
+            }
+            Bitmap b16s = null;
             try
             {
                 Image big = IconExtractor.GetIcon(path, false);
                 if (big != null)
                 {
-                    b16 = new Bitmap(16, 16);
-                    using (var g = Graphics.FromImage(b16))
+                    b16s = new Bitmap(16, 16);
+                    using (var g = Graphics.FromImage(b16s))
                     {
                         g.Clear(Color.Transparent);
                         IconExtractor.DrawFit(g, big, new Rectangle(0, 0, 16, 16));
@@ -1426,8 +1481,8 @@ namespace WinPanel
                 }
             }
             catch { }
-            iconCache[key] = b16;
-            return b16;
+            iconCache[key] = b16s;
+            return b16s;
         }
 
         // ---------- search ----------

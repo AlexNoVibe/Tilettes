@@ -114,9 +114,26 @@ namespace WinPanel
         // Extracted icons are saved as PNG files in iconcache\ next to the exe.
         // The file name hashes the path, the size flag and the source file's mtime,
         // so changing an icon externally invalidates its entry automatically
-        // (folder and shell: paths have no mtime component).
+        // (folder, shell: and NETWORK paths have no mtime component - a stat on a
+        // share can block for the SMB timeout, so it is never done for them).
         private static readonly string IconCacheDir = BuildIconCacheDir();
         private static int diskCleanupDone;
+
+        // UNC paths and network-mapped drives. Local-only checks (no I/O), safe to
+        // call on the UI thread: callers send such paths to worker threads because
+        // any shell/stat call on them can block for the network timeout.
+        internal static bool IsNetworkPath(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+                if (path.Length >= 2 && path[1] == ':')
+                    return new DriveInfo(path.Substring(0, 3)).DriveType == DriveType.Network;
+            }
+            catch { }
+            return false;
+        }
 
         private static string BuildIconCacheDir()
         {
@@ -130,7 +147,7 @@ namespace WinPanel
             try
             {
                 string src = path.ToLowerInvariant();
-                if (!src.StartsWith("shell:", StringComparison.Ordinal) && !Directory.Exists(path))
+                if (!IsNetworkPath(path) && !src.StartsWith("shell:", StringComparison.Ordinal) && !Directory.Exists(path))
                     src += "|" + File.GetLastWriteTimeUtc(path).Ticks.ToString("x");
                 string key = (large ? "L" : "S") + "|" + src;
                 using (var md5 = System.Security.Cryptography.MD5.Create())
