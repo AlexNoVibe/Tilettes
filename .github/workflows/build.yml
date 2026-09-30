@@ -45,7 +45,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --generate-notes
+            # edit: the older gh on the runner has no --generate-notes here;
+            # the notes were already generated when the release was created.
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME"
             gh release upload "$GITHUB_REF_NAME" "Tilettes-$GITHUB_REF_NAME.zip" --repo "$GITHUB_REPOSITORY" --clobber
           else
             gh release create "$GITHUB_REF_NAME" "Tilettes-$GITHUB_REF_NAME.zip" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --generate-notes
