@@ -621,6 +621,8 @@ namespace WinPanel
         }
 
         // Program-drawn tray icon: rounded gradient square with a "W"
+        // Tray icon drawn to match app.ico: the Tilettes 2x2 tile grid
+        // (mint / amber / coral / blue rounded squares).
         private Icon CreateAppIcon()
         {
             try
@@ -630,17 +632,38 @@ namespace WinPanel
                     using (var g = Graphics.FromImage(bmp))
                     {
                         g.SmoothingMode = SmoothingMode.AntiAlias;
-                        var rect = new Rectangle(1, 1, 30, 30);
-                        using (var path = GetRoundedRectPath(rect, 8))
-                        using (var brush = new LinearGradientBrush(rect, Color.FromArgb(0, 120, 215), Color.FromArgb(130, 80, 255), 45f))
+                        g.Clear(Color.Transparent);
+                        int size = 32;
+                        float m = size * 0.10f;
+                        float gap = size * 0.09f;
+                        float tile = (size - 2 * m - gap) / 2f;
+                        float r = tile * 0.28f;
+                        Color[] colors =
                         {
-                            g.FillPath(brush, path);
-                        }
-                        using (var font = new Font("Segoe UI", 15f, FontStyle.Bold))
-                        using (var brush = new SolidBrush(Color.White))
+                            Color.FromArgb(46, 160, 110),
+                            Color.FromArgb(245, 180, 60),
+                            Color.FromArgb(235, 90, 70),
+                            Color.FromArgb(70, 140, 230)
+                        };
+                        for (int i = 0; i < 4; i++)
                         {
-                            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                            g.DrawString("W", font, brush, new RectangleF(0, -1, 32, 32), sf);
+                            int col = i % 2;
+                            int row = i / 2;
+                            float x = m + col * (tile + gap);
+                            float y = m + row * (tile + gap);
+                            using (var path = new GraphicsPath())
+                            {
+                                float d = r * 2;
+                                path.AddArc(x, y, d, d, 180, 90);
+                                path.AddArc(x + tile - d, y, d, d, 270, 90);
+                                path.AddArc(x + tile - d, y + tile - d, d, d, 0, 90);
+                                path.AddArc(x, y + tile - d, d, d, 90, 90);
+                                path.CloseFigure();
+                                using (var brush = new SolidBrush(colors[i]))
+                                {
+                                    g.FillPath(brush, path);
+                                }
+                            }
                         }
                     }
                     IntPtr hIcon = bmp.GetHicon();
