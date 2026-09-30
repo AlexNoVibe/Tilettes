@@ -848,7 +848,15 @@ namespace WinPanel
             int si = cmbSkin.SelectedIndex;
             if (si <= 0) { settings.SkinName = ""; settings.IsLightTheme = false; }
             else if (si == 1) { settings.SkinName = ""; settings.IsLightTheme = true; }
-            else settings.SkinName = Skin.All[si - 1].Id;
+            else
+            {
+                // A skin owns the palette: derive the light/dark flag from it so
+                // the settings dialog, welcome and mini explorer follow the skin
+                // instead of keeping the previous classic theme.
+                var chosen = Skin.All[si - 1];
+                settings.SkinName = chosen.Id;
+                settings.IsLightTheme = !chosen.IsDark;
+            }
 
             settings.Save(settingsPath);
             this.DialogResult = DialogResult.OK;

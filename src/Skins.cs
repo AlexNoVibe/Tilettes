@@ -19,6 +19,11 @@ namespace WinPanel
         public Color Accent;
         public Color Border;
         public int BorderWidth;
+        // Drives the classic dark/light branches scattered through the UI
+        // (settings dialog, welcome, mini explorer, search accents): while a
+        // skin is active, IsLightTheme is derived from this flag, so a light
+        // skin never leaves those surfaces in the dark palette.
+        public bool IsDark;
 
         public string DisplayName { get { return Loc.IsRu ? NameRu : NameEn; } }
 
@@ -41,7 +46,8 @@ namespace WinPanel
             Text = Color.FromArgb(33, 33, 33),
             Accent = Color.FromArgb(0, 150, 136),
             Border = Color.FromArgb(176, 182, 188),
-            BorderWidth = 2
+            BorderWidth = 2,
+            IsDark = false
         };
 
         // Night city: deep blue gradient, soft violet accent.
@@ -55,7 +61,8 @@ namespace WinPanel
             Text = Color.FromArgb(232, 234, 246),
             Accent = Color.FromArgb(124, 105, 255),
             Border = Color.FromArgb(90, 96, 140),
-            BorderWidth = 2
+            BorderWidth = 2,
+            IsDark = true
         };
 
         public static readonly Skin Mint = new Skin
@@ -68,7 +75,8 @@ namespace WinPanel
             Text = Color.FromArgb(22, 50, 40),
             Accent = Color.FromArgb(46, 160, 110),
             Border = Color.FromArgb(150, 195, 175),
-            BorderWidth = 2
+            BorderWidth = 2,
+            IsDark = false
         };
 
         public static readonly List<Skin> All = new List<Skin> { None, Android, Night, Mint };

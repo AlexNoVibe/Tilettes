@@ -128,7 +128,7 @@ namespace WinPanel
             MiniExplorerBookmarks = true;
             MiniExplorerTopBar = true;
             MiniExplorerConsole = 40;
-            ConsoleFontSizeX10 = 85;
+            ConsoleFontSizeX10 = 140;
             FolderAutoExitSeconds = 15;
             Language = "ru";
             AutoStart = false;
@@ -141,26 +141,28 @@ namespace WinPanel
             SearchInPaths = true;
             SearchInDesc = true;
             SearchInStart = true;
-            SearchBoxFontSize = 9;
-            SearchResultsFontSize = 9;
+            SearchBoxFontSize = 14;
+            SearchResultsFontSize = 14;
 
             GridTransparency = 50;
             GridColumns = 16;
             GridRows = 16;
             DefaultItemSize = 2;
-            IsLightTheme = false;
+            // Mint is the factory look; IsLightTheme follows the skin (mint is
+            // a light skin) so every dark/light branch agrees with it.
+            IsLightTheme = true;
 
             IconScale = 100;
 
-            FontItemsSize = 9;
+            FontItemsSize = 14;
             FontItemsColor = "";
             FontItemsName = "Segoe UI";
 
-            FontTabsSize = 9;
+            FontTabsSize = 14;
             FontTabsColor = "";
             FontTabsName = "Segoe UI";
 
-            FontUiSize = 9;
+            FontUiSize = 14;
             FontUiColor = "";
             FontUiName = "Segoe UI";
 
@@ -175,7 +177,7 @@ namespace WinPanel
             // the panel enable it in Settings; existing settings.ini values are
             // untouched by this default.
             HotkeyWin = false;
-            SkinName = "";
+            SkinName = "mint";
             FirstRunDone = false;
             UpdateCheckEnabled = true;
             // The first check happens UpdateCheckDays days after the very first
@@ -342,6 +344,16 @@ namespace WinPanel
                 int ucd;
                 if (int.TryParse(ini.Read("UpdateCheckDays"), out ucd)) s.UpdateCheckDays = Math.Max(1, Math.Min(365, ucd));
                 val = ini.Read("LastUpdateCheck"); if (val != null) s.LastUpdateCheck = val;
+
+                // While a decorative skin is active, the light/dark flag is not
+                // an independent choice: derive it from the skin's brightness so
+                // the surfaces that only know IsLightTheme (settings dialog,
+                // welcome, mini explorer, search accents) match the skin. This
+                // also heals configs saved before this rule existed (e.g. mint
+                // picked while the flag was still false = everything around the
+                // panel stayed dark).
+                var activeSkin = Skin.Find(s.SkinName);
+                if (Skin.IsActive(activeSkin)) s.IsLightTheme = !activeSkin.IsDark;
             }
             catch
             {
