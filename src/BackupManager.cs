@@ -70,6 +70,9 @@ namespace WinPanel
                 TryAdd(files, "filetypes.xml", Path.Combine(baseDir, "filetypes.xml"));
                 TryAdd(files, "searchHistory.xml", Path.Combine(baseDir, "searchHistory.xml"));
                 TryAdd(files, "WinPanel.exe", Path.Combine(baseDir, "WinPanel.exe"));
+                // Custom icons and panel-local shortcut copies: without them a
+                // restored records.xml would point at missing icon files.
+                TryAddFolder(files, "ico", Path.Combine(baseDir, "ico"));
 
                 string stamp = DateTime.Now.ToString("yyyy-MM-dd_HHmmss");
                 string zipPath = Path.Combine(dir, "backup_" + stamp + ".zip");
@@ -105,6 +108,27 @@ namespace WinPanel
         {
             try { if (File.Exists(sourcePath)) files.Add(new KeyValuePair<string, string>(entryName, sourcePath)); }
             catch { }
+        }
+
+        // Adds every file under dir as "<entryPrefix>/<relative path>" entries.
+        private static void TryAddFolder(List<KeyValuePair<string, string>> files, string entryPrefix, string dir)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) return;
+                string full = new DirectoryInfo(dir).FullName;
+                foreach (string f in Directory.GetFiles(full, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        string rel = f.Substring(full.Length).TrimStart('\\', '/').Replace('\\', '/');
+                        if (rel.Length == 0) continue;
+                        files.Add(new KeyValuePair<string, string>(entryPrefix + "/" + rel, f));
+                    }
+                    catch { }
+                }
+            }
+            catch (Exception ex) { AppLog.Write("Backup collect " + entryPrefix, ex); }
         }
 
         // Keeps only the newest `keep` archives.
@@ -151,6 +175,75 @@ namespace WinPanel
             }
             catch { }
             return res;
+        }
+
+        // Returns null when zipPath looks like a backup made by RunBackup
+        // (it must carry settings.ini and/or records.xml), otherwise a
+        // user-readable reason why it was rejected.
+        public static string ValidateBackupZip(string zipPath)
+        {
+            try
+            {
+                var entries = ZipReader.List(zipPath);
+                bool hasSettings = false, hasRecords = false;
+                foreach (var e in entries)
+                {
+                    string n = e.Name.Replace('\\', '/');
+                    if (n.Equals("settings.ini", StringComparison.OrdinalIgnoreCase)) hasSettings = true;
+                    if (n.Equals("records.xml", StringComparison.OrdinalIgnoreCase)) hasRecords = true;
+                }
+                if (!hasSettings && !hasRecords)
+                    return Loc.S("This archive has no settings.ini / records.xml - it is not a WinPanel backup.",
+                                 "В архиве нет settings.ini / records.xml — это не бэкап WinPanel.");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Backup validate " + zipPath, ex);
+                return Loc.S("Cannot read the archive: ", "Не удалось прочитать архив: ") + ex.Message;
+            }
+        }
+
+        // Restores a backup zip created by RunBackup into the working directory
+        // (the exe folder): settings, records, bookmarks, file types, search
+        // history and the whole ico folder. WinPanel.exe is never replaced —
+        // a running instance cannot overwrite itself anyway, and an old exe
+        // inside the archive must not clobber the installed one.
+        // Returns null on success, otherwise a user-readable error.
+        public static string RestoreZip(string zipPath, out int restoredCount)
+        {
+            restoredCount = 0;
+            try
+            {
+                string reject = ValidateBackupZip(zipPath);
+                if (reject != null) return reject;
+
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                var entries = ZipReader.List(zipPath);
+                foreach (var e in entries)
+                {
+                    try
+                    {
+                        string name = e.Name.Replace('\\', '/');
+                        if (name.EndsWith("/") || name.Length == 0) continue;              // folder entry
+                        if (name.Equals("WinPanel.exe", StringComparison.OrdinalIgnoreCase)) continue; // never replace the exe
+                        if (name.IndexOf("..") >= 0 || Path.IsPathRooted(name)) continue;  // stay inside the working dir
+                        string dest = Path.Combine(baseDir, name.Replace('/', Path.DirectorySeparatorChar));
+                        ZipReader.Extract(zipPath, e, dest);
+                        restoredCount++;
+                    }
+                    catch (Exception ex) { AppLog.Write("Restore entry " + e.Name, ex); }
+                }
+                if (restoredCount == 0)
+                    return Loc.S("Nothing was restored - see log.txt", "Ничего не восстановлено — подробности в log.txt");
+                AppLog.Write("Backup restored: " + zipPath + " (" + restoredCount + " files, exe skipped)");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Backup restore " + zipPath, ex);
+                return Loc.S("Restore failed: ", "Восстановление не удалось: ") + ex.Message;
+            }
         }
     }
 }

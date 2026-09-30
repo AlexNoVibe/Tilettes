@@ -684,8 +684,38 @@ namespace WinPanel
             {
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
+                    // A backup archive requested in the dialog is unpacked first;
+                    // the reload below then picks the restored files up from disk,
+                    // so the restore takes effect immediately (no restart, and the
+                    // in-memory state can no longer overwrite it on save).
+                    bool restored = false;
+                    if (!string.IsNullOrEmpty(sf.RestoreZipPath))
+                    {
+                        int n;
+                        string err = BackupManager.RestoreZip(sf.RestoreZipPath, out n);
+                        if (err != null)
+                            MessageBox.Show(this, Loc.S("Restore failed: ", "Восстановление не удалось: ") + err, "WinPanel");
+                        else
+                        {
+                            restored = true;
+                            AppLog.Write("Backup restore applied: " + sf.RestoreZipPath + " (" + n + " files)");
+                        }
+                    }
+
                     this.settings = Settings.Load(settingsPath);
                     CurrentSettings = this.settings;
+                    if (restored)
+                    {
+                        // The archive replaced the data files: drop everything the
+                        // app cached in memory so the restored state is live.
+                        records = Records.Load(recordsPath);
+                        tabNavigations.Clear();
+                        editState = settings.EditModeState;
+                        if (editState < 0 || editState > 2) editState = settings.EditMode ? 1 : 0;
+                        try { SearchHistoryStore.Load(); }
+                        catch (Exception ex) { AppLog.Write("Search history load", ex); }
+                        try { FileTypes.Load(FileTypes.DefaultFilePath); } catch { }
+                    }
                     this.Width = settings.StartupWidth;
                     this.Height = settings.StartupHeight;
                     this.Location = new Point(settings.WindowX, settings.WindowY);
@@ -2905,6 +2935,14 @@ namespace WinPanel
 
             e.Graphics.SetClip(panel.ClientRectangle);
 
+            // The border rectangle in virtual (scroll-aware) coordinates: interior
+            // lines span exactly between the border lines so the dashed grid ends
+            // at the frame instead of running past it to the window edges.
+            float left = BorderInset + scroll.X;
+            float right = panel.ClientSize.Width - BorderInset + scroll.X;
+            float top = BorderInset + scroll.Y;
+            float bottom = panel.ClientSize.Height - BorderInset + scroll.Y;
+
             Color gridColor = settings.IsLightTheme
                 ? Color.FromArgb(settings.GridTransparency, 0, 0, 0)
                 : Color.FromArgb(settings.GridTransparency, 255, 255, 255);
@@ -2915,18 +2953,18 @@ namespace WinPanel
                 for (int i = 0; i <= cols; i++)
                 {
                     float x = i * cellWidth + scroll.X;
-                    if (i == 0) x = BorderInset + scroll.X;
-                    else if (i == cols) x = panel.ClientSize.Width - BorderInset + scroll.X;
+                    if (i == 0) x = left;
+                    else if (i == cols) x = right;
                     if (x >= 0 && x <= panel.ClientSize.Width)
-                        e.Graphics.DrawLine(gridPen, x, scroll.Y, x, panel.ClientSize.Height);
+                        e.Graphics.DrawLine(gridPen, x, top, x, bottom);
                 }
                 for (int i = 0; i <= rows; i++)
                 {
                     float y = i * cellHeight + scroll.Y;
-                    if (i == 0) y = BorderInset + scroll.Y;
-                    else if (i == rows) y = panel.ClientSize.Height - BorderInset + scroll.Y;
+                    if (i == 0) y = top;
+                    else if (i == rows) y = bottom;
                     if (y >= 0 && y <= panel.ClientSize.Height)
-                        e.Graphics.DrawLine(gridPen, scroll.X, y, panel.ClientSize.Width, y);
+                        e.Graphics.DrawLine(gridPen, left, y, right, y);
                 }
             }
         }

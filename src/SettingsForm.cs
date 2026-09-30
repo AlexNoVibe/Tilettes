@@ -68,6 +68,14 @@ namespace WinPanel
         private Color hoverColor;
         private Color textColor;
 
+        private Panel scrollPanel;
+        private Panel bottomBar;
+        private ToolTip themeTip = new ToolTip();
+
+        // Set when the user picked a backup zip in "Restore archive"; MainForm
+        // unpacks it right after the dialog closes and reloads everything.
+        public string RestoreZipPath { get; private set; }
+
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn
         (
@@ -107,7 +115,10 @@ namespace WinPanel
 
             this.Text = "Settings";
             this.Width = 588;
-            this.Height = 1058;
+            // The content is ~1000px tall; on small monitors the window is capped
+            // at 2/3 of the screen height and everything below the fold stays
+            // reachable through the scrollbar of the content panel.
+            this.Height = Math.Min(1058, (Screen.PrimaryScreen.WorkingArea.Height * 2) / 3);
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.MaximizeBox = false;
@@ -118,6 +129,10 @@ namespace WinPanel
 
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
 
+            // All settings rows live in a scrollable panel; Save/Cancel sit on a
+            // fixed bottom bar, so they are reachable at any window height.
+            scrollPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = bgColor };
+            bottomBar = new Panel { Dock = DockStyle.Bottom, Height = 52, BackColor = panelColor };
             var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
             var titleLbl = new Label { Text = "Settings", ForeColor = textColor, AutoSize = true, Location = new Point(10, 7) };
             titleBar.Controls.Add(titleLbl);
@@ -133,6 +148,10 @@ namespace WinPanel
                     SendMessage(Handle, 0xA1, 0x2, 0);
                 }
             };
+            // Docking lays out children from the LAST one backwards: titleBar is
+            // added last so its Top strip does not consume the whole client area.
+            this.Controls.Add(scrollPanel);
+            this.Controls.Add(bottomBar);
             this.Controls.Add(titleBar);
 
             int y = 42;
@@ -205,7 +224,7 @@ namespace WinPanel
             var winKeyTip = new ToolTip();
             winKeyTip.SetToolTip(chkWinKey, Loc.S("Pressing the Win key shows the panel instead of the Start menu",
                 "Кнопка Пуск (Win) открывает панель вместо меню Пуск"));
-            this.Controls.Add(chkWinKey);
+            scrollPanel.Controls.Add(chkWinKey);
             y += 30;
 
             // Font rows: [size] [color] [family] — one row per group
@@ -253,26 +272,26 @@ namespace WinPanel
             };
             btnClearHistory.FlatAppearance.BorderSize = 0;
             btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), "WinPanel"); };
-            this.Controls.Add(chkSaveHistory);
-            this.Controls.Add(btnClearHistory);
+            scrollPanel.Controls.Add(chkSaveHistory);
+            scrollPanel.Controls.Add(btnClearHistory);
             y += 26;
             var lblSearchFonts = new Label { Text = "Search fonts:", Left = 20, Top = y, Width = 125 };
             numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             var lblSearchBoxFont = new Label { Text = Loc.S("box", "строка поиска"), Left = 205, Top = y, Width = 150 };
             numSearchResultsFont = new NumericUpDown { Left = 360, Top = y - 2, Width = 45, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             var lblSearchResultsFont = new Label { Text = Loc.S("results", "результаты"), Left = 410, Top = y, Width = 150 };
-            this.Controls.Add(lblSearchSection);
-            this.Controls.Add(lblFuzzy);
-            this.Controls.Add(numFuzzy);
-            this.Controls.Add(chkSearchMeta);
-            this.Controls.Add(chkSearchPaths);
-            this.Controls.Add(chkSearchDesc);
-            this.Controls.Add(chkSearchStart);
-            this.Controls.Add(lblSearchFonts);
-            this.Controls.Add(numSearchBoxFont);
-            this.Controls.Add(lblSearchBoxFont);
-            this.Controls.Add(numSearchResultsFont);
-            this.Controls.Add(lblSearchResultsFont);
+            scrollPanel.Controls.Add(lblSearchSection);
+            scrollPanel.Controls.Add(lblFuzzy);
+            scrollPanel.Controls.Add(numFuzzy);
+            scrollPanel.Controls.Add(chkSearchMeta);
+            scrollPanel.Controls.Add(chkSearchPaths);
+            scrollPanel.Controls.Add(chkSearchDesc);
+            scrollPanel.Controls.Add(chkSearchStart);
+            scrollPanel.Controls.Add(lblSearchFonts);
+            scrollPanel.Controls.Add(numSearchBoxFont);
+            scrollPanel.Controls.Add(lblSearchBoxFont);
+            scrollPanel.Controls.Add(numSearchResultsFont);
+            scrollPanel.Controls.Add(lblSearchResultsFont);
 
             y += 30; // the search fonts row must not overlap the file type buttons below
 
@@ -353,102 +372,121 @@ namespace WinPanel
             };
             btnRunSync.FlatAppearance.BorderSize = 0;
             btnRunSync.Click += (s, e) => { RunSyncNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
-            this.Controls.Add(lblMaint);
-            this.Controls.Add(lblSkin);
-            this.Controls.Add(cmbSkin);
-            this.Controls.Add(lblBackupDays);
-            this.Controls.Add(numBackupDays);
-            this.Controls.Add(lblSyncHours);
-            this.Controls.Add(numSyncHours);
-            this.Controls.Add(btnRunBackup);
-            this.Controls.Add(btnRunSync);
+            scrollPanel.Controls.Add(lblMaint);
+            scrollPanel.Controls.Add(lblSkin);
+            scrollPanel.Controls.Add(cmbSkin);
+            scrollPanel.Controls.Add(lblBackupDays);
+            scrollPanel.Controls.Add(numBackupDays);
+            scrollPanel.Controls.Add(lblSyncHours);
+            scrollPanel.Controls.Add(numSyncHours);
+            scrollPanel.Controls.Add(btnRunBackup);
+            scrollPanel.Controls.Add(btnRunSync);
             y += 30;
 
-            btnBackup = new Button { Text = "Save backup", Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnBackup = new Button { Text = Loc.S("Save backup", "Сохранить бэкап"), Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
 
-            btnRestore = new Button { Text = "Restore backup", Left = 165, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnRestore = new Button { Text = Loc.S("Restore archive...", "Восстановить из архива..."), Left = 165, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnRestore.FlatAppearance.BorderSize = 0;
             btnRestore.Click += BtnRestore_Click;
+            var restoreTip = new ToolTip();
+            restoreTip.SetToolTip(btnRestore, Loc.S("Expects a .zip created by \"Backup now\" / scheduled backup; files are unpacked into the working folder, WinPanel.exe is not replaced",
+                "Ожидается .zip, созданный «Бэкапом сейчас» или по расписанию; файлы распаковываются в рабочую папку, WinPanel.exe не заменяется"));
 
             y += 44;
 
-            btnSave = new Button { Text = "Save", Left = 90, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            // Save/Cancel live on the fixed bottom bar (outside the scroll), so
+            // they are visible at any window height.
+            btnSave = new Button { Text = "Save", Left = 378, Top = 11, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnSave.FlatAppearance.BorderSize = 0;
             btnSave.FlatAppearance.MouseOverBackColor = hoverColor;
             btnSave.FlatAppearance.MouseDownBackColor = panelColor;
             btnSave.Click += BtnSave_Click;
 
-            btnCancel = new Button { Text = "Cancel", Left = 200, Top = y, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnCancel = new Button { Text = "Cancel", Left = 478, Top = 11, Width = 90, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnCancel.FlatAppearance.BorderSize = 0;
             btnCancel.FlatAppearance.MouseOverBackColor = hoverColor;
             btnCancel.FlatAppearance.MouseDownBackColor = panelColor;
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
-            this.Controls.Add(lblSize);
-            this.Controls.Add(numWidth);
-            this.Controls.Add(lblMul);
-            this.Controls.Add(numHeight);
-            this.Controls.Add(lblPos);
-            this.Controls.Add(numX);
-            this.Controls.Add(lblComma);
-            this.Controls.Add(numY);
-            this.Controls.Add(lblTrans);
-            this.Controls.Add(numGridTransparency);
-            this.Controls.Add(lblCols);
-            this.Controls.Add(numGridCols);
-            this.Controls.Add(lblRows);
-            this.Controls.Add(numGridRows);
-            this.Controls.Add(lblDefSize);
-            this.Controls.Add(numDefaultItemSize);
-            this.Controls.Add(lblIconScale);
-            this.Controls.Add(numIconScale);
-            this.Controls.Add(chkMinimizeToTray);
-            this.Controls.Add(lblFolders);
-            this.Controls.Add(cmbFolders);
-            this.Controls.Add(chkLightTheme);
-            this.Controls.Add(chkEditMode);
-            this.Controls.Add(chkMiniExplorer);
-            this.Controls.Add(numFolderExit);
-            this.Controls.Add(lblExit);
-            this.Controls.Add(lblSection);
-            this.Controls.Add(chkAutoStart);
-            this.Controls.Add(chkAutoStartMin);
-            this.Controls.Add(chkTrayAlways);
-            this.Controls.Add(chkKeepTab);
-            this.Controls.Add(lblLang);
-            this.Controls.Add(cmbLang);
-            this.Controls.Add(lblHotkey);
-            this.Controls.Add(cmbHotkey);
-            this.Controls.Add(lblTypes);
-            this.Controls.Add(btnTypeIcons);
-            this.Controls.Add(btnTypeOpen);
-            this.Controls.Add(btnBackup);
-            this.Controls.Add(btnRestore);
-            this.Controls.Add(btnSave);
-            this.Controls.Add(btnCancel);
-
-            y += 42;
+            scrollPanel.Controls.Add(lblSize);
+            scrollPanel.Controls.Add(numWidth);
+            scrollPanel.Controls.Add(lblMul);
+            scrollPanel.Controls.Add(numHeight);
+            scrollPanel.Controls.Add(lblPos);
+            scrollPanel.Controls.Add(numX);
+            scrollPanel.Controls.Add(lblComma);
+            scrollPanel.Controls.Add(numY);
+            scrollPanel.Controls.Add(lblTrans);
+            scrollPanel.Controls.Add(numGridTransparency);
+            scrollPanel.Controls.Add(lblCols);
+            scrollPanel.Controls.Add(numGridCols);
+            scrollPanel.Controls.Add(lblRows);
+            scrollPanel.Controls.Add(numGridRows);
+            scrollPanel.Controls.Add(lblDefSize);
+            scrollPanel.Controls.Add(numDefaultItemSize);
+            scrollPanel.Controls.Add(lblIconScale);
+            scrollPanel.Controls.Add(numIconScale);
+            scrollPanel.Controls.Add(chkMinimizeToTray);
+            scrollPanel.Controls.Add(lblFolders);
+            scrollPanel.Controls.Add(cmbFolders);
+            scrollPanel.Controls.Add(chkLightTheme);
+            scrollPanel.Controls.Add(chkEditMode);
+            scrollPanel.Controls.Add(chkMiniExplorer);
+            scrollPanel.Controls.Add(numFolderExit);
+            scrollPanel.Controls.Add(lblExit);
+            scrollPanel.Controls.Add(lblSection);
+            scrollPanel.Controls.Add(chkAutoStart);
+            scrollPanel.Controls.Add(chkAutoStartMin);
+            scrollPanel.Controls.Add(chkTrayAlways);
+            scrollPanel.Controls.Add(chkKeepTab);
+            scrollPanel.Controls.Add(lblLang);
+            scrollPanel.Controls.Add(cmbLang);
+            scrollPanel.Controls.Add(lblHotkey);
+            scrollPanel.Controls.Add(cmbHotkey);
+            scrollPanel.Controls.Add(lblTypes);
+            scrollPanel.Controls.Add(btnTypeIcons);
+            scrollPanel.Controls.Add(btnTypeOpen);
+            scrollPanel.Controls.Add(btnBackup);
+            scrollPanel.Controls.Add(btnRestore);
+            bottomBar.Controls.Add(btnSave);
+            bottomBar.Controls.Add(btnCancel);
 
             // Bottom info: the real window position/size — shown only when it differs
             // from the values entered above (numbers only, no separate button).
-            // It sits on its own row below Save/Cancel so the buttons never cover it.
             lblLive = new Label
             {
                 Left = 20,
-                Top = y,
-                Width = 460,
+                Top = 17,
+                Width = 350,
                 Height = 20,
                 ForeColor = settings.IsLightTheme ? Color.FromArgb(90, 90, 90) : Color.FromArgb(170, 170, 170)
             };
-            this.Controls.Add(lblLive);
+            bottomBar.Controls.Add(lblLive);
             numWidth.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numHeight.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numX.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numY.ValueChanged += (s2, e2) => UpdateLiveLabel();
+            // The skin replaces the theme palette entirely: while one is active the
+            // Light Theme checkbox would do nothing visible, so it is disabled with
+            // an explanation instead of silently ignoring the setting.
+            cmbSkin.SelectedIndexChanged += (s2, e2) => UpdateThemeAvailability();
+            UpdateThemeAvailability();
+            scrollPanel.AutoScrollMargin = new Size(0, 14);
             Loc.Walk(this);
             UpdateLiveLabel();
+        }
+
+        // Light Theme is only meaningful without a decorative skin.
+        private void UpdateThemeAvailability()
+        {
+            if (chkLightTheme == null || cmbSkin == null) return;
+            bool skinOn = cmbSkin.SelectedIndex > 0; // index 0 = "Отключено"
+            chkLightTheme.Enabled = !skinOn;
+            themeTip.SetToolTip(chkLightTheme, skinOn
+                ? Loc.S("The skin defines the colors - set Skin to \"None\" to control the theme", "Шкурка задаёт цвета сама — выберите Шкурку «Отключено», чтобы управлять темой")
+                : null);
         }
 
         // Shows the actual (current) window numbers at the bottom, but only when at
@@ -516,10 +554,10 @@ namespace WinPanel
             catch { }
             combo.Text = family;
 
-            this.Controls.Add(lbl);
-            this.Controls.Add(numSize);
-            this.Controls.Add(colorBtn);
-            this.Controls.Add(combo);
+            scrollPanel.Controls.Add(lbl);
+            scrollPanel.Controls.Add(numSize);
+            scrollPanel.Controls.Add(colorBtn);
+            scrollPanel.Controls.Add(combo);
         }
 
         private string ColorValue(Button colorBtn, string original)
@@ -650,25 +688,33 @@ namespace WinPanel
             }
         }
 
+        // Picks a backup zip created by this app ("Backup now" or the scheduled
+        // backup). The archive is unpacked by MainForm right after the dialog
+        // closes, so the restored files take effect immediately.
         private void BtnRestore_Click(object sender, EventArgs e)
         {
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = "INI Files (*.ini)|*.ini|All Files (*.*)|*.*";
-                if (ofd.ShowDialog() == DialogResult.OK)
+                ofd.Filter = Loc.S("WinPanel backup archives (*.zip)|*.zip|All files (*.*)|*.*",
+                                   "Архивы бэкапа WinPanel (*.zip)|*.zip|Все файлы (*.*)|*.*");
+                ofd.Title = Loc.S("Restore from a backup archive", "Восстановление из архива бэкапа");
+                try
                 {
-                    try
+                    string bd = BackupManager.BackupDir();
+                    if (Directory.Exists(bd)) ofd.InitialDirectory = bd;
+                }
+                catch { }
+                if (ofd.ShowDialog(this) == DialogResult.OK)
+                {
+                    string reject = BackupManager.ValidateBackupZip(ofd.FileName);
+                    if (reject != null)
                     {
-                        File.Copy(ofd.FileName, settingsPath, true);
-                        MessageBox.Show("Settings restored successfully! They will take effect when you close this window.", "Restore");
-
-                        this.DialogResult = DialogResult.OK;
-                        this.Close();
+                        MessageBox.Show(this, reject, "WinPanel");
+                        return;
                     }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show("Failed to restore settings: " + ex.Message, "Error");
-                    }
+                    RestoreZipPath = ofd.FileName;
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
                 }
             }
         }

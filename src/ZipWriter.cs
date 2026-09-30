@@ -21,7 +21,8 @@ namespace WinPanel
 
         private static uint[] crcTable;
 
-        private static uint Crc32(byte[] buf, int len)
+        // Shared with ZipReader for CRC verification of restored entries.
+        internal static uint Crc32(byte[] buf, int len)
         {
             if (crcTable == null)
             {
