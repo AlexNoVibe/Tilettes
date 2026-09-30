@@ -39,10 +39,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # edit: the older gh on the runner has no --generate-notes here;
-            # the notes were already generated when the release was created.
-            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME"
+            # edit: refresh the title and the notes from CHANGELOG.md (older gh
+            # on the runner has no --generate-notes, the notes file is used
+            # instead on both paths).
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file CHANGELOG.md
             gh release upload "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --generate-notes
+            gh release create "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file CHANGELOG.md
           fi
