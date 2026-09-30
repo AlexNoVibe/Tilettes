@@ -14,7 +14,9 @@ permissions:
 
 jobs:
   verify-and-release:
-    runs-on: windows-latest
+    # windows-2022 pinned: windows-latest moved to a newer image and the first
+    # run died in "Set up job" before any step executed.
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
