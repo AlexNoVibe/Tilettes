@@ -37,7 +37,8 @@ namespace WinPanel
         // Quick search settings: toggles to the right of the box, shown while the
         // box has text. State lives in Settings (persisted to settings.ini).
         private Panel panelSearchSettingsRow;
-        private readonly Dictionary<Button, Action> searchToggleRestylers = new Dictionary<Button, Action>();
+        private readonly Dictionary<Button, Action<int>> searchToggleRestylers = new Dictionary<Button, Action<int>>();
+        private readonly Dictionary<Button, Func<int, string>> searchToggleLabels = new Dictionary<Button, Func<int, string>>();
         // Snapshot of the "Search" settings used by the background worker thread
         // (plain fields: the worker cannot touch the settings object safely).
         private static int fuzzyLevel = 2;
@@ -249,7 +250,7 @@ namespace WinPanel
                 }
                 else if (e.KeyCode == Keys.Escape) { ClearPanelSearch(); e.SuppressKeyPress = true; }
             };
-            panelSearchStatus = new Label { Dock = DockStyle.Top, Height = 24, BackColor = bgColor };
+            panelSearchStatus = new Label { Dock = DockStyle.Top, Height = this.Font.Height + 8, BackColor = bgColor };
             panelSearchOverlay.Controls.Add(panelSearchList);
             panelSearchOverlay.Controls.Add(panelSearchStatus);
             this.Controls.Add(panelSearchOverlay);
@@ -729,6 +730,7 @@ namespace WinPanel
                     Loc.Walk(this);
                     try { if (panelSearchBox != null) panelSearchBox.Font = Settings.MakeFont(panelSearchBox.Font.FontFamily.Name, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize))); } catch { }
                     ApplySearchListFont();
+                    try { if (panelSearchStatus != null) panelSearchStatus.Height = this.Font.Height + 8; } catch { }
 
                     // A smaller grid may no longer hold every item: re-run overflow.
                     try
@@ -940,6 +942,9 @@ namespace WinPanel
             try
             {
                 if (panelSearchBox == null || panelSearchBox.IsDisposed) return;
+                // The window may have been resized since the strip was built:
+                // re-pick the caption shrink tier.
+                StyleSearchToggles();
                 string q = panelSearchBox.Text.Trim();
                 if (q.Length == 0) { ShowPastSearch(); return; }
                 if (activeTabData == null || activeLayoutPanel == null) return;
@@ -1067,7 +1072,10 @@ namespace WinPanel
         // `flip` switches it; both go through Settings so the state survives
         // restarts. `label` is re-evaluated on restyle (the fuzzy button shows the
         // current level).
-        private void AddSearchToggle(Font font, int height, Func<string> label, Func<bool> get, Action flip, string tooltip)
+        // `label(tier)` gives the caption per shrink tier: 0 = full, 1 = short,
+        // 2 = one/two letters. The whole strip degrades uniformly when the window
+        // is too narrow for the full captions.
+        private void AddSearchToggle(Font font, int height, Func<int, string> label, Func<bool> get, Action flip, string tooltip)
         {
             var b = new Button
             {
@@ -1081,7 +1089,7 @@ namespace WinPanel
             };
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = hoverColor;
-            b.Text = label();
+            b.Text = label(0);
             // `height` already follows the search box font (sBox.PreferredHeight);
             // a fixed 23px here clipped the labels at bigger UI fonts.
             b.Width = TextRenderer.MeasureText(b.Text, b.Font).Width + 14;
@@ -1094,9 +1102,10 @@ namespace WinPanel
                 RerunPanelSearch();
             };
             panelSearchSettingsRow.Controls.Add(b);
-            searchToggleRestylers[b] = delegate
+            searchToggleLabels[b] = label;
+            searchToggleRestylers[b] = delegate(int tier)
             {
-                string text = label();
+                string text = label(tier);
                 bool active;
                 try { active = get(); } catch { active = false; }
                 if (b.Text != text)
@@ -1110,10 +1119,28 @@ namespace WinPanel
             };
         }
 
+        // Picks the caption tier that fits between the search box and the window edge.
+        private int SearchToggleTier()
+        {
+            var row = panelSearchSettingsRow != null ? panelSearchSettingsRow.Parent as Panel : null;
+            if (row == null || panelSearchBox == null) return 0;
+            int avail = row.ClientSize.Width - (panelSearchBox.Right + 14);
+            if (avail <= 0) return 2;
+            for (int tier = 0; tier < 2; tier++)
+            {
+                int total = 0;
+                foreach (var kv in searchToggleLabels)
+                    total += TextRenderer.MeasureText(kv.Value(tier), kv.Key.Font).Width + 16;
+                if (total <= avail) return tier;
+            }
+            return 2;
+        }
+
         private void StyleSearchToggles()
         {
             if (panelSearchSettingsRow == null) return;
-            foreach (var kv in searchToggleRestylers) kv.Value();
+            int tier = SearchToggleTier();
+            foreach (var kv in searchToggleRestylers) kv.Value(tier);
         }
 
         // Re-runs the search right away so a toggle click updates the results.
@@ -1144,10 +1171,26 @@ namespace WinPanel
             };
             searchToggleRestylers.Clear();
 
-            Func<string> fuzzyLabel = delegate
+            Func<int, string> fuzzyLabel = delegate(int tier)
             {
                 int lvl = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel));
                 return lvl == 0 ? Loc.S("Exact", "Точно") : "~ " + lvl;
+            };
+            Func<int, string> startLabel = delegate(int tier)
+            {
+                return tier == 0 ? Loc.S("Start", "Пуск") : (tier == 1 ? Loc.S("St", "Пу") : Loc.S("S", "П"));
+            };
+            Func<int, string> pathsLabel = delegate(int tier)
+            {
+                return tier == 0 ? Loc.S("Paths", "Пути") : (tier == 1 ? Loc.S("Pa", "Пу") : Loc.S("P", "П"));
+            };
+            Func<int, string> descLabel = delegate(int tier)
+            {
+                return tier == 0 ? Loc.S("Descriptions", "Описания") : (tier == 1 ? Loc.S("Desc", "Опи") : Loc.S("D", "О"));
+            };
+            Func<int, string> metaLabel = delegate(int tier)
+            {
+                return tier == 0 ? Loc.S("Metadata", "Метаданные") : (tier == 1 ? Loc.S("Meta", "Мета") : Loc.S("M", "М"));
             };
             // PreferredHeight is font-based (no handle needed): the toggles match the
             // search box even when a bigger search font grew it.
@@ -1156,25 +1199,25 @@ namespace WinPanel
                 delegate { settings.SearchFuzzyLevel = (Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)) + 1) % 4; },
                 Loc.S("Match precision: exact or fuzzy (0-3)", "Точность совпадения: точное или нечёткое (0-3)"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Metadata", "Метаданные"); },
-                delegate { return settings.SearchInMeta; },
-                delegate { settings.SearchInMeta = !settings.SearchInMeta; },
-                Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, startLabel,
+                delegate { return settings.SearchInStart; },
+                delegate { settings.SearchInStart = !settings.SearchInStart; },
+                Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Paths", "Пути"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, pathsLabel,
                 delegate { return settings.SearchInPaths; },
                 delegate { settings.SearchInPaths = !settings.SearchInPaths; },
                 Loc.S("Search in full paths", "Искать в полных путях"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Descriptions", "Описания"); },
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, descLabel,
                 delegate { return settings.SearchInDesc; },
                 delegate { settings.SearchInDesc = !settings.SearchInDesc; },
                 Loc.S("Search in item descriptions", "Искать в описаниях элементов"));
 
-            AddSearchToggle(sBox.Font, sBox.PreferredHeight, delegate { return Loc.S("Start", "Пуск"); },
-                delegate { return settings.SearchInStart; },
-                delegate { settings.SearchInStart = !settings.SearchInStart; },
-                Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"));
+            AddSearchToggle(sBox.Font, sBox.PreferredHeight, metaLabel,
+                delegate { return settings.SearchInMeta; },
+                delegate { settings.SearchInMeta = !settings.SearchInMeta; },
+                Loc.S("Search in exe name, product, company", "Искать в имени exe, продукте, компании"));
 
             StyleSearchToggles();
             searchRow.Controls.Add(panelSearchSettingsRow);
@@ -2071,8 +2114,11 @@ namespace WinPanel
             int searchRowH = 31;
             try { searchRowH = Math.Max(31, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)) + 22); } catch { }
             topSearchRowH = searchRowH;
+            // Tab size follows the tabs font: the caption must fit at any size.
+            int tabH = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize).Height + 12;
+            int tabPitch = tabH + 4;
             // Tab rows sit directly above the search row: no filler space between them.
-            topPanel.Height = tabRows * 35 + searchRowH;
+            topPanel.Height = tabRows * tabPitch + searchRowH;
 
             // ---- Right stack: row 1 = min / max / close, row 2 = settings / edit ----
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
@@ -2211,16 +2257,17 @@ namespace WinPanel
 
                 contentPanel.Controls.Add(layoutPanel);
 
+                Font tabFont = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize);
                 var tabBtn = new Button
                 {
                     Text = tabData.Name,
-                    Width = 100,
-                    Height = 35,
+                    Width = Math.Max(100, TextRenderer.MeasureText(tabData.Name, tabFont).Width + 24),
+                    Height = tabH,
                     FlatStyle = FlatStyle.Flat,
                     BackColor = bgColor,
                     ForeColor = Settings.ParseColor(settings.FontTabsColor, textColor),
                     Cursor = Cursors.Hand,
-                    Font = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize)
+                    Font = tabFont
                 };
                 tabBtn.FlatAppearance.BorderSize = 0;
                 tabBtn.FlatAppearance.MouseOverBackColor = hoverColor;
@@ -2260,8 +2307,23 @@ namespace WinPanel
                 layoutPanels[tabBtn] = layoutPanel;
                 buttons.Add(tabBtn);
 
-                tabBtn.Location = new Point(rowX[row], row * 35);
+                tabBtn.Location = new Point(rowX[row], row * tabPitch);
                 rowX[row] += tabBtn.Width;
+
+                // The leftmost tab of the top row sits inside the rounded window
+                // corner: round its own corner to match, otherwise the square
+                // corner looks like a step against the window contour.
+                if (row == 0 && tabBtn.Left == 12)
+                {
+                    using (var cornerPath = new System.Drawing.Drawing2D.GraphicsPath())
+                    {
+                        cornerPath.AddArc(0, 0, 15, 15, 180, 90);
+                        cornerPath.AddLine(15, 0, tabBtn.Width, 0);
+                        cornerPath.AddLine(tabBtn.Width, tabBtn.Height, 0, tabBtn.Height);
+                        cornerPath.CloseFigure();
+                        tabBtn.Region = new Region(cornerPath);
+                    }
+                }
 
                 tabBar.Controls.Add(tabBtn);
                 AttachTabDrag(tabBtn, tabByButton);
@@ -2271,7 +2333,7 @@ namespace WinPanel
             {
                 Text = "+",
                 Width = 35,
-                Height = 35,
+                Height = tabH,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = bgColor,
                 ForeColor = textColor,
@@ -2313,9 +2375,14 @@ namespace WinPanel
             catch { }
             sBox.TextChanged += (s, e) =>
             {
-                // Quick search settings appear while the box has text.
+                // Quick search settings appear while the box has text; the tier
+                // is re-evaluated here because sBox.Right is only meaningful now.
                 bool hasText = sBox.Text.Trim().Length > 0;
-                if (panelSearchSettingsRow != null) panelSearchSettingsRow.Visible = hasText;
+                if (panelSearchSettingsRow != null)
+                {
+                    panelSearchSettingsRow.Visible = hasText;
+                    if (hasText) StyleSearchToggles();
+                }
                 if (panelSearchTimer == null) return;
                 panelSearchTimer.Stop();
                 if (hasText) { panelSearchTimer.Start(); return; }
