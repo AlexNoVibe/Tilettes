@@ -87,56 +87,79 @@ namespace WinPanel
             return GetIcon(path, large);
         }
 
-        public static Image GetIcon(string path, bool large)
-        {            // SHGFI_SYSICONINDEX alone returns iIcon = 0 on some systems, which makes every
-            // item render the generic blank-page icon. Requesting SHGFI_ICON as well makes
+public static Image GetIcon(string path, bool large)
+        {            // SHGFI_SYSICONINDEX alone returns iIcon = 0 on some systems, which makes
+            // every item render the generic blank-page icon. Requesting SHGFI_ICON as well makes
             // the shell resolve the real system image list index into iIcon.
-            SHFILEINFO shinfo = new SHFILEINFO();
-            uint flags = SHGFI_ICON | SHGFI_SYSICONINDEX | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
-            IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
-            if (res != IntPtr.Zero)
+            try
             {
-                if (shinfo.hIcon != IntPtr.Zero) DestroyIcon(shinfo.hIcon);
-                Guid iidImageList = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950");
-                IImageList iml;
-                int hres = SHGetImageList(large ? SHIL_JUMBO : SHIL_EXTRALARGE, ref iidImageList, out iml);
-                if (hres == 0 && iml != null)
+                SHFILEINFO shinfo = new SHFILEINFO();
+                uint flags = SHGFI_ICON | SHGFI_SYSICONINDEX | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
+                IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
+                if (res != IntPtr.Zero)
                 {
-                    IntPtr hIcon = IntPtr.Zero;
-                    iml.GetIcon(shinfo.iIcon, ILD_TRANSPARENT, ref hIcon);
-                    if (hIcon != IntPtr.Zero)
+                    if (shinfo.hIcon != IntPtr.Zero) DestroyIcon(shinfo.hIcon);
+                    Guid iidImageList = new Guid("46EB5926-582E-4017-9FDF-E8998DAA0950");
+                    IImageList iml;
+                    int hres = SHGetImageList(large ? SHIL_JUMBO : SHIL_EXTRALARGE, ref iidImageList, out iml);
+                    if (hres == 0 && iml != null)
                     {
-                    Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
-                    DestroyIcon(hIcon);
+                        IntPtr hIcon = IntPtr.Zero;
+                        iml.GetIcon(shinfo.iIcon, ILD_TRANSPARENT, ref hIcon);
+                        if (hIcon != IntPtr.Zero)
+                        {
+                            Icon icon = (Icon)Icon.FromHandle(hIcon).Clone();
+                            DestroyIcon(hIcon);
+                            var bmp = icon.ToBitmap();
+                            icon.Dispose();
+                            return TrimTransparent(bmp);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("IconExtractor.GetIcon (iml)", ex);
+            }
+
+            // Fallback
+            try
+            {
+                SHFILEINFO shinfo = new SHFILEINFO();
+                uint flags = SHGFI_ICON | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
+                IntPtr res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
+                if (res != IntPtr.Zero && shinfo.hIcon != IntPtr.Zero)
+                {
+                    Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
+                    DestroyIcon(shinfo.hIcon);
                     var bmp = icon.ToBitmap();
                     icon.Dispose();
                     return TrimTransparent(bmp);
                 }
             }
+            catch (Exception ex)
+            {
+                AppLog.Write("IconExtractor.GetIcon (fallback)", ex);
+            }
+            return null;
         }
-        
-        // Fallback
-        flags = SHGFI_ICON | (large ? SHGFI_LARGEICON : SHGFI_SMALLICON);
-        res = SHGetFileInfo(path, 0, ref shinfo, (uint)Marshal.SizeOf(shinfo), flags);
-        if (res != IntPtr.Zero && shinfo.hIcon != IntPtr.Zero)
-        {
-            Icon icon = (Icon)Icon.FromHandle(shinfo.hIcon).Clone();
-            DestroyIcon(shinfo.hIcon);
-            var bmp = icon.ToBitmap();
-            icon.Dispose();
-            return TrimTransparent(bmp);
-        }
-        return null;
-    }
 
         // Loads an icon (.ico/.exe) or an image file (.png/.jpg/.bmp) as an Image.
         public static Image LoadAny(string path)
         {
-            if (string.IsNullOrEmpty(path)) return null;
-            string lower = path.ToLowerInvariant();
-            if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
-                return GetIcon(path, true);
-            return Image.FromFile(path);
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return null;
+                string lower = path.ToLowerInvariant();
+                if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
+                    return GetIcon(path, true);
+                return Image.FromFile(path);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("IconExtractor.LoadAny", ex);
+                return null;
+            }
         }
 
         // Shell icons often carry large fully transparent margins (some apps have no 256px

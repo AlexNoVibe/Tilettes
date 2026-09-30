@@ -20,7 +20,7 @@ HEARTBEAT.md
 TOOLS.md
 UI_SPEC.md
 winpanel_changelog*.html
-ico/*.lnk
+ico/
 
 # v2 runtime artifacts
 autoBackup/
@@ -32,3 +32,4 @@ settings.ini.bak
 
 memory/
 .openclaw-attachments/
+bash.exe.stackdump

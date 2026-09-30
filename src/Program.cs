@@ -1685,27 +1685,54 @@ namespace WinPanel
 
         private static Image LoadIconForItem(ShortcutItem item)
         {
-            // 1) direct icon of the item (Change Icon)
-            if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
-                return IconExtractor.LoadAny(item.CustomIconPath);
-            // 2) icon assigned to the file type
-            string typeIcon = FileTypes.GetIconForPath(item.Path);
-            if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
-                return IconExtractor.LoadAny(typeIcon);
-            // 3) standard shell icon (shell: paths = UWP apps)
-            return IconExtractor.GetIconAuto(item.Path, true);
+            try
+            {
+                // 1) direct icon of the item (Change Icon)
+                if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
+                    return IconExtractor.LoadAny(item.CustomIconPath);
+                // 2) icon assigned to the file type
+                string typeIcon = FileTypes.GetIconForPath(item.Path);
+                if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
+                    return IconExtractor.LoadAny(typeIcon);
+                // 3) standard shell icon (shell: paths = UWP apps)
+                return IconExtractor.GetIconAuto(item.Path, true);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadIconForItem", ex);
+                return null;
+            }
         }
 
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
         {
             if (tile.IsDisposed) return;
             Image img = null;
-            try { img = LoadIconForItem(item); } catch { }
-            if (img == null) img = SystemIcons.Application.ToBitmap();
-            if (tile.IsDisposed) { img.Dispose(); return; }
-            if (tile.IconImage != null) tile.IconImage.Dispose();
-            tile.IconImage = img;
-            tile.Invalidate();
+            try
+            {
+                img = LoadIconForItem(item);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadTileIcon: LoadIconForItem", ex);
+            }
+            if (img == null)
+            {
+                try { img = SystemIcons.Application.ToBitmap(); }
+                catch { img = SystemIcons.Error.ToBitmap(); }
+            }
+            if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
+            try
+            {
+                if (tile.IconImage != null) tile.IconImage.Dispose();
+                tile.IconImage = img;
+                tile.Invalidate();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadTileIcon: assign IconImage", ex);
+                if (img != null) img.Dispose();
+            }
         }
 
         // The closed-folder icon is fetched from the shell once and cloned per use:
@@ -1716,23 +1743,38 @@ namespace WinPanel
         {
             if (_closedFolderIcon == null)
             {
-                var icon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
-                _closedFolderIcon = icon != null ? icon.ToBitmap() : SystemIcons.WinLogo.ToBitmap();
+                try
+                {
+                    var icon = ShellIcon.GetFolderIcon(ShellIcon.IconSize.Large, ShellIcon.FolderType.Closed);
+                    _closedFolderIcon = icon != null ? icon.ToBitmap() : SystemIcons.WinLogo.ToBitmap();
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write("GetFolderIconImage", ex);
+                    _closedFolderIcon = SystemIcons.WinLogo.ToBitmap();
+                }
             }
-            return (Image)_closedFolderIcon.Clone();
+            try
+            {
+                return (Image)_closedFolderIcon.Clone();
+            }
+            catch
+            {
+                return SystemIcons.WinLogo.ToBitmap();
+            }
         }
 
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
             Image img = null;
-            if (child.IsFolder)
+            try
             {
-                img = GetFolderIconImage();
-            }
-            else
-            {
-                try
+                if (child.IsFolder)
+                {
+                    img = GetFolderIconImage();
+                }
+                else
                 {
                     // 1) direct icon of the child, 2) file type icon, 3) standard icon
                     if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
@@ -1746,13 +1788,29 @@ namespace WinPanel
                             img = IconExtractor.GetIconAuto(child.Path, true);
                     }
                 }
-                catch { }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadFolderChildIcon: icon extraction", ex);
+            }
+            if (img == null)
+            {
+                try { img = SystemIcons.Application.ToBitmap(); }
+                catch { img = SystemIcons.Error.ToBitmap(); }
             }
             if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
-            var old = tile.ChildIcons[index];
-            if (old != null) old.Dispose();
-            tile.ChildIcons[index] = img;
-            tile.Invalidate();
+            try
+            {
+                var old = tile.ChildIcons[index];
+                if (old != null) old.Dispose();
+                tile.ChildIcons[index] = img;
+                tile.Invalidate();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadFolderChildIcon: assign ChildIcons", ex);
+                if (img != null) img.Dispose();
+            }
         }
 
         // ---------- Item launching ----------
@@ -1789,9 +1847,10 @@ namespace WinPanel
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Write("LaunchItem: file-type rule", ex); }
 
-            StartDetached(target, args);
+            try { StartDetached(target, args); }
+            catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError("Error opening: " + path); }
         }
 
         // Launches on its own STA thread so the panel stays responsive even when the system
@@ -1810,10 +1869,12 @@ namespace WinPanel
                 catch (System.ComponentModel.Win32Exception wex)
                 {
                     if (wex.NativeErrorCode == 1223) return; // "No" in the UAC prompt
+                    AppLog.Write("StartDetached: Win32Exception", wex);
                     ReportLaunchError("Error opening file: " + wex.Message);
                 }
                 catch (Exception ex)
                 {
+                    AppLog.Write("StartDetached: Exception", ex);
                     ReportLaunchError("Error opening file: " + ex.Message);
                 }
             });
@@ -3090,7 +3151,10 @@ namespace WinPanel
                             ToggleMultiSelect(tile, item);
                             return;
                         }
-                        if (ctrlClick && settings.MiniExplorerCtrlClick && !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path))
+                        bool isDir = false;
+                        try { isDir = !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path); }
+                        catch (Exception ex) { AppLog.Write("TileClick: Directory.Exists", ex); }
+                        if (ctrlClick && settings.MiniExplorerCtrlClick && isDir)
                         {
                             OpenMiniExplorer(item);
                         }
@@ -3128,11 +3192,23 @@ namespace WinPanel
         internal static void OpenContainingFolder(ShortcutItem item)
         {
             if (SuppressDoubleLaunch("select:" + item.Path)) return;
-            string dir = Path.GetDirectoryName(item.Path);
-            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                StartDetached("explorer.exe", "/select,\"" + item.Path + "\"");
+            string dir = null;
+            try { dir = Path.GetDirectoryName(item.Path); }
+            catch (Exception ex) { AppLog.Write("OpenContainingFolder: GetDirectoryName", ex); }
+            if (!string.IsNullOrEmpty(dir))
+            {
+                bool dirExists = false;
+                try { dirExists = Directory.Exists(dir); }
+                catch (Exception ex) { AppLog.Write("OpenContainingFolder: Directory.Exists", ex); }
+                if (dirExists)
+                    StartDetached("explorer.exe", "/select,\"" + item.Path + "\"");
+                else
+                    StartDetached("explorer.exe", null);
+            }
             else
+            {
                 StartDetached("explorer.exe", null);
+            }
         }
 
         private void OpenFolderPopup(ShortcutItem folder, TileControl tile, Panel panel, TabData tabData)
@@ -3170,7 +3246,10 @@ namespace WinPanel
         private void OpenMiniExplorer(ShortcutItem item)
         {
             if (item == null || string.IsNullOrEmpty(item.Path)) return;
-            if (!Directory.Exists(item.Path))
+            bool isDir = false;
+            try { isDir = Directory.Exists(item.Path); }
+            catch (Exception ex) { AppLog.Write("OpenMiniExplorer: Directory.Exists", ex); }
+            if (!isDir)
             {
                 LaunchItem(item.Path);
                 return;
@@ -3188,6 +3267,7 @@ namespace WinPanel
             }
             catch (Exception ex)
             {
+                AppLog.Write("OpenMiniExplorer: create/show", ex);
                 ReportLaunchError("Mini Explorer error: " + ex.Message);
             }
         }
@@ -3886,65 +3966,82 @@ namespace WinPanel
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-            Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-            using (var path = new GraphicsPath())
+            try
             {
-                int d = 16;
-                Rectangle arc = new Rectangle(rect.Location, new Size(d, d));
-                path.AddArc(arc, 180, 90);
-                arc.X = rect.Right - d; path.AddArc(arc, 270, 90);
-                arc.Y = rect.Bottom - d; path.AddArc(arc, 0, 90);
-                arc.X = rect.Left; path.AddArc(arc, 90, 90);
-                path.CloseFigure();
-                using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
+                base.OnPaint(e);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+
+                Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
+                using (var path = new GraphicsPath())
                 {
-                    e.Graphics.FillPath(brush, path);
+                    int d = 16;
+                    Rectangle arc = new Rectangle(rect.Location, new Size(d, d));
+                    path.AddArc(arc, 180, 90);
+                    arc.X = rect.Right - d; path.AddArc(arc, 270, 90);
+                    arc.Y = rect.Bottom - d; path.AddArc(arc, 0, 90);
+                    arc.X = rect.Left; path.AddArc(arc, 90, 90);
+                    path.CloseFigure();
+                    using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
+                    {
+                        e.Graphics.FillPath(brush, path);
+                    }
                 }
-            }
 
-            if (IconImage != null)
-            {
-                int vMargin = 3;
-                int w = this.Width - 8;
-                int h = this.Height - 20 - vMargin;
-
-                Settings s = MainForm.CurrentSettings;
-                if (s != null)
+                if (IconImage != null)
                 {
-                    double pct = Math.Max(0.25, Math.Min(4.0, s.IconScale / 100.0));
-                    int sw = Math.Max(1, (int)Math.Round(w * pct));
-                    int sh = Math.Max(1, (int)Math.Round(h * pct));
-                    w = sw;
-                    h = sh;
-                }
-                int ix = 4 + (this.Width - 8 - w) / 2;
-                int iy = vMargin + (this.Height - 20 - vMargin - h) / 2;
-                var iconRect = new Rectangle(ix, iy, w, h);
-                double scale = Math.Min(iconRect.Width / (double)IconImage.Width, iconRect.Height / (double)IconImage.Height);
-                int dw = Math.Max(1, (int)Math.Round(IconImage.Width * scale));
-                int dh = Math.Max(1, (int)Math.Round(IconImage.Height * scale));
-                e.Graphics.DrawImage(IconImage, new Rectangle(iconRect.X + (iconRect.Width - dw) / 2, iconRect.Y + (iconRect.Height - dh) / 2, dw, dh));
-            }
+                    try
+                    {
+                        int vMargin = 3;
+                        int w = this.Width - 8;
+                        int h = this.Height - 20 - vMargin;
 
-            Color tColor = this.ForeColor;
-            Font labelFont = null;
-            Settings cfg = MainForm.CurrentSettings;
-            if (cfg != null)
-            {
-                tColor = Settings.ParseColor(cfg.FontItemsColor, tColor);
-                labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize);
+                        Settings s = MainForm.CurrentSettings;
+                        if (s != null)
+                        {
+                            double pct = Math.Max(0.25, Math.Min(4.0, s.IconScale / 100.0));
+                            int sw = Math.Max(1, (int)Math.Round(w * pct));
+                            int sh = Math.Max(1, (int)Math.Round(h * pct));
+                            w = sw;
+                            h = sh;
+                        }
+                        int ix = 4 + (this.Width - 8 - w) / 2;
+                        int iy = vMargin + (this.Height - 20 - vMargin - h) / 2;
+                        var iconRect = new Rectangle(ix, iy, w, h);
+                        double scale = Math.Min(iconRect.Width / (double)IconImage.Width, iconRect.Height / (double)IconImage.Height);
+                        int dw = Math.Max(1, (int)Math.Round(IconImage.Width * scale));
+                        int dh = Math.Max(1, (int)Math.Round(IconImage.Height * scale));
+                        e.Graphics.DrawImage(IconImage, new Rectangle(iconRect.X + (iconRect.Width - dw) / 2, iconRect.Y + (iconRect.Height - dh) / 2, dw, dh));
+                    }
+                    catch { }
+                }
+
+                Color tColor = this.ForeColor;
+                Font labelFont = null;
+                Settings cfg = MainForm.CurrentSettings;
+                if (cfg != null)
+                {
+                    try { tColor = Settings.ParseColor(cfg.FontItemsColor, tColor); }
+                    catch { }
+                    try { labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize); }
+                    catch { }
+                }
+                try
+                {
+                    using (var brush = new SolidBrush(tColor))
+                    using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 8f))
+                    {
+                        var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+                        e.Graphics.DrawString(item.Name, font, brush, new Rectangle(2, this.Height - 18, this.Width - 4, 16), sf);
+                    }
+                }
+                catch { }
+                if (labelFont != null) { try { labelFont.Dispose(); } catch { } }
             }
-            using (var brush = new SolidBrush(tColor))
-            using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 8f))
+            catch (Exception ex)
             {
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
-                e.Graphics.DrawString(item.Name, font, brush, new Rectangle(2, this.Height - 18, this.Width - 4, 16), sf);
+                AppLog.Write("PopupTile.OnPaint", ex);
             }
-            if (labelFont != null) labelFont.Dispose();
         }
 
         protected override void Dispose(bool disposing)
@@ -4007,122 +4104,155 @@ namespace WinPanel
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            base.OnPaint(e);
-            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-            Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
-            int radius = 15;
-            var path = GetRoundRectangle(rect, radius);
-
-            if (Item.IsFolder)
+            try
             {
-                using (var brush = new SolidBrush(Color.FromArgb(50, 128, 128, 128)))
-                {
-                    e.Graphics.FillPath(brush, path);
-                }
+                base.OnPaint(e);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-                if (IsHovered)
-                {
-                    using (var hoverBrush = new SolidBrush(Color.FromArgb(30, 255, 255, 255)))
-                        e.Graphics.FillPath(hoverBrush, path);
-                }
+                Rectangle rect = new Rectangle(0, 0, this.Width - 1, this.Height - 1);
+                int radius = 15;
+                var path = GetRoundRectangle(rect, radius);
 
-                if (ChildIcons != null && ChildIcons.Count > 0)
+                if (Item.IsFolder)
                 {
-                    int maxIcons = Math.Min(9, ChildIcons.Count);
-                    int cols = maxIcons > 4 ? 3 : 2;
-                    int rows = (int)Math.Ceiling(maxIcons / (float)cols);
-                    int padding = 5;
-                    int textSpace = GetTextSpace();
-                    int miniWidth = (this.Width - padding * 2) / cols;
-                    int miniHeight = ((this.Height - textSpace) - padding * 2) / rows;
-                    int miniSize = Math.Max(1, Math.Min(miniWidth, miniHeight) - 2);
-
-                    for (int i = 0; i < maxIcons; i++)
+                    try
                     {
-                        var childImg = ChildIcons[i];
-                        int c = i % cols;
-                        int r = i / cols;
-                        int cx = padding + c * miniWidth + (miniWidth - miniSize) / 2;
-                        int cy = padding + r * miniHeight + (miniHeight - miniSize) / 2;
-
-                        if (childImg != null)
+                        using (var brush = new SolidBrush(Color.FromArgb(50, 128, 128, 128)))
                         {
-                            IconExtractor.DrawFit(e.Graphics, childImg, new Rectangle(cx, cy, miniSize, miniSize));
+                            e.Graphics.FillPath(brush, path);
+                        }
+                    }
+                    catch { }
+
+                    if (IsHovered)
+                    {
+                        try
+                        {
+                            using (var hoverBrush = new SolidBrush(Color.FromArgb(30, 255, 255, 255)))
+                                e.Graphics.FillPath(hoverBrush, path);
+                        }
+                        catch { }
+                    }
+
+                    if (ChildIcons != null && ChildIcons.Count > 0)
+                    {
+                        int maxIcons = Math.Min(9, ChildIcons.Count);
+                        int cols = maxIcons > 4 ? 3 : 2;
+                        int rows = (int)Math.Ceiling(maxIcons / (float)cols);
+                        int padding = 5;
+                        int textSpace = GetTextSpace();
+                        int miniWidth = (this.Width - padding * 2) / cols;
+                        int miniHeight = ((this.Height - textSpace) - padding * 2) / rows;
+                        int miniSize = Math.Max(1, Math.Min(miniWidth, miniHeight) - 2);
+
+                        for (int i = 0; i < maxIcons; i++)
+                        {
+                            try
+                            {
+                                var childImg = ChildIcons[i];
+                                int c = i % cols;
+                                int r = i / cols;
+                                int cx = padding + c * miniWidth + (miniWidth - miniSize) / 2;
+                                int cy = padding + r * miniHeight + (miniHeight - miniSize) / 2;
+
+                                if (childImg != null)
+                                {
+                                    IconExtractor.DrawFit(e.Graphics, childImg, new Rectangle(cx, cy, miniSize, miniSize));
+                                }
+                            }
+                            catch { }
                         }
                     }
                 }
-            }
-            else
-            {
-                // No solid tile fill: the icon sits directly on the panel background,
-                // with only a soft highlight when hovered.
-                if (IsHovered)
+                else
                 {
-                    bool lightParent = this.Parent != null && this.Parent.BackColor.GetBrightness() > 0.5f;
-                    using (var hoverBrush = new SolidBrush(lightParent ? Color.FromArgb(35, 0, 0, 0) : Color.FromArgb(45, 255, 255, 255)))
+                    // No solid tile fill: the icon sits directly on the panel background,
+                    // with only a soft highlight when hovered.
+                    if (IsHovered)
                     {
-                        e.Graphics.FillPath(hoverBrush, path);
+                        try
+                        {
+                            bool lightParent = this.Parent != null && this.Parent.BackColor.GetBrightness() > 0.5f;
+                            using (var hoverBrush = new SolidBrush(lightParent ? Color.FromArgb(35, 0, 0, 0) : Color.FromArgb(45, 255, 255, 255)))
+                            {
+                                e.Graphics.FillPath(hoverBrush, path);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (IconImage != null)
+                    {
+                        try
+                        {
+                            int textSpace = GetTextSpace();
+                            int marginTop = 4;
+                            int marginX = Math.Max(3, this.Width / 20);
+                            int w = this.Width - marginX * 2;
+                            int h = this.Height - textSpace - marginTop - 2;
+
+                            // Icon scale setting, percent of the default size
+                            Settings s = MainForm.CurrentSettings;
+                            if (s != null)
+                            {
+                                double pct = Math.Max(0.25, Math.Min(4.0, s.IconScale / 100.0));
+                                int sw = Math.Max(1, (int)Math.Round(w * pct));
+                                int sh = Math.Max(1, (int)Math.Round(h * pct));
+                                marginX += (w - sw) / 2;
+                                marginTop += (h - sh) / 2;
+                                w = sw;
+                                h = sh;
+                            }
+
+                            var iconRect = new Rectangle(marginX, marginTop, w, h);
+                            IconExtractor.DrawFit(e.Graphics, IconImage, iconRect);
+                        }
+                        catch { }
                     }
                 }
 
-                if (IconImage != null)
+                Color tColor = this.Parent != null ? this.Parent.ForeColor : Color.White;
+                Font labelFont = null;
+                Settings cfg = MainForm.CurrentSettings;
+                if (cfg != null)
                 {
-                    int textSpace = GetTextSpace();
-                    int marginTop = 4;
-                    int marginX = Math.Max(3, this.Width / 20);
-                    int w = this.Width - marginX * 2;
-                    int h = this.Height - textSpace - marginTop - 2;
-
-                    // Icon scale setting, percent of the default size
-                    Settings s = MainForm.CurrentSettings;
-                    if (s != null)
+                    try { tColor = Settings.ParseColor(cfg.FontItemsColor, tColor); }
+                    catch { }
+                    try { labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize); }
+                    catch { }
+                }
+                int labelSpace = GetTextSpace();
+                if (labelSpace > 0)
+                {
+                    try
                     {
-                        double pct = Math.Max(0.25, Math.Min(4.0, s.IconScale / 100.0));
-                        int sw = Math.Max(1, (int)Math.Round(w * pct));
-                        int sh = Math.Max(1, (int)Math.Round(h * pct));
-                        marginX += (w - sw) / 2;
-                        marginTop += (h - sh) / 2;
-                        w = sw;
-                        h = sh;
+                        using (var brush = new SolidBrush(tColor))
+                        using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 9f))
+                        {
+                            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+                            Rectangle textRect = new Rectangle(4, this.Height - labelSpace - 1, this.Width - 8, labelSpace);
+                            e.Graphics.DrawString(Item.Name, font, brush, textRect, sf);
+                        }
                     }
-
-                    var iconRect = new Rectangle(marginX, marginTop, w, h);
-                    IconExtractor.DrawFit(e.Graphics, IconImage, iconRect);
+                    catch { }
                 }
-            }
+                if (labelFont != null) { try { labelFont.Dispose(); } catch { } }
 
-            Color tColor = this.Parent != null ? this.Parent.ForeColor : Color.White;
-            Font labelFont = null;
-            Settings cfg = MainForm.CurrentSettings;
-            if (cfg != null)
-            {
-                tColor = Settings.ParseColor(cfg.FontItemsColor, tColor);
-                labelFont = Settings.MakeFont(cfg.FontItemsName, cfg.FontItemsSize);
-            }
-            int labelSpace = GetTextSpace();
-            if (labelSpace > 0)
-            {
-                using (var brush = new SolidBrush(tColor))
-                using (var font = labelFont != null ? labelFont : new Font("Segoe UI", 9f))
+                // Multi-select highlight (red edit-button mode).
+                if (MultiSelected)
                 {
-                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
-                    Rectangle textRect = new Rectangle(4, this.Height - labelSpace - 1, this.Width - 8, labelSpace);
-                    e.Graphics.DrawString(Item.Name, font, brush, textRect, sf);
+                    try
+                    {
+                        using (var pen = new Pen(Color.FromArgb(235, 60, 40), 2f))
+                            e.Graphics.DrawPath(pen, path);
+                    }
+                    catch { }
                 }
             }
-            if (labelFont != null) labelFont.Dispose();
-
-            // Multi-select highlight (red edit-button mode).
-            if (MultiSelected)
+            catch (Exception ex)
             {
-                try
-                {
-                    using (var pen = new Pen(Color.FromArgb(235, 60, 40), 2f))
-                        e.Graphics.DrawPath(pen, path);
-                }
-                catch { }
+                AppLog.Write("TileControl.OnPaint", ex);
             }
         }
 

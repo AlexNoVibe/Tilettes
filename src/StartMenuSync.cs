@@ -132,47 +132,62 @@ namespace WinPanel
 
         private static void FillChildren(Node parent, string dir)
         {
+            // Subdirectories
             try
             {
-                foreach (string sub in Directory.GetDirectories(dir))
+                string[] subDirs = null;
+                try { subDirs = Directory.GetDirectories(dir); }
+                catch (Exception ex) { AppLog.Write("FillChildren: GetDirectories " + dir, ex); }
+                if (subDirs != null)
                 {
-                    try
+                    foreach (string sub in subDirs)
                     {
-                        string name = Path.GetFileName(sub.TrimEnd('\\'));
-                        if (string.IsNullOrEmpty(name) || name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
-                        var n = new Node();
-                        n.Name = name;
-                        n.Src = "dir:" + sub.ToLowerInvariant();
-                        n.IsFolder = true;
-                        n.Path = sub;
-                        FillChildren(n, sub);
-                        parent.Children.Add(n);
+                        try
+                        {
+                            string name = Path.GetFileName(sub.TrimEnd('\\'));
+                            if (string.IsNullOrEmpty(name) || name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
+                            var n = new Node();
+                            n.Name = name;
+                            n.Src = "dir:" + sub.ToLowerInvariant();
+                            n.IsFolder = true;
+                            n.Path = sub;
+                            FillChildren(n, sub);
+                            parent.Children.Add(n);
+                        }
+                        catch (Exception ex) { AppLog.Write("FillChildren: subdir " + sub, ex); }
                     }
-                    catch { }
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Write("FillChildren: directories " + dir, ex); }
+
+            // Files (shortcuts)
             try
             {
-                foreach (string file in Directory.GetFiles(dir))
+                string[] files = null;
+                try { files = Directory.GetFiles(dir); }
+                catch (Exception ex) { AppLog.Write("FillChildren: GetFiles " + dir, ex); }
+                if (files != null)
                 {
-                    try
+                    foreach (string file in files)
                     {
-                        string name = Path.GetFileName(file);
-                        if (name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
-                        string target = ResolveShortcutTarget(file);
-                        // Dead link: the .lnk names a target that no longer exists.
-                        if (target != null && !File.Exists(target) && !Directory.Exists(target)) continue;
-                        var n = new Node();
-                        n.Name = Path.GetFileNameWithoutExtension(file);
-                        n.Src = "file:" + file.ToLowerInvariant();
-                        n.Path = file;
-                        parent.Children.Add(n);
+                        try
+                        {
+                            string name = Path.GetFileName(file);
+                            if (name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
+                            string target = ResolveShortcutTarget(file);
+                            // Dead link: the .lnk names a target that no longer exists.
+                            if (target != null && !File.Exists(target) && !Directory.Exists(target)) continue;
+                            var n = new Node();
+                            n.Name = Path.GetFileNameWithoutExtension(file);
+                            n.Src = "file:" + file.ToLowerInvariant();
+                            n.Path = file;
+                            parent.Children.Add(n);
+                        }
+                        catch (Exception ex) { AppLog.Write("FillChildren: file " + file, ex); }
                     }
-                    catch { }
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Write("FillChildren: files " + dir, ex); }
         }
 
         private static Node BuildUwpFolder()
