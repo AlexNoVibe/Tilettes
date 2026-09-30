@@ -45,6 +45,7 @@ namespace WinPanel
         private bool sizing;
         private double consoleFrac = 0.40;
         private Panel crumbHost;
+        private Panel titleBarPanel; // height follows the UI font
         private FlowLayoutPanel crumbFlow;
         private TextBox pathEdit, consoleIn;
         private ListBox bookmarksList, fileList;
@@ -154,6 +155,7 @@ namespace WinPanel
 
             // ---------- title bar ----------
             var titleBar = new EdgeTitlePanel(this) { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
+            titleBarPanel = titleBar;
             titleBar.MouseDown += (s, e) =>
             {
                 if (e.Button == MouseButtons.Left)
@@ -540,30 +542,42 @@ namespace WinPanel
             if (this.IsDisposed || btnBack == null || fileList == null) return;
             int W = this.ClientSize.Width;
             int H = this.ClientSize.Height;
-            int top = 30;
+
+            // Every row height derives from the UI font so nothing clips at
+            // bigger font sizes.
+            int fh = this.Font.Height;
+            int btnH = fh + 8;   // buttons: nav, scope, edit path, console, input row
+            int lblH = fh + 4;   // small labels: status, hint, bookmarks header
+            int titleH = fh + 14;
+            if (titleBarPanel != null) titleBarPanel.Height = titleH;
+            int top = titleH;
             int rightEdge = W - 8;
 
-            btnToggleBm.SetBounds(8, top + 2, 28, 26);
-            btnTopBar.SetBounds(44, top + 2, 28, 26);
-            btnBack.SetBounds(82, top + 2, 28, 26);
-            btnFwd.SetBounds(120, top + 2, 28, 26);
-            btnUp.SetBounds(158, top + 2, 28, 26);
-            btnRefresh.SetBounds(196, top + 2, 28, 26);
+            int navY = top + 4;
+            btnToggleBm.SetBounds(8, navY, 28, btnH);
+            btnTopBar.SetBounds(44, navY, 28, btnH);
+            btnBack.SetBounds(82, navY, 28, btnH);
+            btnFwd.SetBounds(120, navY, 28, btnH);
+            btnUp.SetBounds(158, navY, 28, btnH);
+            btnRefresh.SetBounds(196, navY, 28, btnH);
 
             // Top-right is reserved for search: [scope toggle][search box][status].
-            statusLbl.SetBounds(rightEdge - 150, top + 7, 146, 18);
+            statusLbl.SetBounds(rightEdge - 150, navY + (btnH - lblH) / 2, 146, lblH);
             int searchW = Math.Min(280, Math.Max(150, W / 5));
             int searchX = rightEdge - 150 - 6 - searchW;
-            searchBox.SetBounds(searchX, top + 3, searchW, 24);
-            btnScope.SetBounds(searchX - 6 - 64, top + 2, 64, 26);
+            searchBox.SetBounds(searchX, navY + (btnH - searchBox.Height) / 2, searchW, searchBox.Height);
+            int scopeW = TextRenderer.MeasureText(btnScope.Text, this.Font).Width + 20;
+            btnScope.SetBounds(searchX - 6 - scopeW, navY, scopeW, btnH);
 
             // The breadcrumb path bar sits on its own row below the nav row.
-            int crumbTop = top + 34;
-            btnEditPath.SetBounds(rightEdge - 72, crumbTop + 1, 66, 26);
-            int crumbW = Math.Max(80, rightEdge - 72 - 6 - 8);
-            crumbHost.SetBounds(8, crumbTop, crumbW, 28);
+            int crumbTop = navY + btnH + 8;
+            int editW = TextRenderer.MeasureText(btnEditPath.Text, this.Font).Width + 20;
+            btnEditPath.SetBounds(rightEdge - editW, crumbTop, editW, btnH);
+            int crumbH = btnH + 6;
+            int crumbW = Math.Max(80, rightEdge - editW - 6 - 8);
+            crumbHost.SetBounds(8, crumbTop, crumbW, crumbH);
             pathEdit.SetBounds(8, crumbTop + 2, crumbW, 24);
-            int crumbBottom = crumbTop + 30;
+            int crumbBottom = crumbTop + crumbH + 2;
 
             // Top bookmarks bar height follows the font so chip labels are not cut.
             topBarHost.Visible = topBarVisible;
@@ -576,12 +590,11 @@ namespace WinPanel
             int consTop = H - consArea;
             if (consTop < listTop + 90) consTop = listTop + 90;
             int splitH = 8;
-            int splitTop = consTop - 10;
-            int listH = splitTop - 4 - listTop;
+            int listH = consTop - 10 - 4 - listTop;
             if (listH < 60) listH = 60;
 
-            bmHeader.SetBounds(10, listTop - 18, 150, 16);
-            btnBmAdd.SetBounds(184, listTop - 22, 24, 20);
+            bmHeader.SetBounds(10, listTop - lblH - 4, 150, lblH);
+            btnBmAdd.SetBounds(184, listTop - btnH - 2, 24, btnH);
             bookmarksList.SetBounds(8, listTop, 200, listH);
             int bmItemH = Math.Max(20, TextRenderer.MeasureText("Ag", this.Font).Height + 8);
             if (bookmarksList.ItemHeight != bmItemH) bookmarksList.ItemHeight = bmItemH;
@@ -594,25 +607,32 @@ namespace WinPanel
 
             splitter.SetBounds(8, listTop + listH + 2, W - 16, splitH);
 
-            lblConsole.SetBounds(10, consTop + 6, 120, 18);
-            btnConsoleWin.SetBounds(rightEdge - 100, consTop + 3, 100, 22);
-            btnConsoleRestart.SetBounds(rightEdge - 100 - 6 - 74, consTop + 3, 74, 22);
-            btnConsoleClear.SetBounds(rightEdge - 100 - 6 - 74 - 6 - 64, consTop + 3, 64, 22);
+            lblConsole.SetBounds(10, consTop + (btnH - lblH) / 2, 120, lblH);
+            int conBtnY = consTop + 2;
+            int wWin = TextRenderer.MeasureText(btnConsoleWin.Text, this.Font).Width + 20;
+            int wRestart = TextRenderer.MeasureText(btnConsoleRestart.Text, this.Font).Width + 16;
+            int wClear = TextRenderer.MeasureText(btnConsoleClear.Text, this.Font).Width + 16;
+            btnConsoleWin.SetBounds(rightEdge - wWin, conBtnY, wWin, btnH);
+            btnConsoleRestart.SetBounds(rightEdge - wWin - 6 - wRestart, conBtnY, wRestart, btnH);
+            btnConsoleClear.SetBounds(rightEdge - wWin - 6 - wRestart - 6 - wClear, conBtnY, wClear, btnH);
 
-            int ipTop = H - 46;
-            int outTop = consTop + 28;
+            // Bottom: input row + hint line, both scaled from the font.
+            int ipTop = H - (btnH + lblH + 16);
+            int outTop = consTop + btnH + 10;
             int outH = ipTop - 6 - outTop;
             if (outH < 40) outH = 40;
             consoleOut.SetBounds(8, outTop, W - 16, outH);
 
-            promptLbl.SetBounds(8, ipTop + 4, 16, 18);
-            int runX = rightEdge - 56;
-            int saveX = runX - 6 - 64;
-            consoleIn.SetBounds(26, ipTop, Math.Max(80, saveX - 6 - 26), 24);
-            btnSaveCmd.SetBounds(saveX, ipTop, 64, 24);
-            btnRunCmd.SetBounds(runX, ipTop, 56, 24);
+            promptLbl.SetBounds(8, ipTop + (btnH - lblH) / 2, 16, lblH);
+            int wRun = TextRenderer.MeasureText(btnRunCmd.Text, this.Font).Width + 20;
+            int wSave = TextRenderer.MeasureText(btnSaveCmd.Text, this.Font).Width + 16;
+            int runX = rightEdge - wRun;
+            int saveX = runX - 6 - wSave;
+            consoleIn.SetBounds(26, ipTop, Math.Max(80, saveX - 6 - 26), btnH);
+            btnSaveCmd.SetBounds(saveX, ipTop, wSave, btnH);
+            btnRunCmd.SetBounds(runX, ipTop, wRun, btnH);
 
-            hintLbl.SetBounds(8, H - 20, W - 16, 16);
+            hintLbl.SetBounds(8, ipTop + btnH + 4, W - 16, lblH);
         }
 
         // ---------- top bookmarks bar ----------

@@ -1082,7 +1082,8 @@ namespace WinPanel
             b.FlatAppearance.BorderSize = 0;
             b.FlatAppearance.MouseOverBackColor = hoverColor;
             b.Text = label();
-            b.Height = 23;
+            // `height` already follows the search box font (sBox.PreferredHeight);
+            // a fixed 23px here clipped the labels at bigger UI fonts.
             b.Width = TextRenderer.MeasureText(b.Text, b.Font).Width + 14;
             if (!string.IsNullOrEmpty(tooltip)) itemTip.SetToolTip(b, tooltip);
             b.Click += delegate
@@ -2172,6 +2173,10 @@ namespace WinPanel
             var tabByButton = new Dictionary<Button, TabData>();
             var buttons = new List<Button>();
             int[] rowX = new int[tabRows];
+            // The window corner is rounded (r=15): a tab flush with (0,0) gets its
+            // corner clipped into a step. Inset the top row so the tab starts
+            // where the arc is only ~1px deep.
+            rowX[0] = 12;
 
             foreach (var tabData in records.Tabs)
             {
@@ -4351,20 +4356,22 @@ namespace WinPanel
             Form prompt = new Form()
             {
                 Width = 400,
-                Height = 150,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 Text = caption,
                 StartPosition = FormStartPosition.CenterParent,
                 BackColor = Color.FromArgb(45, 45, 48),
                 ForeColor = Color.White
             };
-            Label textLabel = new Label() { Left = 20, Top = 20, Text = text, Width = 350 };
-            TextBox textBox = new TextBox() { Left = 20, Top = 50, Width = 350, Text = defaultValue, BackColor = Color.FromArgb(30, 30, 30), ForeColor = Color.White };
-            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 270, Top = 80, Width = 100, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(62, 62, 66) };
-            confirmation.FlatAppearance.BorderSize = 0;
-
             if (MainForm.CurrentSettings != null)
                 prompt.Font = Settings.MakeFont(MainForm.CurrentSettings.FontUiName, MainForm.CurrentSettings.FontUiSize);
+
+            // Row positions follow the (possibly large) UI font.
+            int fh = prompt.Font.Height;
+            Label textLabel = new Label() { Left = 20, Top = 14, Text = text, Width = 350, Height = fh + 4, AutoSize = false };
+            TextBox textBox = new TextBox() { Left = 20, Top = 14 + fh + 10, Width = 350, Text = defaultValue, BackColor = Color.FromArgb(30, 30, 30), ForeColor = Color.White };
+            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 280, Top = textBox.Top + textBox.Height + 12, Width = 100, Height = fh + 12, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(62, 62, 66) };
+            confirmation.FlatAppearance.BorderSize = 0;
+            prompt.ClientSize = new Size(400, confirmation.Top + confirmation.Height + 14);
 
             prompt.Controls.Add(textBox);
             prompt.Controls.Add(confirmation);
@@ -4397,17 +4404,22 @@ namespace WinPanel
             this.MinimizeBox = false;
             this.BackColor = bg;
             this.ForeColor = txt;
-            this.ClientSize = new Size(430, danger == null ? 152 : 192);
             if (st != null) this.Font = Settings.MakeFont(st.FontUiName, st.FontUiSize);
+
+            // Row heights follow the (possibly large) UI font so the title and
+            // buttons never get clipped.
+            int fh = this.Font.Height;
+            Font titleFont = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold);
+            int tfh = titleFont.Height;
 
             var titleLbl = new Label
             {
                 Text = title,
                 Left = 20,
-                Top = 16,
+                Top = 14,
                 Width = 390,
-                Height = 22,
-                Font = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold)
+                Height = tfh + 6,
+                Font = titleFont
             };
             this.Controls.Add(titleLbl);
 
@@ -4415,30 +4427,37 @@ namespace WinPanel
             {
                 Text = message,
                 Left = 20,
-                Top = 44,
+                Top = titleLbl.Bottom + 6,
                 Width = 390,
-                Height = 36
+                Height = System.Windows.Forms.TextRenderer.MeasureText(message, this.Font, new Size(390, 10000), System.Windows.Forms.TextFormatFlags.WordBreak).Height + 4
             };
             this.Controls.Add(msgLbl);
 
+            int contentBottom = msgLbl.Bottom;
             if (danger != null)
             {
                 var dangerLbl = new Label
                 {
                     Text = danger,
                     Left = 20,
-                    Top = 80,
+                    Top = contentBottom + 6,
                     Width = 390,
-                    Height = 56,
+                    Height = System.Windows.Forms.TextRenderer.MeasureText(danger, this.Font, new Size(390, 10000), System.Windows.Forms.TextFormatFlags.WordBreak).Height + 4,
                     ForeColor = Color.FromArgb(235, 70, 70)
                 };
                 this.Controls.Add(dangerLbl);
+                contentBottom = dangerLbl.Bottom;
             }
 
-            int btnTop = this.ClientSize.Height - 42;
-            var cancelBtn = new Button { Text = "Cancel", Left = 210, Top = btnTop, Width = 95, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            int btnH = fh + 12;
+            int okW = Math.Max(95, System.Windows.Forms.TextRenderer.MeasureText(Loc.S("Remove", "Удалить"), this.Font).Width + 26);
+            int cancelW = Math.Max(95, System.Windows.Forms.TextRenderer.MeasureText(Loc.S("Cancel", "Отмена"), this.Font).Width + 26);
+            int btnTop = contentBottom + 14;
+            this.ClientSize = new Size(430, btnTop + btnH + 16);
+
+            var cancelBtn = new Button { Text = Loc.S("Cancel", "Отмена"), Left = this.ClientSize.Width - 20 - okW - 10 - cancelW, Top = btnTop, Width = cancelW, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
             cancelBtn.FlatAppearance.BorderSize = 0;
-            var okBtn = new Button { Text = "Remove", Left = 315, Top = btnTop, Width = 95, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(170, 48, 48), ForeColor = Color.White };
+            var okBtn = new Button { Text = Loc.S("Remove", "Удалить"), Left = this.ClientSize.Width - 20 - okW, Top = btnTop, Width = okW, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(170, 48, 48), ForeColor = Color.White };
             okBtn.FlatAppearance.BorderSize = 0;
 
             this.Controls.Add(cancelBtn);
@@ -4522,29 +4541,33 @@ namespace WinPanel
             this.MinimizeBox = false;
             this.BackColor = bg;
             this.ForeColor = txt;
-            this.ClientSize = new Size(470, 250);
             if (st != null) this.Font = Settings.MakeFont(st.FontUiName, st.FontUiSize);
-            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+
+            // Row heights follow the (possibly large) UI font.
+            int fh = this.Font.Height;
+            Font titleFont = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold);
+            int tfh = titleFont.Height;
 
             var title = new Label
             {
                 Text = Loc.S("Description", "Описание") + " — " + item.Name,
                 Left = 20,
-                Top = 16,
+                Top = 14,
                 Width = 430,
-                Height = 22,
-                Font = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold)
+                Height = tfh + 6,
+                Font = titleFont
             };
             this.Controls.Add(title);
 
+            string infoText = Loc.S("The description is used by the search and pops up as a tooltip when hovering the element.",
+                                    "Описание используется в поиске и всплывает подсказкой при наведении на элемент.");
             var info = new Label
             {
-                Text = Loc.S("The description is used by the search and pops up as a tooltip when hovering the element.",
-                             "Описание используется в поиске и всплывает подсказкой при наведении на элемент."),
+                Text = infoText,
                 Left = 20,
-                Top = 42,
+                Top = title.Bottom + 6,
                 Width = 430,
-                Height = 32,
+                Height = System.Windows.Forms.TextRenderer.MeasureText(infoText, this.Font, new Size(430, 10000), System.Windows.Forms.TextFormatFlags.WordBreak).Height + 4,
                 ForeColor = dim
             };
             this.Controls.Add(info);
@@ -4552,9 +4575,9 @@ namespace WinPanel
             textBox = new TextBox
             {
                 Left = 20,
-                Top = 80,
+                Top = info.Bottom + 10,
                 Width = 430,
-                Height = 106,
+                Height = fh * 4 + 14,
                 Multiline = true,
                 ScrollBars = ScrollBars.Vertical,
                 BackColor = panel,
@@ -4564,10 +4587,15 @@ namespace WinPanel
             };
             this.Controls.Add(textBox);
 
-            var cancel = new Button { Text = Loc.S("Cancel", "Отмена"), Left = 250, Top = 198, Width = 95, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            int btnH = fh + 12;
+            int btnTop = textBox.Bottom + 14;
+            this.ClientSize = new Size(470, btnTop + btnH + 16);
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+
+            var cancel = new Button { Text = Loc.S("Cancel", "Отмена"), Left = 250, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
             cancel.FlatAppearance.BorderSize = 0;
             cancel.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
-            var ok = new Button { Text = Loc.S("OK", "ОК"), Left = 355, Top = 198, Width = 95, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            var ok = new Button { Text = Loc.S("OK", "ОК"), Left = 355, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
             ok.FlatAppearance.BorderSize = 0;
             ok.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
             ok.Click += (s, e) => { accepted = true; };
