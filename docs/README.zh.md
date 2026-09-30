@@ -1,10 +1,10 @@
 # Tilettes
 
-[English](README.md) · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · **中文 (简体)** · [日本語](README.ja.md)
+[English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · **中文 (简体)** · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
 适用于 Windows 的快速启动面板：磁贴网格，支持快捷方式、文件夹与标签页，内置模糊搜索和带控制台的迷你资源管理器。单个便携 EXE，无需安装，.NET Framework 4.8 (WinForms)。
 
-当前版本：**v0.5** — 下载：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新日志（英文）](README.md#changelog)。状态：**beta**。
+当前版本：**v0.5** — 下载：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新日志（英文）](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md#changelog)。状态：**beta**。
 
 ## 特性
 
@@ -62,4 +62,4 @@ build.bat
 
 只需带 .NET Framework 4.x 的任意 Windows —— 编译器是系统自带的。正式版本由 GitHub Actions 在每个 `v*` 标签上自动构建。
 
-完整文档：[**README.md**](README.md) (English) · [README.ru.md](README.ru.md) (Русский)
+完整文档：[**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

@@ -1,12 +1,12 @@
 # Tilettes
 
-**English** · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [中文 (简体)](README.zh.md) · [日本語](README.ja.md)
+**English** · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
-<!-- Adding a language: create README.<code>.md (translate), add lang_xx.cs
-     (UI table keyed by the English strings, see loc.cs), then extend the
-     language line above, the one at the top of every other README file and
-     the Loc.Languages array. GitHub shows README.md (English) on the repo
-     home; every other language is one file plus one link. -->
+<!-- Adding a language: create docs/README.<code>.md (translate), add
+     lang_xx.cs (UI table keyed by the English strings, see loc.cs), then
+     extend the language line above, the one at the top of every other README
+     file and the Loc.Languages array. GitHub shows README.md (English) on the
+     repo home; every other language lives in docs/ as one file plus one link. -->
 
 A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 

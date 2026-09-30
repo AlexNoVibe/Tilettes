@@ -1,10 +1,10 @@
 # Tilettes
 
-[English](README.md) · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · **Français** · [Italiano](README.it.md) · [Polski](README.pl.md) · [中文 (简体)](README.zh.md) · [日本語](README.ja.md)
+[English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · **Français** · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
 Un panneau de lancement rapide pour Windows : une grille de tuiles avec raccourcis, dossiers et onglets, une recherche floue intégrée et un mini-explorateur avec console intégrée. Un seul EXE portable, sans installation, .NET Framework 4.8 (WinForms).
 
-Version actuelle : **v0.5** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog (anglais)](README.md#changelog). Statut : **bêta**.
+Version actuelle : **v0.5** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog (anglais)](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md#changelog). Statut : **bêta**.
 
 ## Fonctions
 
@@ -62,4 +62,4 @@ build.bat
 
 N'importe quel Windows avec .NET Framework 4.x suffit — le compilateur fait partie du système. Les versions sont compilées automatiquement par GitHub Actions à chaque tag `v*`.
 
-Documentation complète : [**README.md**](README.md) (English) · [README.ru.md](README.ru.md) (Русский)
+Documentation complète : [**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

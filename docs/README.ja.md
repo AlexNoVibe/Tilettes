@@ -1,10 +1,10 @@
 # Tilettes
 
-[English](README.md) · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [中文 (简体)](README.zh.md) · **日本語**
+[English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · **日本語**
 
 Windows 用の高速ランチャーパネル：ショートカット・フォルダー・タブをまとめるタイルグリッド、あいまい検索、コンソール付きミニエクスプローラーを内蔵。単一のポータブル EXE、インストール不要、.NET Framework 4.8 (WinForms)。
 
-現在のバージョン：**v0.5** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴（英語）](README.md#changelog)。ステータス：**beta**。
+現在のバージョン：**v0.5** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴（英語）](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md#changelog)。ステータス：**beta**。
 
 ## 特徴
 
@@ -62,4 +62,4 @@ build.bat
 
 .NET Framework 4.x を持つ任意の Windows でOK — コンパイラは OS に同梱されています。リリースは `v*` タグごとに GitHub Actions が自動ビルドします。
 
-完全なドキュメント：[**README.md**](README.md) (English) · [README.ru.md](README.ru.md) (Русский)
+完全なドキュメント：[**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

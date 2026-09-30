@@ -1,10 +1,10 @@
 # Tilettes
 
-[English](README.md) · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · **Polski** · [中文 (简体)](README.zh.md) · [日本語](README.ja.md)
+[English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · **Polski** · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
 Panel szybkiego uruchamiania dla Windows: siatka kafelków ze skrótami, folderami i kartami, wbudowane wyszukiwanie rozmyte i mini eksplorator z wbudowaną konsolą. Jedna przenośna plik EXE, bez instalacji, .NET Framework 4.8 (WinForms).
 
-Aktualna wersja: **v0.5** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian (ang.)](README.md#changelog). Status: **beta**.
+Aktualna wersja: **v0.5** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian (ang.)](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md#changelog). Status: **beta**.
 
 ## Funkcje
 
@@ -62,4 +62,4 @@ build.bat
 
 Wystarczy dowolny Windows z .NET Framework 4.x — kompilator jest częścią systemu. Wersje publikacyjne buduje automatycznie GitHub Actions przy każdym tagu `v*`.
 
-Pełna dokumentacja: [**README.md**](README.md) (English) · [README.ru.md](README.ru.md) (Русский)
+Pełna dokumentacja: [**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

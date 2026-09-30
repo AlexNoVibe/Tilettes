@@ -1,12 +1,12 @@
 # Tilettes / Плиточки
 
-[English](README.md) · **Русский** · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [中文 (简体)](README.zh.md) · [日本語](README.ja.md)
+[English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · **Русский** · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · [Português](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md) · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
-<!-- Как добавить язык: создайте README.<код>.md (перевод), добавьте lang_xx.cs
-     (таблица интерфейса с английскими ключами, см. loc.cs), затем допишите его
-     в строку языков выше, в шапке каждого README-файла и в Loc.Languages.
-     На главной репозитория показывается README.md (английский), каждый язык —
-     отдельный файл. -->
+<!-- Как добавить язык: создайте docs/README.<код>.md (перевод), добавьте
+     lang_xx.cs (таблица интерфейса с английскими ключами, см. loc.cs), затем
+     допишите его в строку языков выше, в шапке каждого README-файла и в
+     Loc.Languages. На главной репозитория показывается README.md (английский),
+     остальные языки лежат в docs/ — каждый язык это один файл и одна ссылка. -->
 
 Панель быстрого запуска для Windows: сетка плиток с ярлыками, папками и вкладками, встроенный fuzzy-поиск и мини-проводник с консолью. Один портативный EXE, без установки, .NET Framework 4.8 (WinForms).
 
