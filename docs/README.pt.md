@@ -60,6 +60,6 @@ Outras formas de ajudar: relate bugs e ideias em [Issues](https://github.com/Ale
 build.bat
 ```
 
-Requer qualquer Windows com .NET Framework 4.x — o compilador vem incluído no sistema operacional. As versões são geradas automaticamente pelo GitHub Actions em tags v*.
+Requer qualquer Windows com .NET Framework 4.x — o compilador vem incluído no sistema operacional. As versões são criadas automaticamente pelo GitHub Actions a cada tag `v*` e contêm apenas o arquivo de código-fonte (o workflow também verifica a compilação); compile o exe você mesmo com `build.bat`.
 
 Documentação completa: [**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

@@ -60,6 +60,6 @@ bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5
 build.bat
 ```
 
-.NET Framework 4.x を持つ任意の Windows でOK — コンパイラは OS に同梱されています。リリースは `v*` タグごとに GitHub Actions が自動ビルドします。
+.NET Framework 4.x を持つ任意の Windows でOK — コンパイラは OS に同梱されています。リリースは `v*` タグごとに GitHub Actions が自動作成し、ソースアーカイブのみを含みます（workflow はビルドの検証も行います）。exe は `build.bat` で各自ビルドしてください。
 
 完全なドキュメント：[**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)

@@ -60,6 +60,6 @@ bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5
 build.bat
 ```
 
-只需带 .NET Framework 4.x 的任意 Windows —— 编译器是系统自带的。正式版本由 GitHub Actions 在每个 `v*` 标签上自动构建。
+只需带 .NET Framework 4.x 的任意 Windows —— 编译器是系统自带的。发布版本由 GitHub Actions 在每个 `v*` 标签上自动创建，仅包含源码压缩包（workflow 也会验证编译）；exe 请自行用 `build.bat` 构建。
 
 完整文档：[**README.md**](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) (English) · [README.ru.md](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) (Русский)
