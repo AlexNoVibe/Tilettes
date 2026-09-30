@@ -23,14 +23,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Three failing csc runs in a row also serve as the build verification:
-      # any of them failing fails the whole workflow.
+      # Three csc builds also serve as the build verification: any failing
+      # run fails the whole workflow. NOTE: every build.bat MUST be invoked
+      # with "call" - a bare batch invocation from a multi-line cmd script
+      # transfers control and never returns, so the x86/x64 lines silently
+      # never ran (v0.6beta's first run shipped without them for exactly
+      # this reason).
       - name: Build exes (AnyCPU universal + x86 + x64, same as build.bat)
         shell: cmd
         run: |
-          build.bat
-          build.bat x86
-          build.bat x64
+          call build.bat || exit /b 1
+          call build.bat x86 || exit /b 1
+          call build.bat x64 || exit /b 1
+          dir Tilettes*.exe
 
       - name: Create release and attach exes (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
@@ -43,7 +48,7 @@ jobs:
             # on the runner has no --generate-notes, the notes file is used
             # instead on both paths).
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file CHANGELOG.md
-            gh release upload "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" "Tilettes.exe" "Tilettes-x86.exe" "Tilettes-x64.exe" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file CHANGELOG.md
+            gh release create "$GITHUB_REF_NAME" "Tilettes.exe" "Tilettes-x86.exe" "Tilettes-x64.exe" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file CHANGELOG.md
           fi
