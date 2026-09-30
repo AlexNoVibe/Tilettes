@@ -421,19 +421,15 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("Start tab relayout", ex); return false; }
         }
 
-        // The layout itself:
-        //   top row - the senior folders (the sync roots), sized by content
-        //             (empty = 1x1, rich = 5x5/6x6), packed edge to edge so the
-        //             row fits the grid width (shrunk further on a narrow grid);
-        //   below   - every senior's direct subfolders as COPIES (the originals
-        //             keep all their content), sized by content (2x2 minimum),
-        //             stacked in a column that starts right under their senior;
-        //   rules   - tiles of different seniors never overlap: side-by-side
-        //             columns of different seniors may touch, but a tile that
-        //             would sit directly below a foreign senior's tile keeps a
-        //             1-cell gap; empty subfolders are not placed; when the field
-        //             is full the remaining subfolders simply stay inside their
-        //             senior folder.
+        // The layout itself (simplified on request, 30.09):
+        //   ONLY the senior folders (the sync roots) are placed on the tab, each
+        //   at the maximum possible size (6x6, or a uniform smaller size when
+        //   the grid is too narrow), packed edge to edge in the top row.
+        //   Nothing else is put on the field: the subfolder quick-access copies
+        //   of the old algorithm are dropped and stay inside their seniors.
+        //   The full old filling algorithm (content-based senior sizes, phase B
+        //   columns, phase C overflow with the 1-cell gap rule) is kept below in
+        //   a commented block so it can be restored later.
         private static bool LayoutStartTab(TabData tab, int cols, int rows)
         {
             bool changed = false;
@@ -469,23 +465,35 @@ namespace WinPanel
             // int.MaxValue = user-placed items (never overlapped).
             int[,] owner = new int[rows, cols];
 
-            // Senior sizes: content-rich ones get the top row, the empty ones a
-            // single cell. Then shrink until the row fits the grid width.
+            // ---- OLD senior sizing (by content) — replaced 30.09, kept for restore ----
+            //foreach (var s in seniors)
+            //{
+            //    int c = counts[s];
+            //    s.Size = c == 0 ? 1 : (c >= 60 ? 6 : 5);
+            //}
+            //int total = 0;
+            //foreach (var s in seniors) total += s.Size;
+            //while (total > cols)
+            //{
+            //    ShortcutItem biggest = null;
+            //    foreach (var s in seniors)
+            //        if (counts[s] > 0 && s.Size > 2 && (biggest == null || s.Size > biggest.Size)) biggest = s;
+            //    if (biggest == null) break;
+            //    biggest.Size--;
+            //    total--;
+            //}
+
+            // NEW: every senior at the maximum possible size — 6x6 each while the
+            // row fits the grid width, then one uniform smaller size, with the
+            // spare cells of the last row handed to the leftmost seniors.
+            int baseSize = Math.Max(1, Math.Min(6, cols / Math.Max(1, seniors.Count)));
+            int spare = cols - baseSize * seniors.Count;
             foreach (var s in seniors)
             {
-                int c = counts[s];
-                s.Size = c == 0 ? 1 : (c >= 60 ? 6 : 5);
-            }
-            int total = 0;
-            foreach (var s in seniors) total += s.Size;
-            while (total > cols)
-            {
-                ShortcutItem biggest = null;
-                foreach (var s in seniors)
-                    if (counts[s] > 0 && s.Size > 2 && (biggest == null || s.Size > biggest.Size)) biggest = s;
-                if (biggest == null) break;
-                biggest.Size--;
-                total--;
+                int sz = baseSize + (spare > 0 ? 1 : 0);
+                if (sz > 6) sz = 6;
+                if (spare > 0) spare--;
+                if (s.Size != sz) { s.Size = sz; changed = true; }
             }
 
             // User-placed items keep their cells (and block them).
@@ -510,52 +518,55 @@ namespace WinPanel
                 x += s.Size;
             }
 
+            // ---- OLD filling algorithm (30.09: commented out on request) ----
             // Phase B: every senior fills its own column (directly below it).
             // Phase C: the rest goes to the first free spot on the field, keeping
             //          a 1-cell gap above foreign tiles.
-            var overflow = new List<KeyValuePair<int, ShortcutItem>>();
-            for (int idx = 0; idx < seniors.Count; idx++)
-            {
-                var senior = seniors[idx];
-                if (senior.Children == null || senior.Children.Count == 0) continue;
-                int cy = senior.Size;     // the column starts right below the senior
-                int cx = senior.GridX;
-                var subs = new List<ShortcutItem>();
-                foreach (var c in senior.Children)
-                    if (c.IsFolder && CountDeep(c) > 0) subs.Add(c);
-                subs.Sort(delegate(ShortcutItem a, ShortcutItem b)
-                {
-                    return CountDeep(b).CompareTo(CountDeep(a));
-                });
-                foreach (var sub in subs)
-                {
-                    int k = TileSizeFor(CountDeep(sub));
-                    if (k > senior.Size) k = senior.Size;
-                    if (cy + k <= rows && CanPlace(owner, idx + 1, cx, cy, k))
-                    {
-                        PlaceCopy(tab, owner, idx, sub, k, cx, cy);
-                        changed = true;
-                        cy += k;
-                    }
-                    else
-                    {
-                        overflow.Add(new KeyValuePair<int, ShortcutItem>(idx, sub));
-                    }
-                }
-            }
-            foreach (var kv in overflow)
-            {
-                var senior = seniors[kv.Key];
-                int k = TileSizeFor(CountDeep(kv.Value));
-                if (k > senior.Size) k = senior.Size;
-                Point p = FindSpot(owner, kv.Key + 1, k, cols, rows);
-                if (p.X < 0) continue;   // the field is full: the rest stays inside the senior
-                PlaceCopy(tab, owner, kv.Key, kv.Value, k, p.X, p.Y);
-                changed = true;
-            }
+            //var overflow = new List<KeyValuePair<int, ShortcutItem>>();
+            //for (int idx = 0; idx < seniors.Count; idx++)
+            //{
+            //    var senior = seniors[idx];
+            //    if (senior.Children == null || senior.Children.Count == 0) continue;
+            //    int cy = senior.Size;     // the column starts right below the senior
+            //    int cx = senior.GridX;
+            //    var subs = new List<ShortcutItem>();
+            //    foreach (var c in senior.Children)
+            //        if (c.IsFolder && CountDeep(c) > 0) subs.Add(c);
+            //    subs.Sort(delegate(ShortcutItem a, ShortcutItem b)
+            //    {
+            //        return CountDeep(b).CompareTo(CountDeep(a));
+            //    });
+            //    foreach (var sub in subs)
+            //    {
+            //        int k = TileSizeFor(CountDeep(sub));
+            //        if (k > senior.Size) k = senior.Size;
+            //        if (cy + k <= rows && CanPlace(owner, idx + 1, cx, cy, k))
+            //        {
+            //            PlaceCopy(tab, owner, idx, sub, k, cx, cy);
+            //            changed = true;
+            //            cy += k;
+            //        }
+            //        else
+            //        {
+            //            overflow.Add(new KeyValuePair<int, ShortcutItem>(idx, sub));
+            //        }
+            //    }
+            //}
+            //foreach (var kv in overflow)
+            //{
+            //    var senior = seniors[kv.Key];
+            //    int k = TileSizeFor(CountDeep(kv.Value));
+            //    if (k > senior.Size) k = senior.Size;
+            //    Point p = FindSpot(owner, kv.Key + 1, k, cols, rows);
+            //    if (p.X < 0) continue;   // the field is full: the rest stays inside the senior
+            //    PlaceCopy(tab, owner, kv.Key, kv.Value, k, p.X, p.Y);
+            //    changed = true;
+            //}
             return changed;
         }
 
+        // Used only by the commented-out filling algorithm above (kept so the
+        // old behaviour can be restored verbatim).
         private static void PlaceCopy(TabData tab, int[,] owner, int seniorIdx, ShortcutItem sub, int size, int gx, int gy)
         {
             var copy = new ShortcutItem();

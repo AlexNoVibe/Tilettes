@@ -2566,6 +2566,28 @@ namespace WinPanel
                 layoutPanel.Controls.Add(backBtn);
             }
 
+            // Synced folder children carry no grid coordinates (GridX/GridY = -1)
+            // and their free-layout pixel fallback (item.X/Y) is 0 for all of them,
+            // which used to collapse the whole folder view into the top-left cell.
+            // Place every unpositioned item explicitly: reading order over the
+            // grid, overflow beyond the visible rows (PlaceInGrid handles that).
+            if (tabData.IsGridLayout && itemsToRender != null)
+            {
+                int cols = Math.Max(1, settings.GridColumns);
+                int rows = Math.Max(1, settings.GridRows);
+                bool placedAny = false;
+                foreach (var it in itemsToRender)
+                {
+                    if (it.GridX >= 0 && it.GridY >= 0) continue;
+                    PlaceInGrid(itemsToRender, it, Math.Max(0, it.GridX), Math.Max(0, it.GridY), cols, rows);
+                    placedAny = true;
+                }
+                if (placedAny)
+                {
+                    try { records.Save(recordsPath); } catch { }
+                }
+            }
+
             foreach (var item in itemsToRender)
             {
                 AddShortcutControl(layoutPanel, item, tabData);
@@ -2988,8 +3010,13 @@ namespace WinPanel
                 if (item.GridX == -1) item.GridX = Math.Max(0, Math.Min(cols - s, item.X / cellWidth));
                 if (item.GridY == -1) item.GridY = Math.Max(0, Math.Min(rows - s, item.Y / cellHeight));
 
+                // Columns clamp to the visible grid (there is no horizontal scroll),
+                // but rows must NOT: folder views hold more items than the visible
+                // grid, and clamping the row piled every overflow tile onto the
+                // last visible rows. Beyond-the-fold positions stay reachable
+                // through AutoScroll.
                 int col = Math.Max(0, Math.Min(cols - s, item.GridX));
-                int row = Math.Max(0, Math.Min(rows - s, item.GridY));
+                int row = Math.Max(0, item.GridY);
 
                 xPos = col * cellWidth;
                 yPos = row * cellHeight;
