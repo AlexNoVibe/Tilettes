@@ -168,6 +168,8 @@ namespace WinPanel
                 Left = x,
                 Top = y,
                 Width = cw,
+                // Explicit height: the auto height clips larger UI fonts.
+                Height = mainFont.Height + 10,
                 Checked = settings.UpdateCheckEnabled,
                 ForeColor = textColor,
                 BackColor = bgColor,
@@ -177,7 +179,7 @@ namespace WinPanel
                 "Приложение периодически спрашивает GitHub Releases о новой версии (автозагрузки пока нет)"));
             chkUpdates.CheckedChanged += (s, e) => { settings.UpdateCheckEnabled = chkUpdates.Checked; };
             this.Controls.Add(chkUpdates);
-            y += lh + 14;
+            y += mainFont.Height + 20;
 
             // ---- Support the author: real wallets, click to copy ----
             lblSupport = AddLabel(x, ref y, cw, th + 2, titleFont);
@@ -199,13 +201,19 @@ namespace WinPanel
                     Font = smallFont,
                     AutoSize = false
                 };
-                row.Text = DonateWallets.Display(wallet);
+                // Short label + the address fitted into the row width (middle
+                // truncation at big fonts) — the address is always at least
+                // partially visible; clicking copies the full one.
+                row.Text = wallet.Short + ": " + FitAddress(wallet.Address,
+                    cw - TextRenderer.MeasureText(wallet.Short + ":  ", smallFont).Width, smallFont);
                 row.Links.Add(0, row.Text.Length, wallet);
                 row.LinkClicked += (s, e) => CopyWallet(wallet);
-                tips.SetToolTip(row, Loc.S("Click to copy the address", "Клик — скопировать адрес"));
+                tips.SetToolTip(row, wallet.Label +
+                    (string.IsNullOrEmpty(wallet.Networks) ? "" : " (" + wallet.Networks + ")") +
+                    " — " + wallet.Address + "\n" + Loc.S("Click to copy the address", "Клик — скопировать адрес"));
                 this.Controls.Add(row);
                 walletRows.Add(row);
-                y += smallFont.Height + 4;
+                y += smallFont.Height + 5;
             }
             lblCopied = AddLabel(x, ref y, cw, smallFont.Height + 2, smallFont);
             lblCopied.ForeColor = Color.FromArgb(46, 204, 113);
@@ -316,6 +324,23 @@ namespace WinPanel
                 copyResetTimer.Tick += (s, e) => { copyResetTimer.Stop(); lblCopied.Text = ""; };
             }
             copyResetTimer.Start();
+        }
+
+        // Fits the address into the remaining row width: shows it in full when
+        // possible, otherwise middle-truncates ("0xf848…6C2a") so at least a
+        // recognizable part is always visible.
+        private static string FitAddress(string address, int maxWidth, Font font)
+        {
+            if (maxWidth <= 0 || string.IsNullOrEmpty(address)) return address;
+            if (TextRenderer.MeasureText(address, font).Width <= maxWidth) return address;
+            string best = address.Substring(0, 4) + "…" + address.Substring(address.Length - 4);
+            for (int k = 4; k < address.Length / 2; k++)
+            {
+                string cand = address.Substring(0, k) + "…" + address.Substring(address.Length - k);
+                if (TextRenderer.MeasureText(cand, font).Width > maxWidth) break;
+                best = cand;
+            }
+            return best;
         }
 
         private void TitleBarDrag(object sender, MouseEventArgs e)

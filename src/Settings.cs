@@ -123,7 +123,7 @@ namespace WinPanel
             EditMode = true;
             EditModeState = 1;
             GridVisible = true;
-            HotkeyShow = "Ctrl+J";
+            HotkeyShow = "Ctrl+Q";
             MiniExplorerCtrlClick = true;
             MiniExplorerBookmarks = true;
             MiniExplorerTopBar = true;
@@ -173,7 +173,9 @@ namespace WinPanel
             SkinName = "";
             FirstRunDone = false;
             UpdateCheckEnabled = true;
-            UpdateCheckDays = 1;
+            // The first check happens UpdateCheckDays days after the very first
+            // start (the welcome window stamps LastUpdateCheck), not instantly.
+            UpdateCheckDays = 3;
             UpdateAutoInstall = false;
             LastUpdateCheck = "";
         }
@@ -357,7 +359,7 @@ namespace WinPanel
                 ini.Write("EditMode", EditMode.ToString());
                 ini.Write("EditModeState", EditModeState.ToString());
                 ini.Write("GridVisible", GridVisible.ToString());
-                ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+J" : HotkeyShow);
+                ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+Q" : HotkeyShow);
                 ini.Write("MiniExplorerCtrlClick", MiniExplorerCtrlClick.ToString());
                 ini.Write("MiniExplorerW", MiniExplorerW.ToString());
                 ini.Write("MiniExplorerH", MiniExplorerH.ToString());

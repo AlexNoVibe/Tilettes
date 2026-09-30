@@ -22,8 +22,9 @@ Current version: **v0.5** — download from [Releases](https://github.com/AlexNo
 
 ## First start & updates
 
-- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (RU/EN flags), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles).
-- **Update check** — the app asks the public GitHub Releases API every N days. When a newer tag exists, a green **⟳ Update** plate appears next to the settings button and opens the [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) page. Automatic installation is a stub (TODO) for now.
+- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (RU/EN flags), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles). It can be replayed anytime via "Show the welcome window again" in the settings.
+- **Update check** — the app asks the public GitHub Releases API once every N days (default 3; the first check also happens N days after the very first start, not immediately). Nothing is sent anywhere, and with the check disabled in settings no network request is made at all. When a newer tag exists, a green **⟳ Update** plate appears next to the settings button and opens the [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) page. "Check now" in the settings runs a manual check regardless of the interval (it reports the result in a message box). Automatic installation is a stub (TODO) for now.
+- **Testing hook** — start the app with `WINPANEL_MOCK_UPDATE=0.6` to render the Update plate as if a newer release existed (no network involved).
 
 ## Settings reference
 
@@ -35,7 +36,7 @@ All settings live in one dialog (⚙ button / tray menu) and are stored in `sett
 |---|---|---|---|
 | Startup Size (W × H) | 200–4000 | 900 × 800 | Panel size on every launch. Resizing during a session is not persisted — only the position is. |
 | Window Position (X, Y) | −4000…4000 | 100, 100 | Screen position on launch. Updated automatically when the window is moved. |
-| Show window hotkey | presets + custom | Ctrl+J | Global hotkey that shows/activates the panel. Presets: None, Ctrl+J, Ctrl+Shift+J, Ctrl+Alt+J, Ctrl+K, Ctrl+Shift+K, Alt+J; a custom `Mod+Key` combination can be typed into `HotkeyShow` in the INI. |
+| Show window hotkey | presets + custom | Ctrl+Q | Global hotkey that shows/activates the panel. Pick a preset (None, Ctrl+Q, Ctrl+Shift+Q, Alt+Q, Ctrl+J, …) or type any `Mod+Key` combination (Ctrl/Alt/Shift/Win + a letter or digit) right into the editable field; unparsable input is rejected with an explanation. |
 | Language | ru / en | ru | UI language, applied immediately. |
 
 ### Grid & tiles
@@ -82,10 +83,12 @@ One row each for **Tiles**, **Tabs** and **UI**:
 
 | Setting | Range | Default | Description |
 |---|---|---|---|
-| Check for updates automatically | on/off | on | Ask GitHub Releases for a newer version. |
-| Check every N days | 1–365 | 1 | How often to check. |
+| Check for updates automatically | on/off | on | Ask GitHub Releases for a newer version once every N days. Never runs when unchecked — no network request at all. |
+| Check every N days | 1–365 | 3 | How often to check. The first check happens N days after the very first start. |
+| Check now | button | — | Ask GitHub Releases immediately (manual check works even with the automatic one off). |
 | Install updates automatically | on/off | off | **Stub (TODO)** — not implemented yet. |
 | ♥ Donate | button | — | Popup wallet list (a click copies the address) plus the GitHub donate section. |
+| Show the welcome window again | button | — | Replay the first-start welcome window. |
 
 ### Mini explorer (INI keys)
 
@@ -262,9 +265,9 @@ Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoV
 
 ### v0.5 (2026-09-30)
 
-- First-start welcome window (once per data folder): thanks, beta notice + issue link, painted mini-diagram, language choice (RU/EN flags), update-check permission, donation addresses (click to copy); exit via "Close" or "Close & create example tiles" (Notepad / Calculator / Explorer / Paint as ready tiles).
-- Update check (stub): the app asks the public GitHub Releases API for the latest tag (interval configurable in days); when a newer version exists a green "Update" plate appears next to the settings button and opens the releases page. Auto-install is a stub (TODO).
-- Settings: new "Updates" section (check toggle + TODO note, interval in days, auto-install toggle) and a donate line with a popup wallet menu (a click copies the address).
+- First-start welcome window (once per data folder): thanks, beta notice + issue link, painted mini-diagram, language choice (RU/EN flags), update-check permission, donation addresses (click to copy); exit via "Close" or "Close & create example tiles" (Notepad / Calculator / Explorer / Paint as ready tiles). Re-playable from the settings.
+- Update check: the app asks the public GitHub Releases API for the latest tag every N days (default 3; the first check also happens N days after the install) — strictly only when the user allowed it, zero network requests otherwise. When a newer version exists a green "Update" plate appears next to the settings button and opens the releases page. Manual "Check now" button in the settings (reports the result in a message box). Auto-install is a stub (TODO). Mock hook for testing the plate: `WINPANEL_MOCK_UPDATE=0.6`.
+- Settings: new "Updates" section (check toggle, interval in days, check-now button, auto-install stub, donate line with a popup wallet menu — a click copies the address — and a welcome-window replay button). Editable hotkey field: any Ctrl/Alt/Shift/Win + letter/digit combination can be typed in (validated), default changed to Ctrl+Q.
 - Real donation wallet list grouped by chain: EVM networks (ETH · Polygon · Base · Monad · HyperEVM) share one address; plus Bitcoin, Solana and Sui.
 - Version is now a single constant (`AppInfo.AppVersion`); the tray tooltip and the welcome window show it.
 - GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), bilingual README split into per-language files (`README.md` EN + `README.ru.md`) for easy extension, GitHub Actions build workflow (release zip on `v*` tags), docs landing page for GitHub Pages.

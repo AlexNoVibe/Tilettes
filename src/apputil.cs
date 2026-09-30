@@ -102,20 +102,21 @@ namespace WinPanel
     {
         public class Wallet
         {
-            public string Label;    // short name ("Bitcoin (BTC)")
+            public string Label;    // full name ("Bitcoin (BTC)")
+            public string Short;    // compact prefix for narrow rows ("BTC")
             public string Networks; // network list ("" when single-network)
             public string Address;
         }
 
         public static readonly Wallet[] All = new[]
         {
-            new Wallet { Label = "EVM", Networks = "ETH · Polygon · Base · Monad · HyperEVM",
+            new Wallet { Label = "EVM", Short = "EVM", Networks = "ETH · Polygon · Base · Monad · HyperEVM",
                          Address = "0xf84897FA0b74083c16865315A5b148f4d92e6C2a" },
-            new Wallet { Label = "Bitcoin (BTC)", Networks = "",
+            new Wallet { Label = "Bitcoin (BTC)", Short = "BTC", Networks = "",
                          Address = "bc1qu9cf5uqc5wxqwde8mk378xwdlnjatvmhxhvat5" },
-            new Wallet { Label = "Solana (SOL)", Networks = "",
+            new Wallet { Label = "Solana (SOL)", Short = "SOL", Networks = "",
                          Address = "7ffCFnJBNVaF268FsZGKBPEWe3UNrWbasgt3aidiCw68" },
-            new Wallet { Label = "Sui (SUI)", Networks = "",
+            new Wallet { Label = "Sui (SUI)", Short = "SUI", Networks = "",
                          Address = "0x3ca194b355bb00a1f5f646786407ebbcdaee361c6f56fb92f8df9abd73b0c3b1" }
         };
 

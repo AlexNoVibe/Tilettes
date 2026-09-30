@@ -394,6 +394,16 @@ namespace WinPanel
             }
             catch (Exception ex) { AppLog.Write("Overflow pass", ex); }
 
+            // Test hook: WINPANEL_MOCK_UPDATE=0.6 renders the "Update" plate as
+            // if a newer release existed — no network involved, lets the plate
+            // be inspected before the first real release is published.
+            try
+            {
+                string mock = Environment.GetEnvironmentVariable("WINPANEL_MOCK_UPDATE");
+                if (!string.IsNullOrEmpty(mock)) updateAvailableVersion = mock;
+            }
+            catch { }
+
             LoadTabs();
 
             ApplyHotkey();
@@ -407,9 +417,10 @@ namespace WinPanel
             try { StartMenuSync.ScheduleIfNeeded(this, settings); }
             catch (Exception ex) { AppLog.Write("Sync schedule", ex); }
 
-            // Update check: GitHub Releases only, the download/install part is a stub.
-            try { UpdateChecker.ScheduleCheck(this, settings); }
-            catch (Exception ex) { AppLog.Write("Update schedule", ex); }
+            // No update check is scheduled here on purpose: before the welcome
+            // window the user has not consented yet, and the flag may still hold
+            // the default. The check is scheduled after the welcome (only when
+            // allowed) and after settings are saved.
         }
 
         // WS_EX_COMPOSITED: the window (with all children) paints double-buffered,
@@ -788,8 +799,15 @@ namespace WinPanel
                     // "Do it now" requests from the settings dialog.
                     if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, true);
                     if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
+                    if (sf.RunWelcomeAgain) RunFirstStartWelcome();
+                    if (sf.RunCheckNow)
+                    {
+                        // Explicit user action: ignores the auto-check flag and interval.
+                        UpdateChecker.CheckNow(this, this.settings);
+                    }
 
-                    // Update settings may have changed: re-evaluate the schedule.
+                    // Update settings may have changed: re-evaluate the schedule
+                    // (a no-op when the check is disabled — hard rule).
                     try { UpdateChecker.ScheduleCheck(this, this.settings); }
                     catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
@@ -802,6 +820,7 @@ namespace WinPanel
         {
             try
             {
+                bool wasFirstRun = !settings.FirstRunDone;
                 bool createExamples = false;
                 using (var wf = new WelcomeForm(settings))
                 {
@@ -811,6 +830,12 @@ namespace WinPanel
                 // Standard settings land in settings.ini right on the first start,
                 // together with the welcome answers (language, update check).
                 settings.FirstRunDone = true;
+                if (wasFirstRun)
+                {
+                    // The very first automatic check happens UpdateCheckDays days
+                    // after the install, not immediately.
+                    settings.LastUpdateCheck = DateTime.Now.ToString("yyyyMMddHHmmss");
+                }
                 settings.Save(settingsPath);
 
                 Loc.Lang = string.IsNullOrEmpty(settings.Language) ? "ru" : settings.Language;
@@ -822,7 +847,9 @@ namespace WinPanel
                 if (createExamples) CreateExampleTiles();
                 LoadTabs();
 
-                // The welcome window may have allowed the update check.
+                // Only schedules a network check when the user allowed it in the
+                // welcome window; the interval (and the "first check later" stamp
+                // above) decides when it actually fires.
                 try { UpdateChecker.ScheduleCheck(this, settings); }
                 catch (Exception ex) { AppLog.Write("Update schedule", ex); }
             }
@@ -1859,6 +1886,13 @@ namespace WinPanel
                 }
             }
             return vk != 0;
+        }
+
+        // Validation hook for the editable hotkey field in the settings dialog.
+        internal static bool TryParseHotkey(string hotkey)
+        {
+            uint mods, vk;
+            return ParseHotkey(hotkey, out mods, out vk);
         }
 
         // ---------- Non-blocking icon loading ----------

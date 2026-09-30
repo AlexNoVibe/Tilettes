@@ -66,6 +66,10 @@ namespace WinPanel
         private CheckBox chkAutoInstall;
         public bool RunBackupNow { get; private set; }
         public bool RunSyncNow { get; private set; }
+        // "Do it now" flags for the update section: a manual GitHub check and a
+        // replay of the first-start welcome window.
+        public bool RunCheckNow { get; private set; }
+        public bool RunWelcomeAgain { get; private set; }
 
         private Color bgColor;
         private Color panelColor;
@@ -238,12 +242,15 @@ namespace WinPanel
             y += 30;
 
             var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
-            cmbHotkey = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
-            cmbHotkey.Items.AddRange(new object[] { "None", "Ctrl+J", "Ctrl+Shift+J", "Ctrl+Alt+J", "Ctrl+K", "Ctrl+Shift+K", "Alt+J" });
-            string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+J" : settings.HotkeyShow;
+            // Editable dropdown: pick a preset or type any Mod+Key combination
+            // (Ctrl/Alt/Shift/Win + a letter or digit), e.g. "Ctrl+Alt+P".
+            cmbHotkey = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDown, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbHotkey.Items.AddRange(new object[] { "None", "Ctrl+Q", "Ctrl+Shift+Q", "Alt+Q", "Ctrl+J", "Ctrl+Shift+J", "Ctrl+Alt+J", "Ctrl+K", "Ctrl+Shift+K", "Alt+J" });
+            string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+Q" : settings.HotkeyShow;
             if (!cmbHotkey.Items.Contains(hk)) cmbHotkey.Items.Add(hk);
-            cmbHotkey.SelectedItem = hk;
-            Tip(cmbHotkey, "Keyboard shortcut that shows or hides the panel", "Сочетание клавиш, показывающее или скрывающее панель");
+            cmbHotkey.Text = hk;
+            Tip(cmbHotkey, "Global hotkey that shows the panel; pick a preset or type your own: Ctrl/Alt/Shift/Win + letter or digit",
+                "Глобальная горячая клавиша показа панели; выберите пресет или впишите свою: Ctrl/Alt/Shift/Win + буква или цифра");
             chkWinKey = new CheckBox
             {
                 Text = Loc.S("Capture Start button (Win)", "Захват кнопки Пуск (Win)"),
@@ -471,19 +478,21 @@ namespace WinPanel
             var lblUpdateSection = new Label { Text = Loc.S("Updates", "Обновления"), Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
             y += 24;
             chkUpdateCheck = new CheckBox { Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически"), Left = 20, Top = y, Width = 260, Checked = settings.UpdateCheckEnabled, ForeColor = textColor };
-            Tip(chkUpdateCheck, "Periodically ask GitHub Releases for a newer version (no auto-download yet)", "Периодически спрашивать GitHub Releases о новой версии (автозагрузки пока нет)");
-            var lblUpdateStub = new Label { Text = "TODO", Left = 290, Top = y + 3, Width = 120, ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155) };
-            Tip(lblUpdateStub, "Stub: the automatic part is limited to the check and the corner plate; installing updates is not implemented yet",
-                "Заглушка: автоматически — только проверка и плашка в углу; установка обновлений пока не реализована");
+            Tip(chkUpdateCheck, "Ask GitHub Releases for a newer version once every N days (never runs when unchecked)", "Спрашивать GitHub Releases о новой версии раз в N дней (при выключенной галочке не запускается никогда)");
             scrollPanel.Controls.Add(chkUpdateCheck);
-            scrollPanel.Controls.Add(lblUpdateStub);
             y += 26;
 
             var lblUpdateDays = new Label { Text = Loc.S("Check every N days:", "Проверять раз в N дней:"), Left = 20, Top = y, Width = 210 };
             numUpdateDays = new NumericUpDown { Left = 235, Top = y - 2, Width = 50, Minimum = 1, Maximum = 365, Value = Math.Max(1, Math.Min(365, settings.UpdateCheckDays)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             Tip(numUpdateDays, "How often to check for a new version, in days", "Как часто проверять новую версию, в днях");
+            var btnCheckNow = new Button { Text = Loc.S("Check now", "Проверить сейчас"), Left = 300, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnCheckNow.FlatAppearance.BorderSize = 0;
+            btnCheckNow.FlatAppearance.MouseOverBackColor = hoverColor;
+            btnCheckNow.Click += (s, e) => { RunCheckNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnCheckNow, "Ask GitHub Releases right now (manual check works even with the automatic one off)", "Спросить GitHub Releases прямо сейчас (ручная проверка работает даже при выключенной автопроверке)");
             scrollPanel.Controls.Add(lblUpdateDays);
             scrollPanel.Controls.Add(numUpdateDays);
+            scrollPanel.Controls.Add(btnCheckNow);
             y += 28;
 
             chkAutoInstall = new CheckBox { Text = Loc.S("Install updates automatically", "Автоустановка обновлений"), Left = 20, Top = y, Width = 260, Checked = settings.UpdateAutoInstall, ForeColor = textColor };
@@ -521,6 +530,15 @@ namespace WinPanel
             var lblDonateHint = new Label { Text = "github.com/AlexNoVibe/Tilettes#donate", Left = 160, Top = y + 3, Width = 300, ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155) };
             scrollPanel.Controls.Add(btnDonate);
             scrollPanel.Controls.Add(lblDonateHint);
+            y += 32;
+
+            var btnWelcome = new Button { Text = Loc.S("Show the welcome window again", "Показать приветственное окно"), Left = 20, Top = y - 3, Width = 230, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnWelcome.FlatAppearance.BorderSize = 0;
+            btnWelcome.FlatAppearance.MouseOverBackColor = hoverColor;
+            btnWelcome.Click += (s, e) => { RunWelcomeAgain = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnWelcome, "Replay the first-start window: thanks, beta note, language and update-check questions, example tiles",
+                "Повторить окно первого запуска: приветствие, о бете, язык и вопрос об обновлениях, примеры плиток");
+            scrollPanel.Controls.Add(btnWelcome);
             y += 32;
 
             // Save/Cancel live on the fixed bottom bar (outside the scroll), so
@@ -764,7 +782,20 @@ namespace WinPanel
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
             settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
             settings.MiniExplorerCtrlClick = chkMiniExplorer.Checked;
-            settings.HotkeyShow = cmbHotkey.SelectedItem != null ? cmbHotkey.SelectedItem.ToString() : "Ctrl+J";
+            // Any Mod+Key combination typed into the editable dropdown; invalid
+            // input keeps the dialog open with an explanation.
+            string hotkey = (cmbHotkey.Text ?? "").Trim();
+            if (hotkey.Length == 0) hotkey = "None";
+            if (!hotkey.Equals("None", StringComparison.OrdinalIgnoreCase) && !MainForm.TryParseHotkey(hotkey))
+            {
+                MessageBox.Show(this,
+                    Loc.S("Cannot parse the hotkey \"", "Не удалось разобрать комбинацию \"") + hotkey +
+                    Loc.S("\". Use Ctrl/Alt/Shift/Win + a letter or digit, e.g. Ctrl+Alt+P (or None).",
+                          "\". Формат: Ctrl/Alt/Shift/Win + буква или цифра, например Ctrl+Alt+P (или None)."),
+                    Loc.S("Tilettes", "Плиточки"));
+                return;
+            }
+            settings.HotkeyShow = hotkey;
             settings.GridTransparency = (int)numGridTransparency.Value;
             settings.GridColumns = (int)numGridCols.Value;
             settings.GridRows = (int)numGridRows.Value;

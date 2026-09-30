@@ -3,13 +3,17 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Threading;
+using System.Windows.Forms;
 
 namespace WinPanel
 {
-    // Update check (stub): the app asks the public GitHub Releases API for the
-    // latest tag and, when it is newer than AppInfo.AppVersion, shows the
-    // "Update" plate in the top-right corner. Nothing is downloaded or
-    // installed yet — the plate only opens the releases page in the browser.
+    // Update check: the app asks the public GitHub Releases API for the latest
+    // tag and, when it is newer than AppInfo.AppVersion, shows the "Update"
+    // plate in the top-right corner. Nothing is downloaded or installed yet —
+    // the plate only opens the releases page.
+    // Hard rule: a scheduled (automatic) check runs ONLY when the user allowed
+    // it in settings ("Check for updates automatically"). CheckNow() is the
+    // explicit "check now" button and runs regardless of that flag.
     public static class UpdateChecker
     {
         public static void ScheduleCheck(MainForm owner, Settings settings)
@@ -27,14 +31,29 @@ namespace WinPanel
                         if ((DateTime.Now - last).TotalDays < days) return;
                     }
                 }
-                var t = new Thread(() => CheckInBackground(owner, settings));
+                var t = new Thread(() => CheckInBackground(owner, settings, false));
                 t.IsBackground = true;
                 t.Start();
             }
             catch { }
         }
 
-        private static void CheckInBackground(MainForm owner, Settings settings)
+        // The explicit "Check now" button: ignores the interval and the
+        // auto-check flag (clicking it is explicit consent), reports the
+        // outcome in a message box.
+        public static void CheckNow(MainForm owner, Settings settings)
+        {
+            try
+            {
+                if (owner == null || settings == null) return;
+                var t = new Thread(() => CheckInBackground(owner, settings, true));
+                t.IsBackground = true;
+                t.Start();
+            }
+            catch { }
+        }
+
+        private static void CheckInBackground(MainForm owner, Settings settings, bool manual)
         {
             string latest = null;
             try
@@ -58,21 +77,37 @@ namespace WinPanel
             catch (Exception ex)
             {
                 try { AppLog.Write("Update check", ex); } catch { }
+                if (manual)
+                {
+                    try { owner.BeginInvoke((Action)(() => MessageBox.Show(owner,
+                        Loc.S("Could not reach GitHub Releases - check the internet connection.", "Не удалось связаться с GitHub Releases — проверьте интернет."),
+                        Loc.S("Tilettes", "Плиточки")))); } catch { }
+                    return;
+                }
             }
 
-            // All settings mutations happen back on the UI thread.
-            try { owner.BeginInvoke((Action)(() => OnChecked(owner, settings, latest))); }
+            // All settings mutations and UI happen back on the UI thread.
+            try { owner.BeginInvoke((Action)(() => OnChecked(owner, settings, latest, manual))); }
             catch { }
         }
 
-        private static void OnChecked(MainForm owner, Settings settings, string latest)
+        private static void OnChecked(MainForm owner, Settings settings, string latest, bool manual)
         {
             try
             {
                 settings.LastUpdateCheck = DateTime.Now.ToString("yyyyMMddHHmmss");
                 settings.Save(owner.SettingsFilePath);
-                if (latest != null && IsNewer(AppInfo.AppVersion, latest))
-                    owner.ShowUpdatePlate(latest);
+                bool newer = latest != null && IsNewer(AppInfo.AppVersion, latest);
+                if (newer) owner.ShowUpdatePlate(latest);
+                if (manual)
+                {
+                    MessageBox.Show(owner,
+                        newer
+                            ? Loc.S("New version available: v", "Доступна новая версия: v") + latest +
+                              Loc.S("\nThe green Update plate has appeared in the corner.", "\nЗелёная плашка «Обновить» появилась в углу.")
+                            : Loc.S("You are on the latest version: v", "У вас последняя версия: v") + AppInfo.AppVersion,
+                        Loc.S("Tilettes", "Плиточки"));
+                }
             }
             catch (Exception ex)
             {
