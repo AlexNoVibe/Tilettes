@@ -187,6 +187,48 @@ namespace WinPanel
             LastUpdateCheck = "";
         }
 
+        // First start on a small monitor: the factory 900x800 window at Y=100
+        // hangs off the bottom of screens shorter than ~900px. Shrinks the
+        // factory size to fit (about -15% on the borderline case, more on very
+        // small laptops), keeps the aspect ratio and trims the grid rows AND
+        // columns by the same factor so the tiles stay square. Runs once per
+        // fresh install (FirstRunDone is still false, nothing is saved yet);
+        // existing settings.ini files never hit this path.
+        public static void FitFirstStartToScreen(Settings s, System.Drawing.Rectangle workArea)
+        {
+            try
+            {
+                if (workArea.Width <= 0 || workArea.Height <= 0) return;
+                double scale = 1.0;
+                // Small monitor: cut the factory size by ~15%...
+                if (workArea.Height < 900) scale = 0.85;
+                // ...and never hang over the bottom edge (taskbar/edge margin).
+                int bottomLimit = workArea.Bottom - 24;
+                double fitted = (bottomLimit - s.WindowY) / (double)Math.Max(1, s.StartupHeight);
+                if (fitted < scale) scale = fitted;
+                if (scale >= 1.0) return;
+
+                int newH = Math.Max(560, (int)Math.Round(s.StartupHeight * scale));
+                int newW = Math.Max(700, (int)Math.Round(s.StartupWidth * scale));
+                int newRows = Math.Max(10, (int)Math.Round(s.GridRows * scale));
+                int newCols = Math.Max(10, (int)Math.Round(s.GridColumns * scale));
+                s.StartupHeight = newH;
+                s.StartupWidth = newW;
+                s.GridRows = newRows;
+                s.GridColumns = newCols;
+
+                // Keep the window itself inside the working area.
+                if (s.WindowY + newH > bottomLimit)
+                    s.WindowY = Math.Max(workArea.Top, bottomLimit - newH);
+                if (s.WindowX + newW > workArea.Right - 8)
+                    s.WindowX = Math.Max(workArea.Left, workArea.Right - 8 - newW);
+            }
+            catch
+            {
+                // A default-size tweak is never worth failing the startup for.
+            }
+        }
+
         public static System.Drawing.Color ParseColor(string hex, System.Drawing.Color fallback)
         {
             if (string.IsNullOrWhiteSpace(hex)) return fallback;

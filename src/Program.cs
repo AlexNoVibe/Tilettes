@@ -213,6 +213,16 @@ namespace WinPanel
 
             ApplyThemeColors();
 
+            // First start only: fit the factory window to small monitors (the
+            // 900x800 default at Y=100 would hang off screens shorter than
+            // ~900px) and trim the grid by the same factor. Saved configs never
+            // re-run this.
+            if (!settings.FirstRunDone)
+            {
+                try { Settings.FitFirstStartToScreen(settings, Screen.PrimaryScreen.WorkingArea); }
+                catch (Exception ex) { AppLog.Write("First-start screen fit", ex); }
+            }
+
             this.Text = Loc.S("Tilettes", "Плиточки");
             this.Width = settings.StartupWidth;
             this.Height = settings.StartupHeight;
