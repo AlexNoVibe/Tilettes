@@ -25,7 +25,6 @@ namespace WinPanel
         private NumericUpDown numGridCols;
         private NumericUpDown numGridRows;
         private NumericUpDown numDefaultItemSize;
-        private CheckBox chkLightTheme;
         private CheckBox chkEditMode;
         private CheckBox chkMiniExplorer;
 
@@ -70,7 +69,7 @@ namespace WinPanel
 
         private Panel scrollPanel;
         private Panel bottomBar;
-        private ToolTip themeTip = new ToolTip();
+        private ToolTip tips = new ToolTip();
 
         // Set when the user picked a backup zip in "Restore archive"; MainForm
         // unpacks it right after the dialog closes and reloads everything.
@@ -154,41 +153,67 @@ namespace WinPanel
             this.Controls.Add(bottomBar);
             this.Controls.Add(titleBar);
 
+            // Borderless form: a 6px strip along the very bottom acts as a resize
+            // grip — dragging it resizes the window height via the native loop.
+            var resizeGrip = new Panel { Dock = DockStyle.Bottom, Height = 6, BackColor = panelColor, Cursor = Cursors.SizeNS };
+            resizeGrip.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, 0xA1, 0x0F, 0); // WM_NCLBUTTONDOWN, HTBOTTOM
+                }
+            };
+            Tip(resizeGrip, "Drag to resize the window vertically", "Потяните, чтобы менять высоту окна");
+            bottomBar.Controls.Add(resizeGrip);
+            this.MinimumSize = new Size(588, 320);
+
             int y = 42;
 
-            // Startup size on one row: [W] x [H]
-            var lblSize = new Label { Text = "Startup Size:", Left = 20, Top = y, Width = 110 };
-            numWidth = new NumericUpDown { Left = 135, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupWidth, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            var lblMul = new Label { Text = "x", Left = 208, Top = y, Width = 14 };
-            numHeight = new NumericUpDown { Left = 224, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupHeight, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            // Startup size on one row, fields labelled x/y: [900] x [800] y
+            var lblSize = new Label { Text = Loc.S("Startup Size:", "Размер при запуске:"), Left = 20, Top = y, Width = 130 };
+            numWidth = new NumericUpDown { Left = 155, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupWidth, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblMul = new Label { Text = "x", Left = 228, Top = y, Width = 16 };
+            numHeight = new NumericUpDown { Left = 246, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupHeight, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblSizeY = new Label { Text = "y", Left = 319, Top = y, Width = 16 };
+            Tip(numWidth, "Window width at startup", "Ширина окна при запуске");
+            Tip(numHeight, "Window height at startup", "Высота окна при запуске");
             y += 30;
 
-            // Window position on one row: [X] , [Y]
-            var lblPos = new Label { Text = "Window Position:", Left = 20, Top = y, Width = 110 };
-            numX = new NumericUpDown { Left = 135, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowX, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            var lblComma = new Label { Text = ",", Left = 208, Top = y, Width = 14 };
-            numY = new NumericUpDown { Left = 224, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowY, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            // Window position on one row: [X] x [Y]
+            var lblPos = new Label { Text = Loc.S("Window Position:", "Положение окна:"), Left = 20, Top = y, Width = 130 };
+            numX = new NumericUpDown { Left = 155, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowX, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblMul2 = new Label { Text = "x", Left = 228, Top = y, Width = 16 };
+            numY = new NumericUpDown { Left = 246, Top = y - 2, Width = 70, Maximum = 4000, Minimum = -4000, Value = settings.WindowY, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblPosY = new Label { Text = "y", Left = 319, Top = y, Width = 16 };
+            Tip(numX, "Window position: distance from the left screen edge", "Положение окна: отступ от левого края экрана");
+            Tip(numY, "Window position: distance from the top screen edge", "Положение окна: отступ от верхнего края экрана");
             y += 30;
 
-            var lblTrans = new Label { Text = "Grid Transp. (0-255):", Left = 20, Top = y, Width = 120 };
-            numGridTransparency = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 255, Minimum = 0, Value = settings.GridTransparency, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblTrans = new Label { Text = Loc.S("Grid Transp. (0-255):", "Прозрачность сетки (0-255):"), Left = 20, Top = y, Width = 130 };
+            numGridTransparency = new NumericUpDown { Left = 155, Top = y - 2, Width = 120, Maximum = 255, Minimum = 0, Value = settings.GridTransparency, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numGridTransparency, "Grid line opacity: 0 = invisible, 255 = solid", "Насыщенность линий сетки: 0 = невидима, 255 = сплошные");
             y += 30;
 
-            var lblCols = new Label { Text = "Grid Columns:", Left = 20, Top = y, Width = 120 };
-            numGridCols = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridColumns, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
-            y += 30;
-
-            var lblRows = new Label { Text = "Grid Rows:", Left = 20, Top = y, Width = 120 };
-            numGridRows = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 100, Minimum = 1, Value = settings.GridRows, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            // Columns and rows share one row, each field labelled.
+            var lblGrid = new Label { Text = Loc.S("Grid:", "Сетка:"), Left = 20, Top = y, Width = 130 };
+            numGridCols = new NumericUpDown { Left = 155, Top = y - 2, Width = 60, Maximum = 100, Minimum = 1, Value = settings.GridColumns, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblColsCap = new Label { Text = Loc.S("columns x", "столбцов ×"), Left = 220, Top = y, Width = 85 };
+            numGridRows = new NumericUpDown { Left = 307, Top = y - 2, Width = 60, Maximum = 100, Minimum = 1, Value = settings.GridRows, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            var lblRowsCap = new Label { Text = Loc.S("rows", "строк"), Left = 372, Top = y, Width = 60 };
+            Tip(numGridCols, "Grid cells horizontally", "Клеток сетки по горизонтали");
+            Tip(numGridRows, "Grid cells vertically", "Клеток сетки по вертикали");
             y += 30;
 
             var lblDefSize = new Label { Text = "Def. Item Size:", Left = 20, Top = y, Width = 120 };
             numDefaultItemSize = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 6, Minimum = 1, Value = settings.DefaultItemSize, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numDefaultItemSize, "Size of newly added tiles (1x1 ... 6x6)", "Размер новых плиток (1x1 ... 6x6)");
             y += 30;
 
             // Icon scale, percent (100 = default)
             var lblIconScale = new Label { Text = "Icon Scale (%):", Left = 20, Top = y, Width = 120 };
             numIconScale = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 400, Minimum = 25, Value = Math.Max(25, Math.Min(400, settings.IconScale)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numIconScale, "Icon size inside a tile, percent of the designed size", "Размер значка внутри плитки, процентов от стандартного");
             y += 30;
 
             var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
@@ -198,12 +223,13 @@ namespace WinPanel
             cmbFolders.SelectedIndex = settings.OpenFoldersInPopup ? 1 : 0;
             numFolderExit = new NumericUpDown { Left = 296, Top = y - 2, Width = 56, Maximum = 600, Minimum = 0, Value = Math.Max(0, Math.Min(600, settings.FolderAutoExitSeconds)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             var lblExit = new Label { Text = Loc.S("sec idle", "сек простоя"), Left = 358, Top = y, Width = 105 };
+            Tip(cmbFolders, "Where folder tiles open their contents", "Где открывать содержимое папок");
             var exitTip = new ToolTip();
             exitTip.SetToolTip(numFolderExit, Loc.S("Return from a folder after this many seconds without activity (0 = off)", "Выходить из папки после стольких секунд без активности (0 = выкл)"));
             y += 30;
 
-            chkLightTheme = new CheckBox { Text = "Light Theme", Left = 20, Top = y, Width = 250, Checked = settings.IsLightTheme, ForeColor = textColor };
-            chkEditMode = new CheckBox { Text = "Allow adding icons", Left = 290, Top = y, Width = 280, Checked = settings.EditMode, ForeColor = textColor };
+            chkEditMode = new CheckBox { Text = Loc.S("Allow adding icons", "Разрешать добавлять значки"), Left = 20, Top = y, Width = 280, Checked = settings.EditMode, ForeColor = textColor };
+            Tip(chkEditMode, "New tiles can be added by dropping files onto the panel", "Новые плитки можно добавлять перетаскиванием файлов на панель");
             y += 30;
 
             var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
@@ -212,6 +238,7 @@ namespace WinPanel
             string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+J" : settings.HotkeyShow;
             if (!cmbHotkey.Items.Contains(hk)) cmbHotkey.Items.Add(hk);
             cmbHotkey.SelectedItem = hk;
+            Tip(cmbHotkey, "Keyboard shortcut that shows or hides the panel", "Сочетание клавиш, показывающее или скрывающее панель");
             chkWinKey = new CheckBox
             {
                 Text = Loc.S("Capture Start button (Win)", "Захват кнопки Пуск (Win)"),
@@ -242,14 +269,19 @@ namespace WinPanel
             y += 24;
             var lblFuzzy = new Label { Text = "Fuzzy accuracy (0-3):", Left = 20, Top = y, Width = 150 };
             numFuzzy = new NumericUpDown { Left = 175, Top = y - 2, Width = 45, Minimum = 0, Maximum = 3, Value = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numFuzzy, "0 = exact matches only, 1-3 = increasingly loose fuzzy matching", "0 = только точные совпадения, 1-3 = всё более свободный поиск");
             y += 26;
             chkSearchMeta = new CheckBox { Text = "Search in metadata (exe, product)", Left = 20, Top = y, Width = 530, Checked = settings.SearchInMeta, ForeColor = textColor };
+            Tip(chkSearchMeta, "Also search in program name, version and company from the exe", "Искать также в имени программы, версии и компании из exe");
             y += 24;
             chkSearchPaths = new CheckBox { Text = "Search in full paths", Left = 20, Top = y, Width = 530, Checked = settings.SearchInPaths, ForeColor = textColor };
+            Tip(chkSearchPaths, "Also search in the full file and folder paths", "Искать также в полных путях файлов и папок");
             y += 24;
             chkSearchDesc = new CheckBox { Text = "Search in descriptions", Left = 20, Top = y, Width = 530, Checked = settings.SearchInDesc, ForeColor = textColor };
+            Tip(chkSearchDesc, "Also search in the user descriptions of the tiles", "Искать также в описаниях плиток");
             y += 24;
             chkSearchStart = new CheckBox { Text = Loc.S("Search in the Start Menu tab", "Искать во вкладке Пуск"), Left = 20, Top = y, Width = 530, Checked = settings.SearchInStart, ForeColor = textColor };
+            Tip(chkSearchStart, "Include the mirrored Start Menu tab in panel search", "Включать зеркальную вкладку Пуск в поиск по панели");
             y += 26;
             chkSaveHistory = new CheckBox
             {
@@ -272,6 +304,8 @@ namespace WinPanel
             };
             btnClearHistory.FlatAppearance.BorderSize = 0;
             btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), Loc.S("Tilettes", "Плиточки")); };
+            Tip(chkSaveHistory, "Remember queries and clicks into the past-search section", "Помнить запросы и клики для раздела «Прошлый поиск»");
+            Tip(btnClearHistory, "Erase all saved search history", "Стереть всю сохранённую историю поиска");
             scrollPanel.Controls.Add(chkSaveHistory);
             scrollPanel.Controls.Add(btnClearHistory);
             y += 26;
@@ -279,6 +313,8 @@ namespace WinPanel
             numSearchBoxFont = new NumericUpDown { Left = 150, Top = y - 2, Width = 50, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             var lblSearchBoxFont = new Label { Text = Loc.S("box", "строка поиска"), Left = 205, Top = y, Width = 150 };
             numSearchResultsFont = new NumericUpDown { Left = 360, Top = y - 2, Width = 45, Minimum = 7, Maximum = 30, Value = Math.Max(7, Math.Min(30, settings.SearchResultsFontSize)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numSearchBoxFont, "Font size of the search box", "Размер шрифта строки поиска");
+            Tip(numSearchResultsFont, "Font size of the search results list", "Размер шрифта списка результатов");
             var lblSearchResultsFont = new Label { Text = Loc.S("results", "результаты"), Left = 410, Top = y, Width = 150 };
             scrollPanel.Controls.Add(lblSearchSection);
             scrollPanel.Controls.Add(lblFuzzy);
@@ -299,44 +335,69 @@ namespace WinPanel
             var btnTypeIcons = new Button { Text = "Icons by type...", Left = 115, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnTypeIcons.FlatAppearance.BorderSize = 0;
             btnTypeIcons.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.Icons, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
+            Tip(btnTypeIcons, "Assign a custom icon per file type", "Назначить свой значок для типа файлов");
             var btnTypeOpen = new Button { Text = "Open with by type...", Left = 260, Top = y - 3, Width = 150, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnTypeOpen.FlatAppearance.BorderSize = 0;
             btnTypeOpen.Click += (s, e) => { using (var ft = new FileTypesForm(FileTypesForm.Mode.OpenWith, FileTypes.DefaultFilePath)) ft.ShowDialog(this); };
+            Tip(btnTypeOpen, "Choose the program that opens each file type", "Выбрать программу, открывающую каждый тип файлов");
             y += 36;
 
             chkMiniExplorer = new CheckBox { Text = "Ctrl+Click a folder opens Mini Explorer", Left = 20, Top = y, Width = 530, Checked = settings.MiniExplorerCtrlClick, ForeColor = textColor };
+            Tip(chkMiniExplorer, "Ctrl+Click on a folder tile opens the mini explorer (file window with console)", "Ctrl+клик по папке открывает мини-проводник (окно файлов с консолью)");
             y += 30;
 
             var lblSection = new Label { Text = "Autostart & window", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
             y += 24;
             chkAutoStart = new CheckBox { Text = "Autostart with Windows", Left = 20, Top = y, Width = 205, Checked = settings.AutoStart, ForeColor = textColor };
+            Tip(chkAutoStart, "Start Tilettes automatically when Windows starts", "Запускать Плиточки автоматически при старте Windows");
             chkAutoStartMin = new CheckBox { Text = "After autostart - go to tray", Left = 240, Top = y, Width = 225, Checked = settings.AutoStartMinimized, ForeColor = textColor };
+            Tip(chkAutoStartMin, "After autostart only the tray icon is shown", "После автозапуска показывать только значок в трее");
             y += 26;
             chkMinimizeToTray = new CheckBox { Text = "Minimize instead of close", Left = 20, Top = y, Width = 215, Checked = settings.MinimizeToTray, ForeColor = textColor };
+            Tip(chkMinimizeToTray, "The close button hides the panel to the tray instead of exiting", "Кнопка закрытия прячет панель в трей вместо выхода");
             chkTrayAlways = new CheckBox { Text = "Always keep tray icon", Left = 240, Top = y, Width = 225, Checked = settings.TrayIconAlways, ForeColor = textColor };
+            Tip(chkTrayAlways, "Show the tray icon even when the panel is open", "Показывать значок в трее даже при открытой панели");
             y += 26;
             chkKeepTab = new CheckBox { Text = "Remember active tab", Left = 20, Top = y, Width = 330, Checked = settings.KeepActiveTab, ForeColor = textColor };
+            Tip(chkKeepTab, "Reopen the same tab on the next launch", "Открывать ту же вкладку при следующем запуске");
             y += 30;
             var lblLang = new Label { Text = "Language:", Left = 20, Top = y, Width = 90 };
             cmbLang = new ComboBox { Left = 110, Top = y - 2, Width = 130, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             cmbLang.Items.Add("Русский");
             cmbLang.Items.Add("English");
             cmbLang.SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            Tip(cmbLang, "Interface language", "Язык интерфейса");
             y += 30;
 
             // ---- Maintenance: skin, scheduled backup, Start Menu sync ----
             var lblMaint = new Label { Text = Loc.S("Maintenance & Start Menu", "Обслуживание и Пуск"), Left = 20, Top = y, Width = 350, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
             y += 24;
 
-            var lblSkin = new Label { Text = Loc.S("Skin:", "Шкурка:"), Left = 20, Top = y, Width = 90 };
-            cmbSkin = new ComboBox { Left = 110, Top = y - 2, Width = 160, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
-            int skinIdx = 0;
+            // One control for both theme and skin: the first two items are the
+            // classic looks without a decorative skin (dark / light), the rest
+            // are the real skins. This replaces the removed Light Theme checkbox.
+            var lblSkin = new Label { Text = Loc.S("Skin & theme:", "Шкурка и тема:"), Left = 20, Top = y, Width = 130 };
+            cmbSkin = new ComboBox { Left = 155, Top = y - 2, Width = 200, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbSkin.Items.Add(Loc.S("None (dark)", "Отключено (тёмная)"));
+            cmbSkin.Items.Add(Loc.S("Light", "Светлая"));
             for (int i = 0; i < Skin.All.Count; i++)
             {
+                if (ReferenceEquals(Skin.All[i], Skin.None)) continue;
                 cmbSkin.Items.Add(Skin.All[i].DisplayName);
-                if (string.Equals(Skin.All[i].Id, settings.SkinName, StringComparison.OrdinalIgnoreCase)) skinIdx = i;
+            }
+            int skinIdx = settings.IsLightTheme ? 1 : 0;
+            if (!string.IsNullOrEmpty(settings.SkinName))
+            {
+                for (int i = 0; i < Skin.All.Count; i++)
+                    if (!ReferenceEquals(Skin.All[i], Skin.None) && string.Equals(Skin.All[i].Id, settings.SkinName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        skinIdx = i + 1; // item 0/1 are the classic themes
+                        break;
+                    }
             }
             cmbSkin.SelectedIndex = skinIdx;
+            Tip(cmbSkin, "Color look of the window: skins change colors and add a border, the first two items are the classic theme without a skin",
+                "Цветовой облик окна: шкурки меняют цвета и добавляют рамку, первые два пункта — классическая тема без шкурки");
             y += 28;
 
             var lblBackupDays = new Label { Text = Loc.S("Backup every N days (0 = off):", "Бэкап раз в N дней (0 = выкл):"), Left = 20, Top = y, Width = 210 };
@@ -346,6 +407,7 @@ namespace WinPanel
             var backupTip = new ToolTip();
             backupTip.SetToolTip(numBackupDays, Loc.S("Full backup (settings + shortcuts + bookmarks) into autoBackup\\; runs 3 minutes after launch when due",
                 "Полный бэкап (настройки + ярлыки + закладки) в autoBackup\\; делается через 3 минуты после запуска, когда подошёл срок"));
+            Tip(numSyncHours, "Rebuild the mirrored Start Menu tab every N hours (0 = off)", "Перестраивать зеркальную вкладку Пуск раз в N часов (0 = выкл)");
             y += 30;
 
             var btnRunBackup = new Button
@@ -360,6 +422,7 @@ namespace WinPanel
             };
             btnRunBackup.FlatAppearance.BorderSize = 0;
             btnRunBackup.Click += (s, e) => { RunBackupNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnRunBackup, "Create a full backup zip in autoBackup right now", "Создать полный zip-бэкап в autoBackup прямо сейчас");
             var btnRunSync = new Button
             {
                 Text = Loc.S("Sync Start Menu now", "Синхронизировать Пуск"),
@@ -372,6 +435,7 @@ namespace WinPanel
             };
             btnRunSync.FlatAppearance.BorderSize = 0;
             btnRunSync.Click += (s, e) => { RunSyncNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnRunSync, "Re-scan the system Start Menu and update the mirror tab now", "Пересканировать системный Пуск и обновить зеркальную вкладку");
             scrollPanel.Controls.Add(lblMaint);
             scrollPanel.Controls.Add(lblSkin);
             scrollPanel.Controls.Add(cmbSkin);
@@ -383,11 +447,13 @@ namespace WinPanel
             scrollPanel.Controls.Add(btnRunSync);
             y += 30;
 
-            btnBackup = new Button { Text = Loc.S("Save backup", "Сохранить бэкап"), Left = 20, Top = y, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnBackup = new Button { Text = Loc.S("Save backup (zip)", "Сохранить бэкап (zip)"), Left = 20, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;
             btnBackup.Click += BtnBackup_Click;
+            Tip(btnBackup, "Save a full backup zip (settings, tiles, icons, bookmarks) to a chosen file - the same format Restore archive expects",
+                "Сохранить полный zip-бэкап (настройки, плитки, значки, закладки) в выбранный файл — тот же формат, что ждёт «Восстановить из архива»");
 
-            btnRestore = new Button { Text = Loc.S("Restore archive...", "Восстановить из архива..."), Left = 165, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            btnRestore = new Button { Text = Loc.S("Restore archive...", "Восстановить из архива..."), Left = 220, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnRestore.FlatAppearance.BorderSize = 0;
             btnRestore.Click += BtnRestore_Click;
             var restoreTip = new ToolTip();
@@ -414,16 +480,19 @@ namespace WinPanel
             scrollPanel.Controls.Add(numWidth);
             scrollPanel.Controls.Add(lblMul);
             scrollPanel.Controls.Add(numHeight);
+            scrollPanel.Controls.Add(lblSizeY);
             scrollPanel.Controls.Add(lblPos);
             scrollPanel.Controls.Add(numX);
-            scrollPanel.Controls.Add(lblComma);
+            scrollPanel.Controls.Add(lblMul2);
             scrollPanel.Controls.Add(numY);
+            scrollPanel.Controls.Add(lblPosY);
             scrollPanel.Controls.Add(lblTrans);
             scrollPanel.Controls.Add(numGridTransparency);
-            scrollPanel.Controls.Add(lblCols);
+            scrollPanel.Controls.Add(lblGrid);
             scrollPanel.Controls.Add(numGridCols);
-            scrollPanel.Controls.Add(lblRows);
+            scrollPanel.Controls.Add(lblColsCap);
             scrollPanel.Controls.Add(numGridRows);
+            scrollPanel.Controls.Add(lblRowsCap);
             scrollPanel.Controls.Add(lblDefSize);
             scrollPanel.Controls.Add(numDefaultItemSize);
             scrollPanel.Controls.Add(lblIconScale);
@@ -431,7 +500,6 @@ namespace WinPanel
             scrollPanel.Controls.Add(chkMinimizeToTray);
             scrollPanel.Controls.Add(lblFolders);
             scrollPanel.Controls.Add(cmbFolders);
-            scrollPanel.Controls.Add(chkLightTheme);
             scrollPanel.Controls.Add(chkEditMode);
             scrollPanel.Controls.Add(chkMiniExplorer);
             scrollPanel.Controls.Add(numFolderExit);
@@ -468,25 +536,15 @@ namespace WinPanel
             numHeight.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numX.ValueChanged += (s2, e2) => UpdateLiveLabel();
             numY.ValueChanged += (s2, e2) => UpdateLiveLabel();
-            // The skin replaces the theme palette entirely: while one is active the
-            // Light Theme checkbox would do nothing visible, so it is disabled with
-            // an explanation instead of silently ignoring the setting.
-            cmbSkin.SelectedIndexChanged += (s2, e2) => UpdateThemeAvailability();
-            UpdateThemeAvailability();
             scrollPanel.AutoScrollMargin = new Size(0, 14);
             Loc.Walk(this);
             UpdateLiveLabel();
         }
 
-        // Light Theme is only meaningful without a decorative skin.
-        private void UpdateThemeAvailability()
+        // One-line tooltip helper: EN/RU through Loc.
+        private void Tip(Control c, string en, string ru)
         {
-            if (chkLightTheme == null || cmbSkin == null) return;
-            bool skinOn = cmbSkin.SelectedIndex > 0; // index 0 = "Отключено"
-            chkLightTheme.Enabled = !skinOn;
-            themeTip.SetToolTip(chkLightTheme, skinOn
-                ? Loc.S("The skin defines the colors - set Skin to \"None\" to control the theme", "Шкурка задаёт цвета сама — выберите Шкурку «Отключено», чтобы управлять темой")
-                : null);
+            tips.SetToolTip(c, Loc.S(en, ru));
         }
 
         // Shows the actual (current) window numbers at the bottom, but only when at
@@ -508,6 +566,7 @@ namespace WinPanel
         {
             var lbl = new Label { Text = labelText, Left = 20, Top = y, Width = 100 };
             numSize = new NumericUpDown { Left = 125, Top = y - 2, Width = 45, Maximum = 24, Minimum = 6, Value = Math.Max(6, Math.Min(24, size)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numSize, "Caption size", "Размер подписей");
 
             colorBtn = new Button
             {
@@ -520,6 +579,7 @@ namespace WinPanel
                 ForeColor = textColor
             };
             colorBtn.FlatAppearance.BorderSize = 1;
+            Tip(colorBtn, "Caption color; empty button = theme default", "Цвет подписей; пустая кнопка = цвет темы");
             var btn = colorBtn; // lambdas cannot capture out parameters
             colorBtn.Click += (s, e) =>
             {
@@ -553,6 +613,7 @@ namespace WinPanel
             }
             catch { }
             combo.Text = family;
+            Tip(combo, "Font family", "Шрифт");
 
             scrollPanel.Controls.Add(lbl);
             scrollPanel.Controls.Add(numSize);
@@ -571,6 +632,15 @@ namespace WinPanel
         {
             string name = (combo.Text ?? "").Trim();
             return name.Length > 0 ? name : original;
+        }
+
+        // The window can be resized by the bottom grip: re-fit the rounded
+        // contour (and the drawn border, which uses Width/Height) to the new size.
+        protected override void OnResize(EventArgs eventargs)
+        {
+            base.OnResize(eventargs);
+            try { this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15)); }
+            catch { }
         }
 
         // The dialog gets its own slightly darker gradient so its contour is visible
@@ -627,7 +697,6 @@ namespace WinPanel
             settings.GridColumns = (int)numGridCols.Value;
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
-            settings.IsLightTheme = chkLightTheme.Checked;
             settings.EditMode = chkEditMode.Checked;
             // The 3rd (red, multi-select) state changes only from the panel button;
             // this checkbox just switches it on/off preserving state 2.
@@ -666,24 +735,45 @@ namespace WinPanel
             settings.SearchSaveHistory = chkSaveHistory.Checked;
             settings.BackupDays = (int)numBackupDays.Value;
             settings.StartMenuSyncHours = (int)numSyncHours.Value;
-            try { settings.SkinName = cmbSkin.SelectedIndex >= 0 && cmbSkin.SelectedIndex < Skin.All.Count ? Skin.All[cmbSkin.SelectedIndex].Id : ""; }
-            catch { settings.SkinName = ""; }
+            // Items 0/1 are the classic themes (dark/light, no skin), the rest
+            // map back to Skin.All entries (Skin.All[0] is None itself).
+            int si = cmbSkin.SelectedIndex;
+            if (si <= 0) { settings.SkinName = ""; settings.IsLightTheme = false; }
+            else if (si == 1) { settings.SkinName = ""; settings.IsLightTheme = true; }
+            else settings.SkinName = Skin.All[si - 1].Id;
 
             settings.Save(settingsPath);
             this.DialogResult = DialogResult.OK;
             this.Close();
         }
 
+        // Saves a full backup zip (settings, tiles/records, bookmarks, file types,
+        // search history, the ico folder and the exe) to a user-chosen file —
+        // the same archive the "Restore archive..." button accepts.
         private void BtnBackup_Click(object sender, EventArgs e)
         {
+            string created = BackupManager.RunBackup(null, settings, false);
+            if (created == null)
+            {
+                MessageBox.Show(this, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"), Loc.S("Tilettes", "Плиточки"));
+                return;
+            }
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = "INI Files (*.ini)|*.ini|All Files (*.*)|*.*";
-                sfd.FileName = "settings_backup.ini";
-                if (sfd.ShowDialog() == DialogResult.OK)
+                sfd.Filter = Loc.S("Tilettes backup archives (*.zip)|*.zip|All files (*.*)|*.*",
+                                   "Архивы бэкапа Tilettes (*.zip)|*.zip|Все файлы (*.*)|*.*");
+                sfd.FileName = "Tilettes_backup_" + DateTime.Now.ToString("yyyy-MM-dd_HHmmss") + ".zip";
+                if (sfd.ShowDialog(this) == DialogResult.OK)
                 {
-                    settings.Save(sfd.FileName);
-                    MessageBox.Show("Backup created successfully.", "Backup");
+                    try
+                    {
+                        File.Copy(created, sfd.FileName, true);
+                        MessageBox.Show(this, Loc.S("Backup saved: ", "Бэкап сохранён: ") + sfd.FileName, Loc.S("Tilettes", "Плиточки"));
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(this, Loc.S("Save failed: ", "Сохранить не удалось: ") + ex.Message, Loc.S("Tilettes", "Плиточки"));
+                    }
                 }
             }
         }

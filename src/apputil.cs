@@ -55,6 +55,14 @@ namespace WinPanel
 
         public static bool Start()
         {
+            // Test hook: a second copy for screenshot automation must not be
+            // rejected by the single-instance guard.
+            try
+            {
+                if (string.Equals(Environment.GetEnvironmentVariable("WINPANEL_ALLOW_MULTI"), "1", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch { }
             try
             {
                 bool created;
