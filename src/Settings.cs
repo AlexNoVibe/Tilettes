@@ -279,7 +279,7 @@ namespace WinPanel
                 int faеx;
                 if (int.TryParse(ini.Read("FolderAutoExitSeconds"), out faеx)) s.FolderAutoExitSeconds = faеx;
                 string lang = ini.Read("Language");
-                if (lang == "ru" || lang == "en") s.Language = lang;
+                if (Loc.IsSupported(lang)) s.Language = lang.ToLowerInvariant();
                 bool astr, astrm, tray, ktab;
                 if (bool.TryParse(ini.Read("AutoStart"), out astr)) s.AutoStart = astr;
                 if (bool.TryParse(ini.Read("AutoStartMinimized"), out astrm)) s.AutoStartMinimized = astrm;

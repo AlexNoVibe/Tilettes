@@ -2291,7 +2291,10 @@ namespace WinPanel
             try { searchRowH = Math.Max(31, Math.Max(7, Math.Min(30, settings.SearchBoxFontSize)) + 22); } catch { }
             topSearchRowH = searchRowH;
             // Tab size follows the tabs font: the caption must fit at any size.
-            int tabH = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize).Height + 12;
+            // One font instance is built here and reused for every tab button
+            // (MakeFont walks the family cache on each call).
+            Font tabsFont = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize);
+            int tabH = tabsFont.Height + 12;
             int tabPitch = tabH + 4;
             // Tab rows sit directly above the search row: no filler space between them.
             topPanel.Height = tabRows * tabPitch + searchRowH;
@@ -2482,7 +2485,7 @@ namespace WinPanel
 
                 contentPanel.Controls.Add(layoutPanel);
 
-                Font tabFont = Settings.MakeFont(settings.FontTabsName, settings.FontTabsSize);
+                Font tabFont = tabsFont;
                 var tabBtn = new Button
                 {
                     Text = tabData.Name,

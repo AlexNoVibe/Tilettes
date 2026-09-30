@@ -375,9 +375,11 @@ namespace WinPanel
             y += 30;
             var lblLang = new Label { Text = "Language:", Left = 20, Top = y, Width = 90 };
             cmbLang = new ComboBox { Left = 110, Top = y - 2, Width = 130, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
-            cmbLang.Items.Add("Русский");
-            cmbLang.Items.Add("English");
-            cmbLang.SelectedIndex = string.Equals(settings.Language, "en", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            foreach (var code in Loc.Languages) cmbLang.Items.Add(Loc.NativeName(code));
+            int langIdx = 0;
+            for (int i = 0; i < Loc.Languages.Length; i++)
+                if (string.Equals(Loc.Languages[i], settings.Language, StringComparison.OrdinalIgnoreCase)) { langIdx = i; break; }
+            cmbLang.SelectedIndex = langIdx;
             Tip(cmbLang, "Interface language", "Язык интерфейса");
             y += 30;
 
@@ -814,7 +816,7 @@ namespace WinPanel
             settings.SearchBoxFontSize = (int)numSearchBoxFont.Value;
             settings.SearchResultsFontSize = (int)numSearchResultsFont.Value;
             settings.FolderAutoExitSeconds = (int)numFolderExit.Value;
-            settings.Language = cmbLang.SelectedIndex == 1 ? "en" : "ru";
+            settings.Language = Loc.Languages[Math.Max(0, Math.Min(Loc.Languages.Length - 1, cmbLang.SelectedIndex))];
             settings.AutoStart = chkAutoStart.Checked;
             settings.AutoStartMinimized = chkAutoStartMin.Checked;
             settings.TrayIconAlways = chkTrayAlways.Checked;

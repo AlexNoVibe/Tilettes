@@ -8,25 +8,87 @@ namespace WinPanel
     // returns the translation for the current language (default: Russian).
     // A dictionary is provided so the most visible strings can be translated
     // centrally (Loc.Walk applies it to a whole control tree).
+    //
+    // 10 languages: English is the source of truth, Russian is inlined as the
+    // second argument of S(en, ru) everywhere in the code, the other eight
+    // live in lang_*.cs tables keyed by the exact English string. Adding a
+    // language = one new lang_xx.cs file + one entry here (Languages, Table).
     public static class Loc
     {
-        public static string Lang = "ru";
+        public static string Lang = "en";
+
+        // Supported UI codes (order = settings combo / welcome flag order).
+        public static readonly string[] Languages = { "en", "ru", "es", "pt", "de", "fr", "it", "pl", "zh", "ja" };
+
+        public static bool IsSupported(string code)
+        {
+            foreach (var l in Languages) if (string.Equals(l, code, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
 
         public static bool IsRu
         {
-            get { return !string.Equals(Lang, "en", StringComparison.OrdinalIgnoreCase); }
+            get { return string.Equals(Lang, "ru", StringComparison.OrdinalIgnoreCase); }
+        }
+
+        public static bool IsEn
+        {
+            get { return string.Equals(Lang, "en", StringComparison.OrdinalIgnoreCase); }
+        }
+
+        private static Dictionary<string, string> Table()
+        {
+            switch (Lang)
+            {
+                case "ru": return Ru;
+                case "es": return LangEs.Table;
+                case "pt": return LangPt.Table;
+                case "de": return LangDe.Table;
+                case "fr": return LangFr.Table;
+                case "it": return LangIt.Table;
+                case "pl": return LangPl.Table;
+                case "zh": return LangZh.Table;
+                case "ja": return LangJa.Table;
+                default: return null;
+            }
+        }
+
+        // Native names for the settings combo and the welcome window tooltips
+        // (index-aligned with Languages).
+        public static string NativeName(string code)
+        {
+            switch (code)
+            {
+                case "en": return "English";
+                case "ru": return "Русский";
+                case "es": return "Español";
+                case "pt": return "Português";
+                case "de": return "Deutsch";
+                case "fr": return "Français";
+                case "it": return "Italiano";
+                case "pl": return "Polski";
+                case "zh": return "中文 (简体)";
+                case "ja": return "日本語";
+                default: return code;
+            }
         }
 
         public static string S(string en, string ru)
         {
-            return IsRu ? ru : en;
+            if (IsRu) return ru;
+            string t;
+            var table = Table();
+            if (table != null && table.TryGetValue(en, out t)) return t;
+            return en;
         }
 
         public static string S(string en)
         {
-            if (!IsRu) return en;
+            if (IsEn) return en;
             string t;
-            return Ru.TryGetValue(en, out t) ? t : en;
+            var table = Table();
+            if (table != null && table.TryGetValue(en, out t)) return t;
+            return en;
         }
 
         public static readonly Dictionary<string, string> Ru = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -152,18 +214,20 @@ namespace WinPanel
         // (and to the context menus attached to the controls).
         public static void Walk(Control root)
         {
-            if (!IsRu || root == null) return;
+            if (IsEn || root == null) return; // English is the source of truth
+            var table = Table();
+            if (table == null) return;
             try
             {
                 string t = root.Text;
                 if (!string.IsNullOrEmpty(t))
                 {
                     string tr;
-                    if (Ru.TryGetValue(t, out tr)) root.Text = tr;
+                    if (table.TryGetValue(t, out tr)) root.Text = tr;
                 }
                 if (root.ContextMenu != null)
                 {
-                    foreach (MenuItem mi in root.ContextMenu.MenuItems) WalkMenu(mi);
+                    foreach (MenuItem mi in root.ContextMenu.MenuItems) WalkMenu(mi, table);
                 }
                 foreach (Control c in root.Controls) Walk(c);
             }
@@ -172,12 +236,19 @@ namespace WinPanel
 
         public static void WalkMenu(MenuItem mi)
         {
+            if (IsEn || mi == null) return;
+            var table = Table();
+            if (table != null) WalkMenu(mi, table);
+        }
+
+        private static void WalkMenu(MenuItem mi, Dictionary<string, string> table)
+        {
             if (mi == null) return;
             try
             {
                 string tr;
-                if (!string.IsNullOrEmpty(mi.Text) && Ru.TryGetValue(mi.Text, out tr)) mi.Text = tr;
-                foreach (MenuItem child in mi.MenuItems) WalkMenu(child);
+                if (!string.IsNullOrEmpty(mi.Text) && table.TryGetValue(mi.Text, out tr)) mi.Text = tr;
+                foreach (MenuItem child in mi.MenuItems) WalkMenu(child, table);
             }
             catch { }
         }

@@ -1,11 +1,12 @@
 # Tilettes
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](README.ru.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Italiano](README.it.md) · [Polski](README.pl.md) · [中文 (简体)](README.zh.md) · [日本語](README.ja.md)
 
-<!-- Adding a language: create README.<code>.md (translate), then extend the
-     language line above and the one at the top of README.ru.md. GitHub shows
-     README.md (English) on the repo home; every other language is one file
-     plus one link. -->
+<!-- Adding a language: create README.<code>.md (translate), add lang_xx.cs
+     (UI table keyed by the English strings, see loc.cs), then extend the
+     language line above, the one at the top of every other README file and
+     the Loc.Languages array. GitHub shows README.md (English) on the repo
+     home; every other language is one file plus one link. -->
 
 A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 
@@ -217,7 +218,7 @@ Releases are built automatically by GitHub Actions on every `v*` tag (the workfl
 | `Settings.cs` / `SettingsForm.cs` | Settings model and dialog |
 | `FileTypes.cs` / `FileTypesForm.cs` | File type rules and their editors |
 | `bookmarks.cs` | Bookmark storage |
-| `loc.cs` | RU/EN localization |
+| `loc.cs` + `lang_*.cs` | Localization: EN source, RU inline, ES/PT/DE/FR/IT/PL/ZH/JA tables |
 | `UpdateChecker.cs` / `WelcomeForm.cs` | Update check (GitHub Releases) and the first-start welcome window |
 | `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Icons, native menus, INI I/O, records I/O, autostart/single-instance/wallets |
 
@@ -268,9 +269,10 @@ Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoV
 - First-start welcome window (once per data folder): thanks, beta notice + issue link, painted mini-diagram, language choice (RU/EN flags), update-check permission, donation addresses (click to copy); exit via "Close" or "Close & create example tiles" (Notepad / Calculator / Explorer / Paint as ready tiles). Re-playable from the settings.
 - Update check: the app asks the public GitHub Releases API for the latest tag every N days (default 3; the first check also happens N days after the install) — strictly only when the user allowed it, zero network requests otherwise. When a newer version exists a green "Update" plate appears next to the settings button and opens the releases page. Manual "Check now" button in the settings (reports the result in a message box). Auto-install is a stub (TODO). Mock hook for testing the plate: `WINPANEL_MOCK_UPDATE=0.6`.
 - Settings: new "Updates" section (check toggle, interval in days, check-now button, auto-install stub, donate line with a popup wallet menu — a click copies the address — and a welcome-window replay button). Editable hotkey field: any Ctrl/Alt/Shift/Win + letter/digit combination can be typed in (validated), default changed to Ctrl+Q.
+- Program UI localized into **10 languages**: English (source), Russian, Spanish, Portuguese, German, French, Italian, Polish, Chinese (simplified) and Japanese. The language is picked in the settings or via the painted flags in the welcome window; new languages are one table file + one line (see loc.cs).
 - Real donation wallet list grouped by chain: EVM networks (ETH · Polygon · Base · Monad · HyperEVM) share one address; plus Bitcoin, Solana and Sui.
 - Version is now a single constant (`AppInfo.AppVersion`); the tray tooltip and the welcome window show it.
-- GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), bilingual README split into per-language files (`README.md` EN + `README.ru.md`) for easy extension, GitHub Actions build workflow (release zip on `v*` tags), docs landing page for GitHub Pages.
+- GitHub infrastructure: MIT license, FUNDING.yml (sponsor links to wallet anchors), README split into per-language files (`README.md` EN + 9 translations) for easy extension, GitHub Actions build workflow (release zip on `v*` tags), docs landing page for GitHub Pages. All commit messages in the history are English.
 
 ### v0.4 (2026-09-29)
 

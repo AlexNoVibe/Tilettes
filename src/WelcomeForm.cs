@@ -100,7 +100,7 @@ namespace WinPanel
             titleBar.Paint += (s, e) => PaintLogo(e.Graphics, new Rectangle(14, 10, 24, 24));
             var titleLbl = new Label
             {
-                Text = Loc.S("Плиточки", "Плиточки · Tilettes") + "  v" + AppInfo.AppVersion,
+                Text = Loc.S("Tilettes", "Плиточки · Tilettes") + "  v" + AppInfo.AppVersion,
                 Left = 46,
                 Top = (44 - titleFont.Height) / 2,
                 AutoSize = true,
@@ -147,21 +147,25 @@ namespace WinPanel
             lblHow = AddLabel(x, ref y, cw, lh + 2, mainFont);
             y += 10;
 
-            // ---- Language: painted flags, live re-translation ----
+            // ---- Language: painted flags (one per supported language, 5 x 2) ----
             lblLang = AddLabel(x, ref y, cw, lh + 2, mainFont);
-            var flagRow = new Panel { Left = x, Top = y, Width = cw, Height = 38, BackColor = bgColor };
-            int fx = 0;
-            foreach (var code in new[] { "ru", "en" })
+            var flagRow = new Panel { Left = x, Top = y, Width = cw, Height = 74, BackColor = bgColor };
+            int fi = 0;
+            foreach (var code in Loc.Languages)
             {
-                var fb = new FlagButton(code) { Left = fx, Top = 1 };
+                var fb = new FlagButton(code)
+                {
+                    Left = (fi % 5) * (52 + 12),
+                    Top = (fi / 5) * (30 + 12)
+                };
                 fb.Click += (s, e) => SelectLanguage(code);
-                tips.SetToolTip(fb, code == "ru" ? "Русский" : "English");
+                tips.SetToolTip(fb, Loc.NativeName(code));
                 flagRow.Controls.Add(fb);
                 flags.Add(fb);
-                fx += 64;
+                fi++;
             }
             this.Controls.Add(flagRow);
-            y += 44;
+            y += 80;
 
             chkUpdates = new CheckBox
             {
@@ -490,8 +494,8 @@ namespace WinPanel
             public FlagButton(string code)
             {
                 Code = code;
-                Width = 56;
-                Height = 34;
+                Width = 52;
+                Height = 30;
                 Cursor = Cursors.Hand;
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
             }
@@ -504,44 +508,134 @@ namespace WinPanel
                 using (var path = WelcomeForm.RoundRectPath(r, 6))
                 {
                     g.SetClip(path);
-                    if (Code == "ru")
+                    switch (Code)
                     {
-                        int bh = Height / 3;
-                        using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, 0, 0, Width, bh);
-                        using (var b = new SolidBrush(Color.FromArgb(0, 57, 166))) g.FillRectangle(b, 0, bh, Width, bh);
-                        using (var b = new SolidBrush(Color.FromArgb(213, 43, 30))) g.FillRectangle(b, 0, 2 * bh, Width, Height - 2 * bh);
-                    }
-                    else
-                    {
-                        // Union Jack, simplified: navy field, white+red diagonals,
-                        // white+red cross.
-                        using (var b = new SolidBrush(Color.FromArgb(0, 36, 125))) g.FillRectangle(b, r);
-                        using (var pw = new Pen(Color.White, Height / 5f))
-                        {
-                            g.DrawLine(pw, 0, 0, Width, Height);
-                            g.DrawLine(pw, Width, 0, 0, Height);
-                        }
-                        using (var pr = new Pen(Color.FromArgb(200, 16, 35), Height / 12f))
-                        {
-                            g.DrawLine(pr, 0, 0, Width, Height);
-                            g.DrawLine(pr, Width, 0, 0, Height);
-                        }
-                        using (var pw = new Pen(Color.White, Height / 3f))
-                        {
-                            g.DrawLine(pw, Width / 2, 0, Width / 2, Height);
-                            g.DrawLine(pw, 0, Height / 2, Width, Height / 2);
-                        }
-                        using (var pr = new Pen(Color.FromArgb(200, 16, 35), Height / 5f))
-                        {
-                            g.DrawLine(pr, Width / 2, 0, Width / 2, Height);
-                            g.DrawLine(pr, 0, Height / 2, Width, Height / 2);
-                        }
+                        case "ru":
+                            {
+                                int bh = Height / 3;
+                                using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, 0, 0, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(0, 57, 166))) g.FillRectangle(b, 0, bh, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(213, 43, 30))) g.FillRectangle(b, 0, 2 * bh, Width, Height - 2 * bh);
+                                break;
+                            }
+                        case "de":
+                            {
+                                int bh = Height / 3;
+                                using (var b = new SolidBrush(Color.FromArgb(20, 20, 20))) g.FillRectangle(b, 0, 0, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(221, 0, 0))) g.FillRectangle(b, 0, bh, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(255, 206, 0))) g.FillRectangle(b, 0, 2 * bh, Width, Height - 2 * bh);
+                                break;
+                            }
+                        case "fr":
+                            {
+                                int bw = Width / 3;
+                                using (var b = new SolidBrush(Color.FromArgb(0, 85, 164))) g.FillRectangle(b, 0, 0, bw, Height);
+                                using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, bw, 0, bw, Height);
+                                using (var b = new SolidBrush(Color.FromArgb(239, 65, 53))) g.FillRectangle(b, 2 * bw, 0, Width - 2 * bw, Height);
+                                break;
+                            }
+                        case "it":
+                            {
+                                int bw = Width / 3;
+                                using (var b = new SolidBrush(Color.FromArgb(0, 146, 70))) g.FillRectangle(b, 0, 0, bw, Height);
+                                using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, bw, 0, bw, Height);
+                                using (var b = new SolidBrush(Color.FromArgb(205, 33, 42))) g.FillRectangle(b, 2 * bw, 0, Width - 2 * bw, Height);
+                                break;
+                            }
+                        case "es":
+                            {
+                                // red / yellow (double height) / red
+                                int bh = Height / 4;
+                                using (var b = new SolidBrush(Color.FromArgb(170, 21, 27))) g.FillRectangle(b, 0, 0, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(255, 196, 0))) g.FillRectangle(b, 0, bh, Width, 2 * bh);
+                                using (var b = new SolidBrush(Color.FromArgb(170, 21, 27))) g.FillRectangle(b, 0, 3 * bh, Width, Height - 3 * bh);
+                                break;
+                            }
+                        case "pt":
+                            {
+                                // green field, yellow diamond, blue globe (simplified)
+                                int gw = Width * 2 / 5;
+                                using (var b = new SolidBrush(Color.FromArgb(0, 102, 0))) g.FillRectangle(b, 0, 0, gw, Height);
+                                using (var b = new SolidBrush(Color.FromArgb(239, 65, 53))) g.FillRectangle(b, gw, 0, Width - gw, Height);
+                                var pts = new[] { new Point(Width / 2, 3), new Point(Width - 8, Height / 2), new Point(Width / 2, Height - 3), new Point(8, Height / 2) };
+                                using (var b = new SolidBrush(Color.FromArgb(255, 223, 0))) g.FillPolygon(b, pts);
+                                using (var b = new SolidBrush(Color.FromArgb(0, 39, 118)))
+                                    g.FillEllipse(b, Width / 2 - 6, Height / 2 - 6, 12, 12);
+                                break;
+                            }
+                        case "pl":
+                            {
+                                int bh = Height / 2;
+                                using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, 0, 0, Width, bh);
+                                using (var b = new SolidBrush(Color.FromArgb(220, 55, 75))) g.FillRectangle(b, 0, bh, Width, Height - bh);
+                                break;
+                            }
+                        case "zh":
+                            {
+                                using (var b = new SolidBrush(Color.FromArgb(222, 30, 38))) g.FillRectangle(b, r);
+                                using (var b = new SolidBrush(Color.FromArgb(255, 222, 0)))
+                                {
+                                    DrawStar(g, b, 10, 8, 6);
+                                    DrawStar(g, b, 20, 3, 2);
+                                    DrawStar(g, b, 23, 7, 2);
+                                    DrawStar(g, b, 23, 12, 2);
+                                    DrawStar(g, b, 20, 16, 2);
+                                }
+                                break;
+                            }
+                        case "ja":
+                            {
+                                using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, r);
+                                using (var b = new SolidBrush(Color.FromArgb(188, 0, 45)))
+                                    g.FillEllipse(b, Width / 2 - 7, Height / 2 - 7, 14, 14);
+                                break;
+                            }
+                        default:
+                            {
+                                // en: Union Jack, simplified: navy field, white+red diagonals,
+                                // white+red cross.
+                                using (var b = new SolidBrush(Color.FromArgb(0, 36, 125))) g.FillRectangle(b, r);
+                                using (var pw = new Pen(Color.White, Height / 5f))
+                                {
+                                    g.DrawLine(pw, 0, 0, Width, Height);
+                                    g.DrawLine(pw, Width, 0, 0, Height);
+                                }
+                                using (var pr = new Pen(Color.FromArgb(200, 16, 35), Height / 12f))
+                                {
+                                    g.DrawLine(pr, 0, 0, Width, Height);
+                                    g.DrawLine(pr, Width, 0, 0, Height);
+                                }
+                                using (var pw = new Pen(Color.White, Height / 3f))
+                                {
+                                    g.DrawLine(pw, Width / 2, 0, Width / 2, Height);
+                                    g.DrawLine(pw, 0, Height / 2, Width, Height / 2);
+                                }
+                                using (var pr = new Pen(Color.FromArgb(200, 16, 35), Height / 5f))
+                                {
+                                    g.DrawLine(pr, Width / 2, 0, Width / 2, Height);
+                                    g.DrawLine(pr, 0, Height / 2, Width, Height / 2);
+                                }
+                                break;
+                            }
                     }
                     g.ResetClip();
                     using (var pen = new Pen(Selected ? Color.FromArgb(46, 204, 113) : Color.FromArgb(130, 130, 135), Selected ? 2f : 1f))
                         g.DrawPath(pen, path);
                 }
                 base.OnPaint(e);
+            }
+
+            // Small 5-point star (used by the zh flag).
+            private static void DrawStar(Graphics g, Brush brush, float cx, float cy, float radius)
+            {
+                var pts = new PointF[10];
+                for (int i = 0; i < 10; i++)
+                {
+                    double ang = -Math.PI / 2 + i * Math.PI / 5;
+                    float rad = i % 2 == 0 ? radius : radius * 0.42f;
+                    pts[i] = new PointF(cx + (float)(Math.Cos(ang) * rad), cy + (float)(Math.Sin(ang) * rad));
+                }
+                g.FillPolygon(brush, pts);
             }
         }
     }
