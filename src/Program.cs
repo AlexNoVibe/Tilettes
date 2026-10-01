@@ -5257,7 +5257,11 @@ namespace WinPanel
             int twoRows = 2 * lineH - 6;
             bool wantTwo = true;
             try { var c = MainForm.CurrentSettings; if (c != null && !c.LabelTwoRows) wantTwo = false; } catch { }
-            if (wantTwo && twoRows > 24 && this.Height >= twoRows + 36) return twoRows;
+            // Two rows as soon as the tile can host them and still leave the icon
+            // ~20px (the icon scales down anyway); the old 36px reserve silently
+            // disabled two rows on 2x2 tiles with larger tile fonts, which looked
+            // like the mode being off until the next full repaint.
+            if (wantTwo && twoRows > 24 && this.Height >= twoRows + 20) return twoRows;
             return 20;
         }
 
@@ -5410,7 +5414,7 @@ namespace WinPanel
                                 cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
                             // Two rows on tall tiles: greedy word wrap, a too-long
                             // second row falls back to the "head…tail" form.
-                            string[] rows = (labelSpace > 30 && (cfg == null || cfg.LabelTwoRows))
+                            string[] rows = (labelSpace >= 2 * font.Height - 8 && (cfg == null || cfg.LabelTwoRows))
                                 ? UiText.WrapTwo(label, e.Graphics, font, textRect.Width) : null;
                             if (rows == null)
                             {
