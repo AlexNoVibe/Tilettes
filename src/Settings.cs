@@ -118,6 +118,8 @@ namespace WinPanel
         public bool LabelTrimShortcut { get; set; } // hide " - Shortcut" / " — ярлык" (dash variants, several languages)
         public bool LabelTrimExtension { get; set; } // hide the real extension of the item's path (.mp4 …)
         public int LabelAlign2Rows { get; set; }     // horizontal alignment of the two-row label: 0 left, 1 center, 2 right
+        // Hold Ctrl -> tiles show their full (untruncated) name while the key is down.
+        public bool LabelCtrlFullNames { get; set; }
 
         public Settings()
         {
@@ -197,6 +199,7 @@ namespace WinPanel
             LabelTwoRows = true;
             LabelTrimShortcut = true;
             LabelTrimExtension = true;
+            LabelCtrlFullNames = true;
             LabelAlign2Rows = 1;
         }
 
@@ -404,6 +407,8 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("LabelTwoRows"), out l2r)) s.LabelTwoRows = l2r;
                 if (bool.TryParse(ini.Read("LabelTrimShortcut"), out lts)) s.LabelTrimShortcut = lts;
                 if (bool.TryParse(ini.Read("LabelTrimExtension"), out lte)) s.LabelTrimExtension = lte;
+                bool lcf;
+                if (bool.TryParse(ini.Read("LabelCtrlFullNames"), out lcf)) s.LabelCtrlFullNames = lcf;
                 int la2;
                 if (int.TryParse(ini.Read("LabelAlign2Rows"), out la2) && la2 >= 0 && la2 <= 2) s.LabelAlign2Rows = la2;
 
@@ -499,6 +504,7 @@ namespace WinPanel
                 ini.Write("LabelTwoRows", LabelTwoRows.ToString());
                 ini.Write("LabelTrimShortcut", LabelTrimShortcut.ToString());
                 ini.Write("LabelTrimExtension", LabelTrimExtension.ToString());
+                ini.Write("LabelCtrlFullNames", LabelCtrlFullNames.ToString());
                 ini.Write("LabelAlign2Rows", LabelAlign2Rows.ToString());
             }
             catch (Exception ex)

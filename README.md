@@ -282,6 +282,14 @@ Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoV
 <a name="changelog"></a>
 ## Changelog
 
+### v0.6.1 (2026-10-01)
+
+- Version is shown in the top-right corner of the settings window.
+- Hold **Ctrl** — tiles show their full untruncated names (the label font shrinks to fit); back to normal when released. Toggle in the settings ("Hold Ctrl — show full names on tiles").
+- Tile tooltips redesigned: description (or the full name when there is no description) + a separator + the full paths; `.lnk` items show both the shortcut and its resolved target.
+- Media previews: a preview, once obtained, is kept in the app's own cache and survives Windows thumbnail-cache eviction; dead-link right-click now shows the tile's own actions instead of doing nothing; Media Foundation frame extractor kept as a fail-soft fallback (see REPORT.md).
+- b2.bat closes the running app before compiling.
+
 ### v0.6.0-beta (2026-10-01)
 
 - Performance: faster startup (lazy tab rendering — only the active tab is built), persistent icon cache (shell icons are extracted once per tile lifetime), search metadata collected once when an item is added; the mini explorer search field is disabled (code kept for re-enable).

@@ -379,12 +379,18 @@ namespace WinPanel
                 try
                 {
                     if (e.KeyCode == Keys.Escape && panelSearchActive) { ClearPanelSearch(); e.SuppressKeyPress = true; return; }
+                    if (e.KeyCode == Keys.ControlKey) InvalidateAllTiles(); // full-name preview while held
                     if (e.Control && e.KeyCode == Keys.F)
                     {
                         if (panelSearchBox != null) { panelSearchBox.Focus(); panelSearchBox.SelectAll(); }
                         e.SuppressKeyPress = true;
                     }
                 }
+                catch { }
+            };
+            this.KeyUp += (s, e) =>
+            {
+                try { if (e.KeyCode == Keys.ControlKey) InvalidateAllTiles(); }
                 catch { }
             };
 
@@ -3994,9 +4000,9 @@ namespace WinPanel
                 Location = new Point(xPos, yPos)
             };
 
-            // Description pops up as a tooltip after 0.3 s of hovering.
-            if (itemTip != null && !string.IsNullOrEmpty(item.ShortDescription))
-                itemTip.SetToolTip(tile, item.ShortDescription);
+            // Tooltip: description / full name + separator + full paths.
+            if (itemTip != null)
+                itemTip.SetToolTip(tile, BuildItemTooltipText(item));
 
             if (item.IsFolder)
             {
@@ -4333,10 +4339,64 @@ namespace WinPanel
                 var tc = c as TileControl;
                 if (tc != null && tc.Item == item)
                 {
-                    itemTip.SetToolTip(tc, string.IsNullOrEmpty(item.ShortDescription) ? null : item.ShortDescription);
+                    itemTip.SetToolTip(tc, BuildItemTooltipText(item));
                     return;
                 }
             }
+        }
+
+        // Ctrl full-name preview: repaint every tile so the labels switch between
+        // the abbreviated and the full form while the key is held / released.
+        private void InvalidateAllTiles()
+        {
+            try
+            {
+                if (settings == null || !settings.LabelCtrlFullNames) return;
+                foreach (Control c in contentPanel.Controls)
+                {
+                    var lp = c as Panel;
+                    if (lp == null) continue;
+                    foreach (Control t in lp.Controls)
+                    {
+                        var tc = t as TileControl;
+                        if (tc != null) tc.Invalidate();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Tooltip text for any item: first line is the description when there is
+        // one, otherwise the full (untruncated) tile name; then a separator and
+        // the full paths (a .lnk shows both the shortcut and its resolved target).
+        internal static string BuildItemTooltipText(ShortcutItem item)
+        {
+            try
+            {
+                if (item == null) return null;
+                string head;
+                if (!string.IsNullOrEmpty(item.ShortDescription))
+                    head = item.ShortDescription;
+                else
+                    head = UiText.TileLabel(item.Name, item.Path, true, true);
+
+                string paths = item.Path ?? "";
+                try
+                {
+                    if (paths.Length > 0 && paths.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string target = PanelSearch.GetTarget(item);
+                        if (!string.IsNullOrEmpty(target) && !string.Equals(target, paths, StringComparison.OrdinalIgnoreCase))
+                            paths = paths + "\n→ " + target;
+                    }
+                }
+                catch { }
+
+                if (paths.Length == 0) return head;
+                string sep = new string('─', 32);
+                return head + "\n" + sep + "\n" + paths;
+            }
+            catch { return null; }
         }
 
         private void RenameItem(ShortcutItem item, TileControl tile)
@@ -4909,7 +4969,7 @@ namespace WinPanel
                 tile.Margin = new Padding(TileGap / 2);
                 AttachTileHandlers(tile, child);
                 if (!string.IsNullOrEmpty(child.ShortDescription))
-                    tip.SetToolTip(tile, child.ShortDescription);
+                    tip.SetToolTip(tile, MainForm.BuildItemTooltipText(child));
                 flow.Controls.Add(tile);
             }
         }
@@ -5207,8 +5267,35 @@ namespace WinPanel
                         // Same display-only transform as the main tiles.
                         string label = UiText.TileLabel(item.Name, item.Path,
                             cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
-                        string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, textRect.Width);
-                        e.Graphics.DrawString(shown, font, brush, textRect, TileLabelFormat);
+                        bool ctrlFull = (Control.ModifierKeys & Keys.Control) != 0 &&
+                                        (cfg == null || cfg.LabelCtrlFullNames);
+                        if (ctrlFull)
+                        {
+                            float fs = labelSize > 0 ? labelSize : 8f;
+                            if (fs < 6f) fs = 6f;
+                            Font fit = labelName != null
+                                ? new Font(labelName, fs)
+                                : new Font(FallbackLabelFont.FontFamily, fs);
+                            try
+                            {
+                                while (fs > 5.5f && TextRenderer.MeasureText(label, fit,
+                                    new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width > textRect.Width)
+                                {
+                                    fit.Dispose();
+                                    fs -= 0.5f;
+                                    fit = labelName != null
+                                        ? new Font(labelName, fs)
+                                        : new Font(FallbackLabelFont.FontFamily, fs);
+                                }
+                                e.Graphics.DrawString(label, fit, brush, textRect, TileLabelFormat);
+                            }
+                            finally { fit.Dispose(); }
+                        }
+                        else
+                        {
+                            string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, textRect.Width);
+                            e.Graphics.DrawString(shown, font, brush, textRect, TileLabelFormat);
+                        }
                     }
                 }
                 catch { }
@@ -5501,9 +5588,12 @@ namespace WinPanel
                             // hide the shortcut suffix and/or the path extension.
                             string label = UiText.TileLabel(Item.Name, Item.Path,
                                 cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
-                            // Two rows on tall tiles: greedy word wrap, a too-long
-                            // second row falls back to the "head…tail" form.
-                            string[] rows = (labelSpace >= 2 * font.Height - 8 && (cfg == null || cfg.LabelTwoRows))
+                            // Ctrl held (and enabled in settings): show the full
+                            // name instead of the abbreviated one - the label font
+                            // shrinks until the whole text fits one line.
+                            bool ctrlFull = (Control.ModifierKeys & Keys.Control) != 0 &&
+                                            (cfg == null || cfg.LabelCtrlFullNames);
+                            string[] rows = (!ctrlFull && labelSpace > 30 && (cfg == null || cfg.LabelTwoRows))
                                 ? UiText.WrapTwo(label, e.Graphics, font, textRect.Width) : null;
                             if (rows == null)
                             {
@@ -5512,8 +5602,33 @@ namespace WinPanel
                                 // "head…tail" abbreviation applies when too wide.
                                 int stripH = Math.Min(labelSpace, font.Height + 4);
                                 Rectangle oneRect = new Rectangle(2, this.Height - stripH - 1, this.Width - 4, stripH);
-                                string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, oneRect.Width);
-                                e.Graphics.DrawString(shown, font, brush, oneRect, TileLabelFormat);
+                                if (ctrlFull)
+                                {
+                                    float fs = labelSize > 0 ? labelSize : 9f;
+                                    if (fs < 6f) fs = 6f;
+                                    Font fit = labelName != null
+                                        ? new Font(labelName, fs)
+                                        : new Font(FallbackLabelFont.FontFamily, fs);
+                                    try
+                                    {
+                                        while (fs > 5.5f && TextRenderer.MeasureText(label, fit,
+                                            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width > textRect.Width)
+                                        {
+                                            fit.Dispose();
+                                            fs -= 0.5f;
+                                            fit = labelName != null
+                                                ? new Font(labelName, fs)
+                                                : new Font(FallbackLabelFont.FontFamily, fs);
+                                        }
+                                        e.Graphics.DrawString(label, fit, brush, oneRect, TileLabelFormat);
+                                    }
+                                    finally { fit.Dispose(); }
+                                }
+                                else
+                                {
+                                    string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, oneRect.Width);
+                                    e.Graphics.DrawString(shown, font, brush, oneRect, TileLabelFormat);
+                                }
                             }
                             else
                             {

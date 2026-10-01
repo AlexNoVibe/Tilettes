@@ -32,6 +32,7 @@ namespace WinPanel
         private CheckBox chkTwoRows;
         private CheckBox chkTrimShortcut;
         private CheckBox chkTrimExt;
+        private CheckBox chkCtrlNames;
         private ComboBox cmbLabelAlign;
 
         private NumericUpDown numIconScale;
@@ -144,6 +145,16 @@ namespace WinPanel
             var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
             var titleLbl = new Label { Text = "Settings", ForeColor = textColor, AutoSize = true, Location = new Point(10, 7) };
             titleBar.Controls.Add(titleLbl);
+            // App version in the top-right corner (next to the close button).
+            var verLbl = new Label
+            {
+                Text = "v" + AppInfo.AppVersion,
+                ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(150, 150, 158),
+                AutoSize = true
+            };
+            titleBar.Controls.Add(verLbl);
+            titleBar.Resize += (s, e) => { verLbl.Location = new Point(titleBar.Width - verLbl.Width - 40, 8); };
+            verLbl.Location = new Point(400, 8);
             var closeBtn = new Button { Text = "X", Width = 30, Height = 30, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, ForeColor = textColor, BackColor = panelColor };
             closeBtn.FlatAppearance.BorderSize = 0;
             closeBtn.Click += (s, e) => this.Close();
@@ -249,6 +260,12 @@ namespace WinPanel
             Tip(chkTrimExt, "Display only: hides the real extension of the item's path on the label; untick to bring it back",
                 "Только отображение: скрывает на подписи реальное расширение пути элемента; снятие галочки возвращает расширение");
             scrollPanel.Controls.Add(chkTrimExt);
+            y += 28;
+
+            chkCtrlNames = new CheckBox { Text = Loc.S("Hold Ctrl — show full names on tiles", "Зажать Ctrl — полные названия на плитках"), Left = 20, Top = y, Width = 540, Checked = settings.LabelCtrlFullNames, ForeColor = textColor };
+            Tip(chkCtrlNames, "While Ctrl is held the tiles show their full untruncated names (smaller font); tooltips also show the full name and full paths",
+                "Пока Ctrl зажат, плитки показывают полные названия (шрифт уменьшается); в подсказках тоже полное название и полные пути");
+            scrollPanel.Controls.Add(chkCtrlNames);
             y += 30;
 
             var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
@@ -847,6 +864,7 @@ namespace WinPanel
             settings.LabelTwoRows = chkTwoRows.Checked;
             settings.LabelTrimShortcut = chkTrimShortcut.Checked;
             settings.LabelTrimExtension = chkTrimExt.Checked;
+            settings.LabelCtrlFullNames = chkCtrlNames.Checked;
             settings.LabelAlign2Rows = cmbLabelAlign.SelectedIndex < 0 ? 1 : cmbLabelAlign.SelectedIndex;
             // The 3rd (red, multi-select) state changes only from the panel button;
             // this checkbox just switches it on/off preserving state 2.
