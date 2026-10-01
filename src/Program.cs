@@ -5981,8 +5981,19 @@ namespace WinPanel
             {
                 if (TileLabelCache.TryGetValue(key, out hit)) return hit;
             }
+            bool isShortcut = false;
+            try { isShortcut = (path ?? "").EndsWith(".lnk", StringComparison.OrdinalIgnoreCase); } catch { }
             string s = name;
-            if (trimShortcut) s = TrimShortcutSuffix(s);
+            if (trimShortcut)
+            {
+                // Twice: rare but real "Name - Shortcut - Shortcut" nesting.
+                // TrimEnd between passes: "Name - Ярлык " must lose its trailing
+                // space before the next suffix check and the extension heuristic.
+                s = TrimShortcutSuffix(s);
+                s = s.TrimEnd();
+                s = TrimShortcutSuffix(s);
+                s = s.TrimEnd();
+            }
             if (trimExtension)
             {
                 try
@@ -5991,6 +6002,30 @@ namespace WinPanel
                     if (!string.IsNullOrEmpty(ext) && ext.Length <= 6 && s.Length > ext.Length &&
                         s.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
                         s = s.Substring(0, s.Length - ext.Length);
+                    else if (isShortcut && trimShortcut)
+                    {
+                        // "Video.mp4 - Ярлык.lnk": Explorer copies the target's extension
+                        // into the shortcut name, so after the suffix is gone the label
+                        // still ends with that extension. Drop one final token of 2-5
+                        // letters/digits that contains at least one letter (a numeric
+                        // tail like "версия 2.0" or "отчёт 2024" is never touched).
+                        int dot = s.LastIndexOf('.');
+                        if (dot > 0)
+                        {
+                            int len = s.Length - dot - 1;
+                            if (len >= 2 && len <= 5)
+                            {
+                                bool word = true, hasLetter = false;
+                                for (int i = dot + 1; i < s.Length; i++)
+                                {
+                                    char c = s[i];
+                                    if (!char.IsLetterOrDigit(c)) { word = false; break; }
+                                    if (char.IsLetter(c)) hasLetter = true;
+                                }
+                                if (word && hasLetter) s = s.Substring(0, dot);
+                            }
+                        }
+                    }
                 }
                 catch { }
             }
