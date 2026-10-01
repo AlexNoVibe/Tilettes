@@ -43,6 +43,30 @@ namespace WinPanel
             return (DateTime.Now - last).TotalHours >= s.StartMenuSyncHours;
         }
 
+        // Keeps the mirrored tab name canonical ("Пуск" / "Start"). Runs at every
+        // startup so a rename does not wait for the next scheduled sync.
+        // Returns true when something changed (caller saves).
+        public static bool EnsureTabName(Records records)
+        {
+            try
+            {
+                if (records == null || records.Tabs == null) return false;
+                string wanted = Loc.S("Start", "Пуск");
+                bool changed = false;
+                foreach (var t in records.Tabs)
+                {
+                    if (t.Kind == TabKind && !string.Equals(t.Name, wanted, StringComparison.Ordinal))
+                    {
+                        AppLog.Write("Start Menu tab renamed: '" + t.Name + "' -> '" + wanted + "'");
+                        t.Name = wanted;
+                        changed = true;
+                    }
+                }
+                return changed;
+            }
+            catch (Exception ex) { AppLog.Write("EnsureTabName", ex); return false; }
+        }
+
         // Startup check: sync in the background shortly after the window is up.
         public static void ScheduleIfNeeded(MainForm form, Settings s)
         {

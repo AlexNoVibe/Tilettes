@@ -467,6 +467,14 @@ namespace WinPanel
             }
             catch (Exception ex) { AppLog.Write("Start tab layout", ex); }
 
+            // Keep the mirrored tab named canonically ("Пуск" / "Start"); the rename
+            // must not wait for the next scheduled sync.
+            try
+            {
+                if (StartMenuSync.EnsureTabName(records)) records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("Start tab rename", ex); }
+
             // Overflow protection: after the user shrank the grid, items that no
             // longer fit move into a last-resort folder (kept for later restore).
             try
@@ -6086,6 +6094,12 @@ namespace WinPanel
         static void Main()
         {
             AppLog.InstallGlobalHandlers();
+            // Autostart (HKCU Run) launches the exe with C:\Windows\System32 as the
+            // working directory, which breaks every relative data path (settings.ini,
+            // records.xml, ...). Anchor the working directory to the exe folder once:
+            // the app stays fully portable, no absolute paths are stored anywhere.
+            try { Environment.CurrentDirectory = AppDomain.CurrentDomain.BaseDirectory; }
+            catch (Exception ex) { AppLog.Write("CWD anchor", ex); }
             if (!SingleInstance.Start())
             {
                 SingleInstance.NotifyExisting();
