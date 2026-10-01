@@ -223,6 +223,13 @@ namespace WinPanel
             { "Rebuild icons & paths", "Пересобрать иконки и пути" },
             { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
               "Проверено: {0} · потерянных путей: {1} · файлов кеша удалено: {2}" },
+            { "Tile label: two rows", "Подпись плитки: две строки" },
+            { "2 rows align:", "Выравнивание 2 строк:" },
+            { "Left", "Слева" },
+            { "Center", "По центру" },
+            { "Right", "Справа" },
+            { "Hide shortcut suffix ( - Shortcut)", "Скрывать суффикс ярлыка ( — ярлык)" },
+            { "Hide file extension (.mp4)", "Скрывать расширение файла (.mp4)" },
         };
 
         // Applies dictionary translation to every static text in the control tree

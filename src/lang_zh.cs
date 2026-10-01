@@ -245,7 +245,14 @@ namespace WinPanel
             { "Mini Explorer", "迷你资源管理器" },
             { "Rebuild icons & paths", "重建图标和路径" },
             { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
-              "已检查：{0} · 丢失路径：{1} · 已删除缓存文件：{2}" }
+              "已检查：{0} · 丢失路径：{1} · 已删除缓存文件：{2}" },
+            { "Tile label: two rows", "磁贴标签：两行" },
+            { "2 rows align:", "两行对齐：" },
+            { "Left", "左对齐" },
+            { "Center", "居中" },
+            { "Right", "右对齐" },
+            { "Hide shortcut suffix ( - Shortcut)", "隐藏快捷方式后缀" },
+            { "Hide file extension (.mp4)", "隐藏文件扩展名 (.mp4)" }
         };
     }
 }

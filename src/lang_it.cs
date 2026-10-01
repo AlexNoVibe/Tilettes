@@ -245,7 +245,14 @@ namespace WinPanel
             { "Mini Explorer", "Mini esploratore" },
             { "Rebuild icons & paths", "Ricostruisci icone e percorsi" },
             { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
-              "Verificati: {0} · percorsi mancanti: {1} · file di cache rimossi: {2}" }
+              "Verificati: {0} · percorsi mancanti: {1} · file di cache rimossi: {2}" },
+            { "Tile label: two rows", "Etichetta tile: due righe" },
+            { "2 rows align:", "Allinea 2 righe:" },
+            { "Left", "Sinistra" },
+            { "Center", "Centro" },
+            { "Right", "Destra" },
+            { "Hide shortcut suffix ( - Shortcut)", "Nascondi suffisso collegamento ( - Collegamento)" },
+            { "Hide file extension (.mp4)", "Nascondi estensione file (.mp4)" }
         };
     }
 }

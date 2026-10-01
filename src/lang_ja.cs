@@ -245,7 +245,14 @@ namespace WinPanel
             { "Mini Explorer", "ミニエクスプローラー" },
             { "Rebuild icons & paths", "アイコンとパスを再構築" },
             { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
-              "確認済み: {0} · 見つからないパス: {1} · 削除されたキャッシュファイル: {2}" }
+              "確認済み: {0} · 見つからないパス: {1} · 削除されたキャッシュファイル: {2}" },
+            { "Tile label: two rows", "タイルラベル：2行" },
+            { "2 rows align:", "2行の配置:" },
+            { "Left", "左" },
+            { "Center", "中央" },
+            { "Right", "右" },
+            { "Hide shortcut suffix ( - Shortcut)", "ショートカット接尾辞を隠す ( - ショートカット)" },
+            { "Hide file extension (.mp4)", "ファイル拡張子を隠す (.mp4)" }
         };
     }
 }

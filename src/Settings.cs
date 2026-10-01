@@ -111,6 +111,14 @@ namespace WinPanel
         public bool UpdateAutoInstall { get; set; }
         public string LastUpdateCheck { get; set; }
 
+        // Tile label display options — DISPLAY ONLY: the stored names
+        // (records.xml), all paths and the search metadata are never touched,
+        // unticking any of these brings the full label back.
+        public bool LabelTwoRows { get; set; }      // tall tiles wrap the label onto two rows
+        public bool LabelTrimShortcut { get; set; } // hide " - Shortcut" / " — ярлык" (dash variants, several languages)
+        public bool LabelTrimExtension { get; set; } // hide the real extension of the item's path (.mp4 …)
+        public int LabelAlign2Rows { get; set; }     // horizontal alignment of the two-row label: 0 left, 1 center, 2 right
+
         public Settings()
         {
             StartupWidth = 900;
@@ -185,6 +193,11 @@ namespace WinPanel
             UpdateCheckDays = 3;
             UpdateAutoInstall = false;
             LastUpdateCheck = "";
+
+            LabelTwoRows = true;
+            LabelTrimShortcut = true;
+            LabelTrimExtension = true;
+            LabelAlign2Rows = 1;
         }
 
         // First start on a small monitor: the factory 900x800 window at Y=100
@@ -387,6 +400,13 @@ namespace WinPanel
                 if (int.TryParse(ini.Read("UpdateCheckDays"), out ucd)) s.UpdateCheckDays = Math.Max(1, Math.Min(365, ucd));
                 val = ini.Read("LastUpdateCheck"); if (val != null) s.LastUpdateCheck = val;
 
+                bool l2r, lts, lte;
+                if (bool.TryParse(ini.Read("LabelTwoRows"), out l2r)) s.LabelTwoRows = l2r;
+                if (bool.TryParse(ini.Read("LabelTrimShortcut"), out lts)) s.LabelTrimShortcut = lts;
+                if (bool.TryParse(ini.Read("LabelTrimExtension"), out lte)) s.LabelTrimExtension = lte;
+                int la2;
+                if (int.TryParse(ini.Read("LabelAlign2Rows"), out la2) && la2 >= 0 && la2 <= 2) s.LabelAlign2Rows = la2;
+
                 // While a decorative skin is active, the light/dark flag is not
                 // an independent choice: derive it from the skin's brightness so
                 // the surfaces that only know IsLightTheme (settings dialog,
@@ -475,6 +495,11 @@ namespace WinPanel
                 ini.Write("UpdateCheckDays", UpdateCheckDays.ToString());
                 ini.Write("UpdateAutoInstall", UpdateAutoInstall.ToString());
                 ini.Write("LastUpdateCheck", LastUpdateCheck == null ? "" : LastUpdateCheck);
+
+                ini.Write("LabelTwoRows", LabelTwoRows.ToString());
+                ini.Write("LabelTrimShortcut", LabelTrimShortcut.ToString());
+                ini.Write("LabelTrimExtension", LabelTrimExtension.ToString());
+                ini.Write("LabelAlign2Rows", LabelAlign2Rows.ToString());
             }
             catch (Exception ex)
             {

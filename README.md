@@ -51,6 +51,9 @@ All settings live in one dialog (⚙ button / tray menu) and are stored in `sett
 | Def. Item Size | 1–6 | 2 | Size of newly added tiles (1×1 … 6×6 cells). |
 | Icon Scale (%) | 25–400 | 100 | Icon size inside a tile, percent of the default. |
 | Allow adding icons | on/off | on | Edit mode: dragging tiles, creating folders, dropping files. When off, tiles simply launch on click. |
+| Tile label: two rows | on/off | on | Tall tiles wrap the label onto two rows (the alignment of the two rows — left/center/right — is set next to it). |
+| Hide shortcut suffix | on/off | on | Display only: " - Shortcut" / " — ярлык" (dash variants, several languages) is hidden on the label; the stored name and search are untouched — untick to bring it back. |
+| Hide file extension | on/off | on | Display only: the real extension of the item's path (.mp4 …) is hidden on the label; untick to bring it back. |
 | Skin & theme | None (dark) / Light / skins | Mint | Classic dark or light theme, or a decorative skin with its own palette and a window border: Android, Night, Mint (the factory default). |
 
 ### Folders

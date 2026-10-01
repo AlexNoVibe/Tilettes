@@ -28,6 +28,11 @@ namespace WinPanel
         private NumericUpDown numDefaultItemSize;
         private CheckBox chkEditMode;
         private CheckBox chkMiniExplorer;
+        // Tile label display options (see Settings.Label*).
+        private CheckBox chkTwoRows;
+        private CheckBox chkTrimShortcut;
+        private CheckBox chkTrimExt;
+        private ComboBox cmbLabelAlign;
 
         private NumericUpDown numIconScale;
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
@@ -218,6 +223,32 @@ namespace WinPanel
             var lblIconScale = new Label { Text = "Icon Scale (%):", Left = 20, Top = y, Width = 120 };
             numIconScale = new NumericUpDown { Left = 150, Top = y - 2, Width = 120, Maximum = 400, Minimum = 25, Value = Math.Max(25, Math.Min(400, settings.IconScale)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             Tip(numIconScale, "Icon size inside a tile, percent of the designed size", "Размер значка внутри плитки, процентов от стандартного");
+            y += 30;
+
+            // ---- Tile labels: two rows + alignment, display-only trimming ----
+            chkTwoRows = new CheckBox { Text = Loc.S("Tile label: two rows", "Подпись плитки: две строки"), Left = 20, Top = y, Width = 260, Checked = settings.LabelTwoRows, ForeColor = textColor };
+            Tip(chkTwoRows, "Tall tiles wrap the label onto two rows (the icon shrinks a bit); untick for one row",
+                "Высокие плитки переносят подпись на две строки (значок чуть уменьшается); снимите галочку для одной строки");
+            var lblAlign2 = new Label { Text = Loc.S("2 rows align:", "Выравнивание 2 строк:"), Left = 290, Top = y, Width = 130 };
+            cmbLabelAlign = new ComboBox { Left = 425, Top = y - 2, Width = 130, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbLabelAlign.Items.AddRange(new object[] { Loc.S("Left", "Слева"), Loc.S("Center", "По центру"), Loc.S("Right", "Справа") });
+            cmbLabelAlign.SelectedIndex = Math.Max(0, Math.Min(2, settings.LabelAlign2Rows));
+            Tip(cmbLabelAlign, "Horizontal alignment of the two-row label", "Выравнивание двухстрочной подписи по горизонтали");
+            scrollPanel.Controls.Add(chkTwoRows);
+            scrollPanel.Controls.Add(lblAlign2);
+            scrollPanel.Controls.Add(cmbLabelAlign);
+            y += 30;
+
+            chkTrimShortcut = new CheckBox { Text = Loc.S("Hide shortcut suffix ( - Shortcut)", "Скрывать суффикс ярлыка ( — ярлык)"), Left = 20, Top = y, Width = 540, Checked = settings.LabelTrimShortcut, ForeColor = textColor };
+            Tip(chkTrimShortcut, "Display only: dash variants and several languages; the stored name and search are untouched, untick to bring it back",
+                "Только отображение: варианты тире и несколько языков; сохранённое имя и поиск не трогаются, снятие галочки возвращает суффикс");
+            scrollPanel.Controls.Add(chkTrimShortcut);
+            y += 28;
+
+            chkTrimExt = new CheckBox { Text = Loc.S("Hide file extension (.mp4)", "Скрывать расширение файла (.mp4)"), Left = 20, Top = y, Width = 540, Checked = settings.LabelTrimExtension, ForeColor = textColor };
+            Tip(chkTrimExt, "Display only: hides the real extension of the item's path on the label; untick to bring it back",
+                "Только отображение: скрывает на подписи реальное расширение пути элемента; снятие галочки возвращает расширение");
+            scrollPanel.Controls.Add(chkTrimExt);
             y += 30;
 
             var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
@@ -813,6 +844,10 @@ namespace WinPanel
             settings.GridRows = (int)numGridRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.EditMode = chkEditMode.Checked;
+            settings.LabelTwoRows = chkTwoRows.Checked;
+            settings.LabelTrimShortcut = chkTrimShortcut.Checked;
+            settings.LabelTrimExtension = chkTrimExt.Checked;
+            settings.LabelAlign2Rows = cmbLabelAlign.SelectedIndex < 0 ? 1 : cmbLabelAlign.SelectedIndex;
             // The 3rd (red, multi-select) state changes only from the panel button;
             // this checkbox just switches it on/off preserving state 2.
             if (!chkEditMode.Checked) settings.EditModeState = 0;

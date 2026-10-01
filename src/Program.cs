@@ -5107,7 +5107,10 @@ namespace WinPanel
                     using (var brush = new SolidBrush(tColor))
                     {
                         Rectangle textRect = new Rectangle(2, this.Height - 18, this.Width - 4, 16);
-                        string shown = UiText.AbbreviateMiddle(item.Name, e.Graphics, font, textRect.Width);
+                        // Same display-only transform as the main tiles.
+                        string label = UiText.TileLabel(item.Name, item.Path,
+                            cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
+                        string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, textRect.Width);
                         e.Graphics.DrawString(shown, font, brush, textRect, TileLabelFormat);
                     }
                 }
@@ -5154,6 +5157,20 @@ namespace WinPanel
         private static int sharedLabelSize;
         private static readonly Font FallbackLabelFont = new Font("Segoe UI", 9f);
         private static readonly StringFormat TileLabelFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+
+        // Horizontal alignment of the two-row label (setting): 0 left, 1 center, 2 right.
+        private static readonly StringFormat[] RowFormats =
+        {
+            new StringFormat { Alignment = StringAlignment.Near,   LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap },
+            new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap },
+            new StringFormat { Alignment = StringAlignment.Far,    LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap }
+        };
+
+        private static StringFormat RowFormat(int align)
+        {
+            int a = align < 0 || align > 2 ? 1 : align;
+            return RowFormats[a];
+        }
 
         private static Font GetSharedLabelFont(string name, int size)
         {
@@ -5224,12 +5241,15 @@ namespace WinPanel
         // 56px one line; when the tile is tall enough for two text lines and
         // still leaves ≥36px for the icon, the label gets two rows (the icon
         // area shrinks accordingly — the folder previews use the same number).
+        // The two-row mode is a setting (LabelTwoRows).
         private int GetTextSpace()
         {
             if (this.Height < 56) return 0;
             int lineH = LabelLineHeight();
             int twoRows = 2 * lineH - 6;
-            if (twoRows > 24 && this.Height >= twoRows + 36) return twoRows;
+            bool wantTwo = true;
+            try { var c = MainForm.CurrentSettings; if (c != null && !c.LabelTwoRows) wantTwo = false; } catch { }
+            if (wantTwo && twoRows > 24 && this.Height >= twoRows + 36) return twoRows;
             return 20;
         }
 
@@ -5376,9 +5396,14 @@ namespace WinPanel
                         using (var brush = new SolidBrush(tColor))
                         {
                             Rectangle textRect = new Rectangle(2, this.Height - labelSpace - 1, this.Width - 4, labelSpace);
+                            // Display-only name transform (settings checkboxes):
+                            // hide the shortcut suffix and/or the path extension.
+                            string label = UiText.TileLabel(Item.Name, Item.Path,
+                                cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
                             // Two rows on tall tiles: greedy word wrap, a too-long
                             // second row falls back to the "head…tail" form.
-                            string[] rows = labelSpace > 30 ? UiText.WrapTwo(Item.Name, e.Graphics, font, textRect.Width) : null;
+                            string[] rows = (labelSpace > 30 && (cfg == null || cfg.LabelTwoRows))
+                                ? UiText.WrapTwo(label, e.Graphics, font, textRect.Width) : null;
                             if (rows == null)
                             {
                                 // One row, anchored to the bottom of the band so a
@@ -5386,16 +5411,17 @@ namespace WinPanel
                                 // "head…tail" abbreviation applies when too wide.
                                 int stripH = Math.Min(labelSpace, font.Height + 4);
                                 Rectangle oneRect = new Rectangle(2, this.Height - stripH - 1, this.Width - 4, stripH);
-                                string shown = UiText.AbbreviateMiddle(Item.Name, e.Graphics, font, oneRect.Width);
+                                string shown = UiText.AbbreviateMiddle(label, e.Graphics, font, oneRect.Width);
                                 e.Graphics.DrawString(shown, font, brush, oneRect, TileLabelFormat);
                             }
                             else
                             {
                                 int lineH = font.Height;
                                 int y1 = textRect.Top + (textRect.Height - lineH * 2) / 2;
-                                e.Graphics.DrawString(rows[0], font, brush, new Rectangle(textRect.X, y1, textRect.Width, lineH), TileLabelFormat);
+                                var fmt = RowFormat(cfg == null ? 1 : cfg.LabelAlign2Rows);
+                                e.Graphics.DrawString(rows[0], font, brush, new Rectangle(textRect.X, y1, textRect.Width, lineH), fmt);
                                 string shown2 = UiText.AbbreviateMiddle(rows[1], e.Graphics, font, textRect.Width);
-                                e.Graphics.DrawString(shown2, font, brush, new Rectangle(textRect.X, y1 + lineH, textRect.Width, lineH), TileLabelFormat);
+                                e.Graphics.DrawString(shown2, font, brush, new Rectangle(textRect.X, y1 + lineH, textRect.Width, lineH), fmt);
                             }
                         }
                     }
@@ -5919,6 +5945,71 @@ namespace WinPanel
                 return new[] { line1, rest };
             }
             catch { return null; }
+        }
+
+        // Explorer shortcut suffixes across languages ("Name - Shortcut",
+        // "Имя — ярлык", "Name - Verknüpfung", ...). The suffix must be
+        // separated by a dash; a name that merely ends with the word
+        // ("Мой ярлык") is never touched.
+        private static readonly string[] ShortcutSuffixes =
+        {
+            "ярлык", "ярлик", "shortcut", "verknüpfung", "raccourci",
+            "acceso directo", "collegamento", "skrót", "atalho", "kısayol"
+        };
+
+        private static readonly Dictionary<string, string> TileLabelCache = new Dictionary<string, string>();
+
+        // Display-only transform of a tile label (the two settings checkboxes):
+        // hides the shortcut suffix and the real extension of the item's path
+        // (".mp4" ...). The stored name (records.xml), all paths and the search
+        // metadata are never touched - unticking brings the full label back.
+        // Cached: labels repaint on every hover/drag.
+        public static string TileLabel(string name, string path, bool trimShortcut, bool trimExtension)
+        {
+            if (string.IsNullOrEmpty(name)) return name ?? "";
+            string key = name + "\x1" + (path ?? "") + "\x1" + (trimShortcut ? "s" : "-") + (trimExtension ? "x" : "-");
+            string hit;
+            lock (TileLabelCache)
+            {
+                if (TileLabelCache.TryGetValue(key, out hit)) return hit;
+            }
+            string s = name;
+            if (trimShortcut) s = TrimShortcutSuffix(s);
+            if (trimExtension)
+            {
+                try
+                {
+                    string ext = System.IO.Path.GetExtension(path ?? "");
+                    if (!string.IsNullOrEmpty(ext) && ext.Length <= 6 && s.Length > ext.Length &&
+                        s.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                        s = s.Substring(0, s.Length - ext.Length);
+                }
+                catch { }
+            }
+            s = s.TrimEnd(); // trailing space too
+            lock (TileLabelCache)
+            {
+                if (TileLabelCache.Count > 1024) TileLabelCache.Clear();
+                TileLabelCache[key] = s;
+            }
+            return s;
+        }
+
+        private static string TrimShortcutSuffix(string s)
+        {
+            if (s.Length < 5) return s;
+            string lower = s.ToLowerInvariant();
+            foreach (string w in ShortcutSuffixes)
+            {
+                if (!lower.EndsWith(w, StringComparison.Ordinal)) continue;
+                int j = s.Length - w.Length;
+                while (j > 0 && s[j - 1] == ' ') j--;
+                if (j == 0) continue;
+                char d = s[j - 1];
+                if (d != '-' && d != '\u2013' && d != '\u2014') continue; // - – —
+                return s.Substring(0, j - 1);
+            }
+            return s;
         }
 
         // Finds the earliest query variant occurrence inside a lowercase text.
