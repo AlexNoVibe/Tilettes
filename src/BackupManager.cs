@@ -69,7 +69,13 @@ namespace WinPanel
                 TryAdd(files, "bookmarks.xml", Path.Combine(baseDir, "bookmarks.xml"));
                 TryAdd(files, "filetypes.xml", Path.Combine(baseDir, "filetypes.xml"));
                 TryAdd(files, "searchHistory.xml", Path.Combine(baseDir, "searchHistory.xml"));
-                TryAdd(files, "Tilettes.exe", Path.Combine(baseDir, "Tilettes.exe"));
+                // The exe (current name first, whatever it is now: WinPanel/Tilettes/...).
+                try
+                {
+                    string exePath = System.Windows.Forms.Application.ExecutablePath;
+                    TryAdd(files, Path.GetFileName(exePath), exePath);
+                }
+                catch { }
                 // Custom icons and panel-local shortcut copies: without them a
                 // restored records.xml would point at missing icon files.
                 TryAddFolder(files, "ico", Path.Combine(baseDir, "ico"));

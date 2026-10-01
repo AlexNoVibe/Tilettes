@@ -6105,6 +6105,9 @@ namespace WinPanel
                 SingleInstance.NotifyExisting();
                 return;
             }
+            // A moved folder: fix stored <exe>\ico paths that point to the old
+            // location (must happen before anything reads records/filetypes).
+            FolderMigration.RebaseIfNeeded();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             try

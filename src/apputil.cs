@@ -39,13 +39,23 @@ namespace WinPanel
         }
     }
 
-    // One running copy per machine: a second launch broadcasts a message to the
-    // first copy and exits, so launching from a shortcut never duplicates windows.
+    // One running copy per machine: a second launch notifies the first copy and
+    // exits, so launching from a shortcut never duplicates windows. BOTH name
+    // generations are locked (pre-rename "WinPanel" and current "Tilettes") so an
+    // old and a new exe can never run side by side and fight over the data files.
     public static class SingleInstance
     {
         public static readonly int ShowMessage = (int)RegisterWindowMessage("TilettesShow_9f2a41");
+        public static readonly int LegacyShowMessage = (int)RegisterWindowMessage("WinPanelShow_9f2a41");
 
-        private static Mutex mutex;
+        // Two name generations of the product (WinPanel -> Tilettes).
+        private static readonly string[] MutexNames = new string[]
+        {
+            "WinPanel_SingleInstance_9f2a41",
+            "Tilettes_SingleInstance_9f2a41"
+        };
+
+        private static readonly System.Collections.Generic.List<Mutex> heldMutexes = new System.Collections.Generic.List<Mutex>();
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern uint RegisterWindowMessage(string lpString);
@@ -65,20 +75,41 @@ namespace WinPanel
             catch { }
             try
             {
-                bool created;
-                mutex = new Mutex(true, "Tilettes_SingleInstance_9f2a41", out created);
-                return created;
+                foreach (var name in MutexNames)
+                {
+                    bool created;
+                    var m = new Mutex(true, name, out created);
+                    if (!created)
+                    {
+                        m.Dispose();
+                        ReleaseHeld();
+                        NotifyExisting();
+                        return false;
+                    }
+                    heldMutexes.Add(m);
+                }
+                return true;
             }
             catch
             {
-                return true;
+                return true; // fail open: a broken mutex must not block the app
             }
+        }
+
+        private static void ReleaseHeld()
+        {
+            foreach (var m in heldMutexes)
+            {
+                try { m.ReleaseMutex(); } catch { }
+                try { m.Dispose(); } catch { }
+            }
+            heldMutexes.Clear();
         }
 
         public static void NotifyExisting()
         {
-            try { PostMessage((IntPtr)0xFFFF, ShowMessage, (IntPtr)0x4242, IntPtr.Zero); }
-            catch { }
+            try { PostMessage((IntPtr)0xFFFF, ShowMessage, (IntPtr)0x4242, IntPtr.Zero); } catch { }
+            try { PostMessage((IntPtr)0xFFFF, LegacyShowMessage, (IntPtr)0x4242, IntPtr.Zero); } catch { }
         }
     }
 
