@@ -15,15 +15,16 @@ Current version: **v0.6.0-beta** — download from [Releases](https://github.com
 ## Features
 
 - **Panel** — tiles sized 1×1…6×6, unlimited tabs (draggable, multi-row), folders opened in-place or as popups, drag-and-drop from Explorer, custom grid (columns/rows/transparency), icon scaling.
-- **Search** — searches names, file names, program metadata (FileDescription / ProductName / CompanyName), full paths and user descriptions; fuzzy matching with adjustable accuracy and wrong-keyboard-layout correction (`руддщ` → `hello`); results are ranked by match quality and matched characters are highlighted.
-- **Mini explorer** — breadcrumb navigation, folder/command/group bookmarks, file search (current folder or all fixed drives) with a background index, and an embedded `cmd.exe` console with command history, saved commands and Ctrl+wheel font zoom.
+- **Search** — searches names, file names, program metadata (FileDescription / ProductName / CompanyName), full paths and user descriptions; optionally includes the mirrored Start Menu tab; fuzzy matching with adjustable accuracy and wrong-keyboard-layout correction (`руддщ` → `hello`); results are ranked by match quality and matched characters are highlighted; repeated queries get a history boost.
+- **Mini explorer** — breadcrumb navigation, folder/command/group bookmarks, and an embedded `cmd.exe` console with command history, saved commands and Ctrl+wheel font zoom. (The file-search module is disabled since v0.6.0-beta — a stub is kept for a future re-enable.)
 - **File type rules** — per-extension/per-mask icons and "open with" associations, import/export.
-- **Desktop integration** — tray icon, autostart with Windows, global hotkey, native Explorer context menus, borderless window with edge resizing.
+- **Desktop integration** — tray icon, autostart with Windows, global hotkey, optional Win-key capture, native Explorer context menus, borderless window with edge resizing.
+- **Skins & extras** — decorative skins (own color palette + a rounded window border), a mirrored Start Menu tab rebuilt on a schedule, full backups into `autoBackup\`, panel search history.
 - **First start & updates** — a one-time welcome window (beta note, language choice, update-check permission, example tiles) and an update check against GitHub Releases with a corner plate when a newer version exists.
 
 ## First start & updates
 
-- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (RU/EN flags), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles). It can be replayed anytime via "Show the welcome window again" in the settings.
+- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (10 flag buttons), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles). It can be replayed anytime via "Show the welcome window again" in the settings.
 - **Update check** — the app asks the public GitHub Releases API once every N days (default 3; the first check also happens N days after the very first start, not immediately). Nothing is sent anywhere, and with the check disabled in settings no network request is made at all. When a newer tag exists, a green **⟳ Update** plate appears next to the settings button and opens the [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) page. "Check now" in the settings runs a manual check regardless of the interval (it reports the result in a message box). Automatic installation is a stub (TODO) for now.
 - **Testing hook** — start the app with `WINPANEL_MOCK_UPDATE=0.6` to render the Update plate as if a newer release existed (no network involved).
 
@@ -38,7 +39,7 @@ All settings live in one dialog (⚙ button / tray menu) and are stored in `sett
 | Startup Size (W × H) | 200–4000 | 900 × 800 | Panel size on every launch. Resizing during a session is not persisted — only the position is. |
 | Window Position (X, Y) | −4000…4000 | 100, 100 | Screen position on launch. Updated automatically when the window is moved. |
 | Show window hotkey | presets + custom | Ctrl+Q | Global hotkey that shows/activates the panel. Pick a preset (None, Ctrl+Q, Ctrl+Shift+Q, Alt+Q, Ctrl+J, …) or type any `Mod+Key` combination (Ctrl/Alt/Shift/Win + a letter or digit) right into the editable field; unparsable input is rejected with an explanation. |
-| Language | ru / en | ru | UI language, applied immediately. |
+| Language | en, ru, es, pt, de, fr, it, pl, zh, ja | ru | UI language (10 languages), applied immediately. |
 
 ### Grid & tiles
 
@@ -50,7 +51,7 @@ All settings live in one dialog (⚙ button / tray menu) and are stored in `sett
 | Def. Item Size | 1–6 | 2 | Size of newly added tiles (1×1 … 6×6 cells). |
 | Icon Scale (%) | 25–400 | 100 | Icon size inside a tile, percent of the default. |
 | Allow adding icons | on/off | on | Edit mode: dragging tiles, creating folders, dropping files. When off, tiles simply launch on click. |
-| Skin & theme | None (dark) / Light / skins | None (dark) | Dark or light classic theme, or a decorative skin (own colors + window border). |
+| Skin & theme | None (dark) / Light / skins | Mint | Classic dark or light theme, or a decorative skin with its own palette and a window border: Android, Night, Mint (the factory default). |
 
 ### Folders
 
@@ -65,7 +66,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 
 | Setting | Range | Default | Description |
 |---|---|---|---|
-| size | 6–24 | 9 | Font size for the group. |
+| size | 6–24 | 14 | Font size for the group. |
 | color swatch | any color | empty | Custom text color; empty = theme default. Applies to tiles' labels, tab captions or all UI text. |
 | family | any installed font | Segoe UI | Font family for the group. |
 
@@ -77,8 +78,9 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Search in metadata | on/off | on | File name, shortcut target, version info (description, product, company). |
 | Search in full paths | on/off | on | The full path text, including parent folders. |
 | Search in descriptions | on/off | on | User descriptions (right-click → Description…). |
-| Search font: box | 7–30 | 9 | Font size of the search input. |
-| Search font: results | 7–30 | 9 | Font size of result rows (row height follows the font). |
+| Search in the Start tab | on/off | on | Include the mirrored Start Menu tab in panel search. |
+| Search font: box | 7–30 | 14 | Font size of the search input. |
+| Search font: results | 7–30 | 14 | Font size of result rows (row height follows the font). |
 
 ### Updates
 
@@ -100,7 +102,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | `MiniExplorerBookmarks` | on/off | on | Side bookmarks panel visibility. |
 | `MiniExplorerTopBar` | on/off | on | Horizontal bookmarks bar visibility. |
 | `MiniExplorerConsole` | 15–85 | 40 | Console height as percent of the window. |
-| `ConsoleFontSizeX10` | 60–280 | 85 | Console font size ×10 (85 = 8.5 pt), changed with Ctrl+wheel. |
+| `ConsoleFontSizeX10` | 60–280 | 140 | Console font size ×10 (140 = 14 pt), changed with Ctrl+wheel. |
 
 ### Autostart & tray
 
@@ -111,13 +113,14 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Minimize instead of close | on/off | on | ✕ / Alt+F4 hides to tray (or minimizes) instead of exiting. Exit is in the tray menu. |
 | Always keep tray icon | on/off | on | Tray icon visible at all times. |
 | Remember active tab | on/off | on | Restores the last active tab on launch. |
+| Capture the Start button (Win) | on/off | off | A solo Win press shows the panel instead of the Start menu (low-level keyboard hook); Win+key chords pass through. Opt-in — off by default. |
 
 ### Backup & Start Menu sync
 
-- **Backup now** — full backup zip into `autoBackup\` (settings, tiles, icons, bookmarks, search history, the exe); scheduled by "Backup every N days" (0 = off), created ~3 minutes after launch when due.
+- **Backup now** — full backup zip into `autoBackup\` (settings, tiles, icons, bookmarks, search history, the exe); scheduled by "Backup every N days" (default 7, 0 = off), created ~3 minutes after launch when due.
 - **Save backup (zip)** — the same archive into a user-chosen file.
 - **Restore archive…** — expects a zip created by Tilettes itself; files unpack into the working folder, `Tilettes.exe` is never replaced.
-- **Sync Start Menu now** / every N hours (0 = off) — rebuilds the mirrored Start Menu tab.
+- **Sync Start Menu now** / every N hours (default 24, 0 = off) — rebuilds the mirrored Start Menu tab.
 
 ## Hotkeys & commands
 
@@ -126,6 +129,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Keys / action | Result |
 |---|---|
 | Hotkey (default Ctrl+Q) | Show / activate the panel. |
+| Solo Win press (opt-in) | Show / hide the panel instead of the Start menu — enable "Capture the Start button (Win)" in settings. |
 | Just type any text, or Ctrl+F | Open the panel search. |
 | ↓ | Jump into the result list. |
 | Enter | Open the selected result (folder → navigate, file → launch). |
@@ -134,11 +138,11 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Ctrl+Click a folder tile | Open the mini explorer (if enabled). |
 | Drag a tile (edit mode) | Move it; drop onto a folder to move it inside. |
 | Drop files onto the panel (edit mode) | Add as tiles (drop onto a folder to add inside). |
-| Right-click a tile | Native Explorer menu plus: Description…, Size 1×1–6×6, Rename, Change Icon, Remove, Move out of folder, Open in Mini Explorer (folders). |
+| Right-click a tile | Native Explorer menu plus: Description…, Size 1×1–6×6, Rename, Change Icon, Remove, Move out of folder, Move to tab ▸, Open in Mini Explorer (folders). |
 | Right-click a tab | Delete (last tab is protected), Rename, Toggle free/grid layout. |
 | Drag a tab | Reorder within a row or move to another row. |
 | Right-click empty panel | Create Folder, Settings. |
-| ▦ / ✅ / ⚙ buttons | Grid visibility, edit mode, settings. |
+| ▦ / ✅ / ⚙ buttons | Grid visibility, edit mode, settings. ✅ is three-state: off / edit / multi-select — in multi-select click tiles to pick several, then bulk-remove or move them via the right-click menu. |
 
 ### Mini explorer
 
@@ -149,9 +153,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Backspace | Up one level. |
 | Alt+← / Alt+→ | Back / forward. |
 | Enter / double-click | Open (folder navigates, file launches). |
-| Esc | Exit search → cancel path edit → close the window. |
-| Typing in the file list | Starts a search in the search box. |
-| Down / Up (in search) | Move through results. |
+| Esc | Cancel path edit → close the window. |
 | Ctrl+mouse wheel | Console font size (persisted). |
 | Drag the splitter | Console height (persisted). |
 | ≡ / ☰ buttons | Toggle side bookmarks panel / top bookmarks bar. |
@@ -167,8 +169,8 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 ## Limitations
 
 - **Windows + .NET Framework 4.8 only** (GDI/WinForms). No per-monitor DPI awareness — the UI may blur on heavily scaled displays.
-- **"All" search scope** indexes **fixed local drives only** (no USB/network drives), capped at **200 000 items per drive**; indexing runs in the background, so results grow while it works ("indexing: N" in the status line).
-- **Panel search** shows the best **200** matches; **mini explorer search** returns up to **400**; a file list shows at most **800** entries per directory.
+- **Mini explorer file search is disabled** since v0.6.0-beta: the disk-indexing module (fixed local drives only, capped at 200 000 items per drive) is kept as a stub for a future re-enable. Panel search runs over the cached metadata of saved items only — no disk indexing.
+- **Panel search** shows the best **200** matches; a file list shows at most **800** entries per directory.
 - **Console is `cmd.exe` only**: single-line commands; interactive/TUI programs (editors, pagers with key input) do not work properly; the output buffer auto-clears after ~150 000 characters; encoding follows the system OEM code page (e.g. CP866).
 - **Global hotkey** is one letter/digit plus modifiers; registration fails with a balloon tip if another program already owns it.
 - **Panel size resets to Startup Size on every launch** — only the position is remembered (by design).
@@ -186,13 +188,15 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 Requires any Windows with .NET Framework 4.x (the compiler ships with the OS):
 
 ```
-build.bat
+build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat x86      rem → Tilettes-x86.exe
+build.bat x64      rem → Tilettes-x64.exe
 ```
 
 or directly:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
 Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
@@ -205,22 +209,32 @@ Releases are created automatically by GitHub Actions on every `v*` tag: the work
 | `records.xml` | Tabs, folders, shortcuts, descriptions |
 | `bookmarks.xml` | Mini explorer bookmarks |
 | `filetypes.xml` | File type rules |
+| `searchHistory.xml` | Panel search history ("past search") |
 | `ico\` | Copies of .lnk/.ico items and custom icons |
+| `iconcache\` | Persistent icon cache (icons extracted once per tile lifetime) |
+| `autoBackup\` | Scheduled full-backup zips |
+| `log.txt` | Application log (repeated lines are deduplicated) |
 
 ## Project layout (`src/`)
 
 | File | Purpose |
 |---|---|
 | `Program.cs` | Main window: tabs, tiles, panel search, folder popups, single-instance |
-| `MiniExplorerForm.cs` | Mini explorer: navigation, bookmarks, embedded console |
-| `SearchCore.cs` | Disk indexing, bit-mask prefilter, fuzzy scoring |
-| `PanelSearch.cs` | Searchable metadata of saved items |
+| `miniexplorerform.cs` | Mini explorer: navigation, bookmarks, embedded console |
+| `searchcore.cs` | Fuzzy scoring, keyboard-layout variants and bit-mask prefilter (the panel search engine); its disk-indexing part (mini explorer file search) is currently disabled |
+| `panelsearch.cs` | Searchable metadata of saved items |
 | `Settings.cs` / `SettingsForm.cs` | Settings model and dialog |
-| `FileTypes.cs` / `FileTypesForm.cs` | File type rules and their editors |
+| `filetypes.cs` / `filetypesform.cs` | File type rules and their editors |
 | `bookmarks.cs` | Bookmark storage |
+| `Skins.cs` | Decorative skins: palettes and the window border |
+| `StartMenuSync.cs` + `ShellItemApi.cs` | Mirrored Start Menu tab, including UWP/Store apps |
+| `BackupManager.cs` + `ZipWriter.cs` / `ZipReader.cs` | Scheduled and manual backups |
+| `SearchHistory.cs` | Panel search history ("past search", result boosting) |
+| `AppLog.cs` | Deduplicated `log.txt` writer |
 | `loc.cs` + `lang_*.cs` | Localization: EN source, RU inline, ES/PT/DE/FR/IT/PL/ZH/JA tables |
 | `UpdateChecker.cs` / `WelcomeForm.cs` | Update check (GitHub Releases) and the first-start welcome window |
 | `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Icons, native menus, INI I/O, records I/O, autostart/single-instance/wallets |
+| `AssemblyInfo.cs` | VERSIONINFO / assembly metadata |
 
 ## License
 
