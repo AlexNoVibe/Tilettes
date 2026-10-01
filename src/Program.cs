@@ -2375,6 +2375,39 @@ namespace WinPanel
             }
         }
 
+        // Photo/video extensions that get a live shell preview (photo itself /
+        // video frame) instead of the generic file icon.
+        private static readonly string[] MediaExtensions =
+        {
+            ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff",
+            ".jfif", ".heic", ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v",
+            ".webm", ".mpg", ".mpeg", ".3gp", ".flv", ".ts"
+        };
+
+        internal static bool IsMediaFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return false;
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                foreach (var e in MediaExtensions) if (ext == e) return true;
+            }
+            catch { }
+            return false;
+        }
+
+        // Shell thumbnail for a photo/video; null when the shell cannot make one
+        // (the caller then falls back to the normal icon chain).
+        internal static Image LoadMediaThumbnail(string path, int size)
+        {
+            try
+            {
+                if (!IsMediaFile(path)) return null;
+                return ShellItemApi.GetShellThumbnail(path, size);
+            }
+            catch { return null; }
+        }
+
         private static Image LoadIconForItem(ShortcutItem item)
         {
             try
@@ -2386,7 +2419,10 @@ namespace WinPanel
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                     return IconExtractor.LoadAny(typeIcon);
-                // 3) standard shell icon (shell: paths = UWP apps)
+                // 3) photo/video live preview (photo itself, video frame)
+                Image mediaThumb = LoadMediaThumbnail(item.Path, 256);
+                if (mediaThumb != null) return mediaThumb;
+                // 4) standard shell icon (shell: paths = UWP apps)
                 return IconExtractor.GetIconAuto(item.Path, true);
             }
             catch (Exception ex)
@@ -2561,7 +2597,11 @@ namespace WinPanel
                             if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                                 bimg = IconExtractor.LoadAny(typeIcon);
                             else
-                                bimg = IconExtractor.GetIconAuto(child.Path, true);
+                            {
+                                bimg = LoadMediaThumbnail(child.Path, 96);
+                                if (bimg == null)
+                                    bimg = IconExtractor.GetIconAuto(child.Path, true);
+                            }
                         }
                     }
                     catch { }
@@ -2595,7 +2635,8 @@ namespace WinPanel
                 }
                 else
                 {
-                    // 1) direct icon of the child, 2) file type icon, 3) standard icon
+                    // 1) direct icon of the child, 2) file type icon, 3) media
+                    // preview (photo/video), 4) standard icon
                     if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
                         img = IconExtractor.LoadAny(child.CustomIconPath);
                     else
@@ -2604,7 +2645,11 @@ namespace WinPanel
                         if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                             img = IconExtractor.LoadAny(typeIcon);
                         else
-                            img = IconExtractor.GetIconAuto(child.Path, true);
+                        {
+                            img = LoadMediaThumbnail(child.Path, 96);
+                            if (img == null)
+                                img = IconExtractor.GetIconAuto(child.Path, true);
+                        }
                     }
                 }
             }
@@ -4814,7 +4859,14 @@ namespace WinPanel
                             });
                             return;
                         }
-                        try { t.AssignIcon(IconExtractor.GetIconAuto(child.Path, true)); } catch { }
+                        try
+                        {
+                            // Photo/video preview first, the generic icon as fallback.
+                            Image img2 = MainForm.LoadMediaThumbnail(child.Path, 256);
+                            if (img2 == null) img2 = IconExtractor.GetIconAuto(child.Path, true);
+                            t.AssignIcon(img2);
+                        }
+                        catch { }
                     });
                 }
                 tile.Margin = new Padding(TileGap / 2);

@@ -21,6 +21,8 @@ namespace WinPanel
         private const uint SIGDN_NORMALDISPLAY = 0x80058000;
         private const uint SIGDN_DESKTOPABSOLUTEPARSING = 0x80028000;
         private const uint SIIGBF_ICONONLY = 4;
+        private const uint SIIGBF_THUMBNAILONLY = 8;
+        private const uint SIIGBF_BIGGERSIZEOK = 1;
 
         [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         private interface IShellItem
@@ -62,10 +64,12 @@ namespace WinPanel
         [DllImport("gdi32.dll")]
         private static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint lines, byte[] bits, ref BITMAPINFO bmi, uint usage);
 
-        [DllImport("gdi32.dll")]
+        // GetDC/ReleaseDC live in user32, not gdi32 (a wrong lib name made every
+        // HBITMAP conversion throw EntryPointNotFound and silently return null).
+        [DllImport("user32.dll")]
         private static extern IntPtr GetDC(IntPtr hWnd);
 
-        [DllImport("gdi32.dll")]
+        [DllImport("user32.dll")]
         private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
         [DllImport("gdi32.dll")]
@@ -186,6 +190,29 @@ namespace WinPanel
         // Returns null on failure; the caller falls back to a generic icon.
         public static Bitmap GetShellIcon(string shellPath, int size)
         {
+            return ShellImage(shellPath, size, SIIGBF_ICONONLY);
+        }
+
+        // Photo/video preview from the shell thumbnail cache: the picture itself
+        // for images, a frame for videos (everything Explorer can preview).
+        // Null when the shell cannot produce a thumbnail (no codec, unsupported).
+        public static Bitmap GetShellThumbnail(string path, int size)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                Bitmap bmp = ShellImage(path, size, SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK);
+                return bmp; // thumbnails come pre-fitted, no alpha trim needed
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("GetShellThumbnail " + path, ex);
+                return null;
+            }
+        }
+
+        private static Bitmap ShellImage(string shellPath, int size, uint flags)
+        {
             try
             {
                 if (string.IsNullOrEmpty(shellPath)) return null;
@@ -195,19 +222,23 @@ namespace WinPanel
                 var factory = (IShellItemImageFactory)obj;
                 IntPtr hbm;
                 SIZE sz; sz.cx = size; sz.cy = size;
-                int hr = factory.GetImage(sz, SIIGBF_ICONONLY, out hbm);
+                int hr = factory.GetImage(sz, flags, out hbm);
                 Marshal.ReleaseComObject(factory);
                 if (hr != 0 || hbm == IntPtr.Zero) return null;
                 Bitmap bmp = BitmapFromHbitmapWithAlpha(hbm);
                 DeleteObject(hbm);
                 if (bmp == null) return null;
-                Bitmap trimmed = IconExtractor.TrimTransparent(bmp);
-                if (!ReferenceEquals(trimmed, bmp)) bmp.Dispose();
-                return trimmed;
+                if ((flags & SIIGBF_ICONONLY) != 0)
+                {
+                    Bitmap trimmed = IconExtractor.TrimTransparent(bmp);
+                    if (!ReferenceEquals(trimmed, bmp)) bmp.Dispose();
+                    return trimmed;
+                }
+                return bmp;
             }
             catch (Exception ex)
             {
-                AppLog.Write("GetShellIcon " + shellPath, ex);
+                AppLog.Write("ShellImage " + shellPath, ex);
                 return null;
             }
         }
@@ -246,7 +277,11 @@ namespace WinPanel
                 bmp.UnlockBits(data);
                 return bmp;
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                AppLog.Write("BitmapFromHbitmapWithAlpha", ex);
+                return null;
+            }
         }
     }
 }
