@@ -23,6 +23,7 @@ TOOLS.md
 UI_SPEC.md
 winpanel_changelog*.html
 ico/
+b2.bat
 
 # v2 runtime artifacts
 autoBackup/
