@@ -185,6 +185,7 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 - The layout fix covers the EN↔RU QWERTY pair; other layouts are passed through untouched.
 - **Single instance**: launching a second copy just shows the existing window.
 - Folder auto-exit works only in the "Same window" mode and only while inside a folder.
+- **Photo/video tile previews** come from the Windows shell thumbnail cache. A **freshly added video** may show a generic icon until Explorer generates its preview (open the containing folder once in Explorer). Once the preview has been shown it is kept in the app's own cache and survives cache eviction; if the preview never appears, it means the system lacks the codec for that file (e.g. HEVC without the extension).
 
 ## Build
 

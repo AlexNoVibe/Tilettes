@@ -2396,14 +2396,46 @@ namespace WinPanel
             return false;
         }
 
+        private static readonly string[] VideoExtensions =
+        {
+            ".mp4", ".m4v", ".mkv", ".mov", ".avi", ".wmv", ".webm", ".mpg",
+            ".mpeg", ".3gp", ".ts"
+        };
+
+        internal static bool IsVideoFile(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                foreach (var e in VideoExtensions) if (ext == e) return true;
+            }
+            catch { }
+            return false;
+        }
+
         // Shell thumbnail for a photo/video; null when the shell cannot make one
         // (the caller then falls back to the normal icon chain).
+        //
+        // The preview is ALSO stored in our own disk cache: the Windows thumbnail
+        // cache evicts entries over time, and a tile that once showed a picture
+        // must not fall back to a generic icon later ("the thumbnail disappeared").
+        // The cache key includes the source mtime, so a replaced file re-previews.
         internal static Image LoadMediaThumbnail(string path, int size)
         {
             try
             {
                 if (!IsMediaFile(path)) return null;
-                return ShellItemApi.GetShellThumbnail(path, size);
+                string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
+                             File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
+                Image own = IconExtractor.DiskCacheGetByKey(key);
+                if (own != null) return own;
+                Image img = ShellItemApi.GetShellThumbnail(path, size);
+                if (img == null && IsVideoFile(path))
+                    img = MediaFrame.ExtractFrame(path, 512); // own extractor + own cache
+                if (img != null)
+                    IconExtractor.DiskCachePutByKey(key, img);
+                return img;
             }
             catch { return null; }
         }
