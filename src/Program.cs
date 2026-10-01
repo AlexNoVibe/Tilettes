@@ -31,7 +31,7 @@ namespace WinPanel
         private System.Windows.Forms.Timer panelSearchTimer;
         private Panel panelSearchOverlay;
         private Panel panelSearchRow;
-        private ListBox panelSearchList;
+        private SearchResultsList panelSearchList;
         private Label panelSearchStatus;
         private bool panelSearchActive;
         private int panelSearchGen;
@@ -75,6 +75,45 @@ namespace WinPanel
             public bool PathTailHl;
             public int PathHlStart, PathHlLen; // measured on PathCombo, shifted for the tail cut
         }
+
+        // The search result list owns the right-click: without this override
+        // WM_CONTEXTMENU bubbles up from the list (empty area below the rows
+        // included) through the overlay to the FORM, whose context menu holds
+        // only "Settings" — that is the menu the user saw instead of the
+        // result actions. Valid rows request the result menu, the empty area
+        // shows nothing.
+        private class SearchResultsList : ListBox
+        {
+            public Action<Point, int> RowMenuRequested; // (client point, row index or -1)
+
+            protected override void WndProc(ref Message m)
+            {
+                const int WM_CONTEXTMENU = 0x007B;
+                if (m.Msg == WM_CONTEXTMENU && RowMenuRequested != null)
+                {
+                    int x = (short)((long)m.LParam & 0xFFFF);
+                    int y = (short)(((long)m.LParam >> 16) & 0xFFFF);
+                    Point p = (x >= 0 && y >= 0) ? this.PointToClient(new Point(x, y)) : new Point(8, 8);
+                    RowMenuRequested(p, this.IndexFromPoint(p));
+                    return; // swallowed: never bubble to the parent/form menu
+                }
+                base.WndProc(ref m);
+            }
+        }
+
+        // Host panel of the search overlay: a right-click on its uncovered
+        // spots (the status strip) must not open the form context menu that
+        // sits underneath the overlay.
+        private class SearchOverlayPanel : Panel
+        {
+            protected override void WndProc(ref Message m)
+            {
+                const int WM_CONTEXTMENU = 0x007B;
+                if (m.Msg == WM_CONTEXTMENU) return;
+                base.WndProc(ref m);
+            }
+        }
+
         private string lastSearchTip = null;
         private ToolTip itemTip;   // 0.3 s hover tooltip: descriptions + full search paths
         private string settingsPath = "settings.ini";
@@ -276,8 +315,8 @@ namespace WinPanel
             panelSearchTimer.Interval = 220;
             panelSearchTimer.Tick += (s, e) => { panelSearchTimer.Stop(); RunPanelSearch(); };
 
-            panelSearchOverlay = new Panel { Visible = false, BackColor = bgColor };
-            panelSearchList = new ListBox
+            panelSearchOverlay = new SearchOverlayPanel { Visible = false, BackColor = bgColor };
+            panelSearchList = new SearchResultsList
             {
                 Dock = DockStyle.Fill,
                 BackColor = bgColor,
@@ -290,6 +329,14 @@ namespace WinPanel
             panelSearchList.DrawItem += PanelSearchList_DrawItem;
             panelSearchList.MouseMove += PanelSearchList_MouseMove;
             panelSearchList.DoubleClick += (s, e) => OpenPanelSearchResult(panelSearchList.SelectedIndex);
+            panelSearchList.RowMenuRequested = (p, i) =>
+            {
+                // Valid row → the result menu; empty area below the rows → no
+                // menu at all (never the form's "Settings" menu underneath).
+                if (i < 0 || i >= panelSearchResults.Count) return;
+                panelSearchList.SelectedIndex = i;
+                ShowPanelSearchContextMenu(i, p);
+            };
             panelSearchList.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter)
@@ -402,7 +449,7 @@ namespace WinPanel
             };
 
             var formMenu = new ContextMenu();
-            formMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
+            formMenu.MenuItems.Add(Loc.S("Settings"), (s, e) => OpenSettings());
             this.ContextMenu = formMenu;
 
             foreach (var tab in records.Tabs)
@@ -836,6 +883,7 @@ namespace WinPanel
                     if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, true);
                     if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
                     if (sf.RunWelcomeAgain) RunFirstStartWelcome();
+                    if (sf.RebuildIconsNow) RebuildAllIcons();
                     if (sf.RunCheckNow)
                     {
                         // Explicit user action: ignores the auto-check flag and interval.
@@ -848,6 +896,53 @@ namespace WinPanel
                     catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
             }
+        }
+
+        // Settings → "Rebuild icons & paths": walks every item of every tab,
+        // re-checks its path (missing files/folders are counted and reported),
+        // drops the cached search metadata and the whole icon cache, then
+        // re-renders — the extraction queue refills iconcache\ from scratch.
+        private void RebuildAllIcons()
+        {
+            try
+            {
+                int items = 0;
+                var missing = new List<string>();
+                Action<List<ShortcutItem>> walk = null;
+                walk = delegate(List<ShortcutItem> list)
+                {
+                    if (list == null) return;
+                    foreach (var it in list)
+                    {
+                        items++;
+                        string p = it.Path;
+                        if (!string.IsNullOrEmpty(p) && !p.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            bool ok;
+                            try { ok = Directory.Exists(p) || File.Exists(p); }
+                            catch { ok = false; }
+                            if (!ok && missing.Count < 15)
+                                missing.Add((it.Name ?? "?") + " — " + p);
+                        }
+                        PanelSearch.Invalidate(it);
+                        if (it.Children != null) walk(it.Children);
+                    }
+                };
+                foreach (var tab in records.Tabs) walk(tab.Items);
+
+                int removed = IconExtractor.ClearAllCaches();
+                tabNavigations.Clear();
+                LoadTabs(); // re-render: icons re-extract into the fresh cache
+
+                string msg = string.Format(
+                    Loc.S("Checked: {0} · missing paths: {1} · cache files removed: {2}",
+                          "Проверено: {0} · потерянных путей: {1} · файлов кеша удалено: {2}"),
+                    items, missing.Count, removed);
+                if (missing.Count > 0) msg += "\n\n" + string.Join("\n", missing.ToArray());
+                MessageBox.Show(this, msg, Loc.S("Tilettes", "Плиточки"));
+                AppLog.Write("Icon rebuild: " + msg.Replace("\n", " | "));
+            }
+            catch (Exception ex) { AppLog.Write("RebuildAllIcons", ex); }
         }
 
         // ---- First start: welcome window and example tiles ----
@@ -1076,10 +1171,46 @@ namespace WinPanel
 
         private void RestoreWindow()
         {
+            // A plain Show()+Activate() can be denied foreground rights when
+            // another app owns the focus (this path runs from a hotkey or the
+            // Win-key hook): the panel then appeared visible but BEHIND the
+            // other windows. Raise it into the topmost band for an instant and
+            // force the foreground; dropping TOPMOST right away keeps it above
+            // the windows it was raised over without pinning it permanently.
+            this.TopMost = true;
             this.Show();
             this.WindowState = FormWindowState.Normal;
             this.Activate();
+            ForceForeground();
+            this.TopMost = false;
             try { if (trayIcon != null) trayIcon.Visible = settings.TrayIconAlways; } catch { }
+        }
+
+        // SetForegroundWindow is restricted: the caller must already own the
+        // foreground or have received the last input event. The Win-key hook
+        // swallows that input on the foreground app's thread, so the plain call
+        // may not stick — briefly attach our input queue to the foreground
+        // thread, which legitimizes the call (classic launcher technique).
+        private void ForceForeground()
+        {
+            try
+            {
+                IntPtr fore = GetForegroundWindow();
+                if (fore == this.Handle) return;
+                SetForegroundWindow(this.Handle);
+                if (GetForegroundWindow() == this.Handle) return;
+                if (fore == IntPtr.Zero) return;
+                uint forePid;
+                uint foreThread = GetWindowThreadProcessId(fore, out forePid);
+                uint thisThread = GetCurrentThreadId();
+                if (foreThread == 0 || foreThread == thisThread) return;
+                if (AttachThreadInput(thisThread, foreThread, true))
+                {
+                    try { SetForegroundWindow(this.Handle); }
+                    finally { AttachThreadInput(thisThread, foreThread, false); }
+                }
+            }
+            catch { }
         }
 
         // ---- folder auto-exit on inactivity ----
@@ -1619,6 +1750,84 @@ namespace WinPanel
             }
         }
 
+        // Right-click menu of a panel-search row: besides opening the result it
+        // can jump into the mini explorer at the file's original folder, or
+        // reveal that folder in Explorer.
+        private void ShowPanelSearchContextMenu(int i, Point location)
+        {
+            if (i < 0 || i >= panelSearchResults.Count) return;
+            var it = panelSearchResults[i];
+            var m = new ContextMenu();
+            m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenPanelSearchResult(i));
+            m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenSearchResultInMiniExplorer(it));
+            m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(SearchResultRevealPath(it)));
+            m.Show(panelSearchList, location);
+        }
+
+        // The path a search result refers to for "open the original folder": the
+        // resolved target for shortcuts (the actual app/folder), the item path
+        // otherwise.
+        private static string SearchResultRevealPath(ShortcutItem it)
+        {
+            try
+            {
+                string t = PanelSearch.GetTarget(it);
+                if (!string.IsNullOrEmpty(t)) return t;
+            }
+            catch { }
+            return it == null ? null : it.Path;
+        }
+
+        // Mini explorer at a search result's original folder: folder results
+        // navigate into the folder itself, files/folders reveal their parent
+        // with the entry selected.
+        private void OpenSearchResultInMiniExplorer(ShortcutItem it)
+        {
+            string p = SearchResultRevealPath(it);
+            if (string.IsNullOrEmpty(p)) return;
+            try
+            {
+                bool isDir;
+                try { isDir = Directory.Exists(p); }
+                catch { isDir = false; }
+                if (isDir)
+                {
+                    OpenMiniExplorerAt(p, null);
+                    return;
+                }
+                string dir = null;
+                try { dir = Path.GetDirectoryName(p); }
+                catch { }
+                if (string.IsNullOrEmpty(dir)) return;
+                OpenMiniExplorerAt(dir, Path.GetFileName(p));
+            }
+            catch (Exception ex) { AppLog.Write("OpenSearchResultInMiniExplorer", ex); }
+        }
+
+        // Creates (or reuses) the mini explorer window at `folder`, optionally
+        // selecting the child entry named `selectName`.
+        private void OpenMiniExplorerAt(string folder, string selectName)
+        {
+            try
+            {
+                bool exists;
+                try { exists = Directory.Exists(folder); }
+                catch { exists = false; }
+                if (!exists) return;
+                if (miniExplorer == null || miniExplorer.IsDisposed)
+                    miniExplorer = new MiniExplorerForm(folder, settings, settingsPath);
+                miniExplorer.NavigateExternalSelect(folder, selectName);
+                // Shown WITHOUT owner: an owned window is pinned above its owner,
+                // which made the mini explorer impossible to send behind the panel.
+                if (!miniExplorer.Visible) miniExplorer.Show();
+                else miniExplorer.Activate();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("OpenMiniExplorerAt", ex);
+            }
+        }
+
         private void PanelSearchBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
@@ -1950,6 +2159,21 @@ namespace WinPanel
         private const int VK_LWIN_LL = 0x5B;
         private const int VK_RWIN_LL = 0x5C;
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
         private IntPtr WinKeyHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
             try
@@ -2050,7 +2274,13 @@ namespace WinPanel
         {
             try
             {
-                if (this.Visible && this.WindowState != FormWindowState.Minimized)
+                // Toggle on real foreground state, not just Visible: a panel that
+                // is visible but COVERED (e.g. by the mini explorer) used to hit
+                // the Hide() branch, so pressing Win made the covering window pop
+                // to front instead of bringing the panel up.
+                bool isActive = this.Visible && this.WindowState != FormWindowState.Minimized
+                                && GetForegroundWindow() == this.Handle;
+                if (isActive)
                 {
                     this.Hide();
                 }
@@ -2156,6 +2386,26 @@ namespace WinPanel
                 AppLog.Write("LoadIconForItem", ex);
                 return null;
             }
+        }
+
+        // Cached-only mirror of LoadIconForItem: hands out the icon when it is
+        // already in the session/disk cache and never extracts. Used by the
+        // panel rebuild to render known icons synchronously instead of popping
+        // them in from the extraction queue (the flicker on every move).
+        private static bool TryGetCachedIconForItem(ShortcutItem item, out Image img)
+        {
+            img = null;
+            try
+            {
+                if (item == null) return false;
+                if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
+                    return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
+                string typeIcon = FileTypes.GetIconForPath(item.Path);
+                if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
+                    return IconExtractor.TryGetCachedAny(typeIcon, out img);
+                return IconExtractor.TryGetCachedAuto(item.Path, true, out img);
+            }
+            catch { img = null; return false; }
         }
 
         // ---------- network / slow icon sources ----------
@@ -2781,6 +3031,11 @@ namespace WinPanel
                     BackColor = bgColor,
                     Visible = false
                 };
+                // Panel.DoubleBuffered is protected; without it every tile drag
+                // erased+repainted the exposed background and made the icons of
+                // the neighbouring tiles blink.
+                typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .SetValue(layoutPanel, true, null);
                 layoutPanel.DragEnter += LayoutPanel_DragEnter;
                 layoutPanel.DragDrop += LayoutPanel_DragDrop;
                 layoutPanel.Paint += LayoutPanel_Paint;
@@ -2791,8 +3046,8 @@ namespace WinPanel
                 {
                     panelMenu.MenuItems[0].Enabled = isEditMode;
                 };
-                panelMenu.MenuItems.Add("Create Folder", (s, e) => CreateFolder(layoutPanel, tabData));
-                panelMenu.MenuItems.Add("Settings", (s, e) => OpenSettings());
+                panelMenu.MenuItems.Add(Loc.S("Create Folder", "Создать папку"), (s, e) => CreateFolder(layoutPanel, tabData));
+                panelMenu.MenuItems.Add(Loc.S("Settings"), (s, e) => OpenSettings());
                 layoutPanel.ContextMenu = panelMenu;
 
                 contentPanel.Controls.Add(layoutPanel);
@@ -2813,9 +3068,10 @@ namespace WinPanel
                 tabBtn.FlatAppearance.MouseOverBackColor = hoverColor;
 
                 var tabMenu = new ContextMenu();
-                tabMenu.MenuItems.Add("Delete Tab", (s, e) => {
+                tabMenu.MenuItems.Add(Loc.S("Delete Tab", "Удалить вкладку"), (s, e) => {
                     if (records.Tabs.Count > 1) {
-                        var res = MessageBox.Show("Are you sure you want to delete this tab?", "Delete Tab", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                        var res = MessageBox.Show(Loc.S("Are you sure you want to delete this tab?", "Вы уверены, что хотите удалить эту вкладку?"),
+                            Loc.S("Delete Tab", "Удалить вкладку"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                         if (res == DialogResult.Yes) {
                             records.Tabs.Remove(tabData);
                             tabNavigations.Remove(tabData);
@@ -2823,11 +3079,11 @@ namespace WinPanel
                             LoadTabs();
                         }
                     } else {
-                        MessageBox.Show("Cannot remove the last tab.");
+                        MessageBox.Show(Loc.S("Cannot remove the last tab.", "Нельзя удалить последнюю вкладку."));
                     }
                 });
-                tabMenu.MenuItems.Add("Rename Tab", (s, e) => {
-                    string newName = Prompt.ShowDialog("New Tab Name", "Rename Tab", tabData.Name);
+                tabMenu.MenuItems.Add(Loc.S("Rename Tab", "Переименовать вкладку"), (s, e) => {
+                    string newName = Prompt.ShowDialog(Loc.S("New Tab Name", "Новое имя вкладки"), Loc.S("Rename Tab", "Переименовать вкладку"), tabData.Name);
                     if (!string.IsNullOrWhiteSpace(newName))
                     {
                         tabData.Name = newName;
@@ -2835,7 +3091,7 @@ namespace WinPanel
                         tabBtn.Text = newName;
                     }
                 });
-                tabMenu.MenuItems.Add("Toggle Layout (Free / Grid)", (s, e) => {
+                tabMenu.MenuItems.Add(Loc.S("Toggle Layout (Free / Grid)", "Переключить раскладку (свободная / сетка)"), (s, e) => {
                     tabData.IsGridLayout = !tabData.IsGridLayout;
                     records.Save(recordsPath);
                     RenderCurrentFolder(layoutPanel, tabData);
@@ -3432,7 +3688,7 @@ namespace WinPanel
 
         private void CreateFolder(Panel layoutPanel, TabData tabData)
         {
-            string name = Prompt.ShowDialog("Folder Name", "Create Folder");
+            string name = Prompt.ShowDialog(Loc.S("Folder Name", "Имя папки"), Loc.S("Create Folder", "Создать папку"));
             if (!string.IsNullOrWhiteSpace(name))
             {
                 var navStack = tabNavigations[tabData];
@@ -3663,12 +3919,24 @@ namespace WinPanel
                 {
                     var child = item.Children[i];
                     int idx = i;
-                    EnqueueIconTask(() => LoadFolderChildIcon(tile, child, idx));
+                    Image cachedChild;
+                    if (TryGetCachedIconForItem(child, out cachedChild))
+                        tile.ChildIcons[idx] = cachedChild;
+                    else
+                        EnqueueIconTask(() => LoadFolderChildIcon(tile, child, idx));
                 }
             }
             else
             {
-                EnqueueIconTask(() => LoadTileIcon(tile, item));
+                Image cachedIcon;
+                if (TryGetCachedIconForItem(item, out cachedIcon))
+                {
+                    tile.IconImage = cachedIcon;
+                }
+                else
+                {
+                    EnqueueIconTask(() => LoadTileIcon(tile, item));
+                }
             }
 
             bool dragFired = false;
@@ -3867,16 +4135,23 @@ namespace WinPanel
         internal static void OpenContainingFolder(ShortcutItem item)
         {
             if (SuppressDoubleLaunch("select:" + item.Path)) return;
+            RevealInExplorer(item.Path);
+        }
+
+        // Opens Explorer with `path` selected in its folder (a plain Explorer
+        // window when the parent cannot be determined).
+        internal static void RevealInExplorer(string path)
+        {
             string dir = null;
-            try { dir = Path.GetDirectoryName(item.Path); }
-            catch (Exception ex) { AppLog.Write("OpenContainingFolder: GetDirectoryName", ex); }
+            try { dir = Path.GetDirectoryName(path); }
+            catch (Exception ex) { AppLog.Write("RevealInExplorer: GetDirectoryName", ex); }
             if (!string.IsNullOrEmpty(dir))
             {
                 bool dirExists = false;
                 try { dirExists = Directory.Exists(dir); }
-                catch (Exception ex) { AppLog.Write("OpenContainingFolder: Directory.Exists", ex); }
+                catch (Exception ex) { AppLog.Write("RevealInExplorer: Directory.Exists", ex); }
                 if (dirExists)
-                    StartDetached("explorer.exe", "/select,\"" + item.Path + "\"");
+                    StartDetached("explorer.exe", "/select,\"" + path + "\"");
                 else
                     StartDetached("explorer.exe", null);
             }
@@ -4492,7 +4767,7 @@ namespace WinPanel
             {
                 var emptyLbl = new Label
                 {
-                    Text = "Empty",
+                    Text = Loc.S("Empty", "Пусто"),
                     ForeColor = textColor,
                     AutoSize = false,
                     Width = TileSize,
@@ -4609,11 +4884,11 @@ namespace WinPanel
             var menu = new ContextMenu();
             if (!child.IsFolder && !string.IsNullOrEmpty(child.Path))
             {
-                menu.MenuItems.Add("Open containing folder", (s2, e2) => MainForm.OpenContainingFolder(child));
+                menu.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => MainForm.OpenContainingFolder(child));
             }
             if (editMode && navStack.Count == 0) // "move out" makes sense only for the root level
             {
-                menu.MenuItems.Add("Move out of folder", (s2, e2) =>
+                menu.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) =>
                 {
                     if (onMoveOutOfFolder != null) onMoveOutOfFolder(child);
                     Rebuild();
@@ -4621,7 +4896,7 @@ namespace WinPanel
             }
             if (editMode)
             {
-                menu.MenuItems.Add("Remove from Panel", (s2, e2) =>
+                menu.MenuItems.Add(Loc.S("Remove from Panel"), (s2, e2) =>
                 {
                     suppressDeactivate = true;
                     bool ok;
@@ -4831,7 +5106,9 @@ namespace WinPanel
                     Font font = labelName != null ? GetSharedLabelFont(labelName, labelSize) : FallbackLabelFont;
                     using (var brush = new SolidBrush(tColor))
                     {
-                        e.Graphics.DrawString(item.Name, font, brush, new Rectangle(2, this.Height - 18, this.Width - 4, 16), TileLabelFormat);
+                        Rectangle textRect = new Rectangle(2, this.Height - 18, this.Width - 4, 16);
+                        string shown = UiText.AbbreviateMiddle(item.Name, e.Graphics, font, textRect.Width);
+                        e.Graphics.DrawString(shown, font, brush, textRect, TileLabelFormat);
                     }
                 }
                 catch { }
@@ -4943,9 +5220,32 @@ namespace WinPanel
 
         // Height reserved for the label. Only reserve it when the tile fits a text line,
         // otherwise the label would overlap the icon on short tiles.
+        // Height reserved for the label. Tiles below 56px get no label; from
+        // 56px one line; when the tile is tall enough for two text lines and
+        // still leaves ≥36px for the icon, the label gets two rows (the icon
+        // area shrinks accordingly — the folder previews use the same number).
         private int GetTextSpace()
         {
-            return this.Height >= 56 ? 20 : 0;
+            if (this.Height < 56) return 0;
+            int lineH = LabelLineHeight();
+            int twoRows = 2 * lineH - 6;
+            if (twoRows > 24 && this.Height >= twoRows + 36) return twoRows;
+            return 20;
+        }
+
+        private static int LabelLineHeight()
+        {
+            try
+            {
+                var cfg = MainForm.CurrentSettings;
+                if (cfg != null && !string.IsNullOrEmpty(cfg.FontItemsName))
+                {
+                    Font f = GetSharedLabelFont(cfg.FontItemsName, cfg.FontItemsSize);
+                    if (f != null) return f.Height;
+                }
+            }
+            catch { }
+            return 20;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -5075,8 +5375,28 @@ namespace WinPanel
                         Font font = labelName != null ? GetSharedLabelFont(labelName, labelSize) : FallbackLabelFont;
                         using (var brush = new SolidBrush(tColor))
                         {
-                            Rectangle textRect = new Rectangle(4, this.Height - labelSpace - 1, this.Width - 8, labelSpace);
-                            e.Graphics.DrawString(Item.Name, font, brush, textRect, TileLabelFormat);
+                            Rectangle textRect = new Rectangle(2, this.Height - labelSpace - 1, this.Width - 4, labelSpace);
+                            // Two rows on tall tiles: greedy word wrap, a too-long
+                            // second row falls back to the "head…tail" form.
+                            string[] rows = labelSpace > 30 ? UiText.WrapTwo(Item.Name, e.Graphics, font, textRect.Width) : null;
+                            if (rows == null)
+                            {
+                                // One row, anchored to the bottom of the band so a
+                                // short name sits where the old label sat; the
+                                // "head…tail" abbreviation applies when too wide.
+                                int stripH = Math.Min(labelSpace, font.Height + 4);
+                                Rectangle oneRect = new Rectangle(2, this.Height - stripH - 1, this.Width - 4, stripH);
+                                string shown = UiText.AbbreviateMiddle(Item.Name, e.Graphics, font, oneRect.Width);
+                                e.Graphics.DrawString(shown, font, brush, oneRect, TileLabelFormat);
+                            }
+                            else
+                            {
+                                int lineH = font.Height;
+                                int y1 = textRect.Top + (textRect.Height - lineH * 2) / 2;
+                                e.Graphics.DrawString(rows[0], font, brush, new Rectangle(textRect.X, y1, textRect.Width, lineH), TileLabelFormat);
+                                string shown2 = UiText.AbbreviateMiddle(rows[1], e.Graphics, font, textRect.Width);
+                                e.Graphics.DrawString(shown2, font, brush, new Rectangle(textRect.X, y1 + lineH, textRect.Width, lineH), TileLabelFormat);
+                            }
                         }
                     }
                     catch { }
@@ -5126,14 +5446,20 @@ namespace WinPanel
     {
         public static string ShowDialog(string text, string caption, string defaultValue = "")
         {
+            // Follow the active theme/skin: this dialog used to be hard-coded
+            // dark, so "Create Folder" / "Rename" popped up as a dark box inside
+            // a light-themed app.
+            Color bg = UiPalette.Bg;
+            Color panel = UiPalette.Panel;
+            Color fg = UiPalette.Text;
             Form prompt = new Form()
             {
                 Width = 400,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 Text = caption,
                 StartPosition = FormStartPosition.CenterParent,
-                BackColor = Color.FromArgb(45, 45, 48),
-                ForeColor = Color.White
+                BackColor = bg,
+                ForeColor = fg
             };
             if (MainForm.CurrentSettings != null)
                 prompt.Font = Settings.MakeFont(MainForm.CurrentSettings.FontUiName, MainForm.CurrentSettings.FontUiSize);
@@ -5141,8 +5467,8 @@ namespace WinPanel
             // Row positions follow the (possibly large) UI font.
             int fh = prompt.Font.Height;
             Label textLabel = new Label() { Left = 20, Top = 14, Text = text, Width = 350, Height = fh + 4, AutoSize = false };
-            TextBox textBox = new TextBox() { Left = 20, Top = 14 + fh + 10, Width = 350, Text = defaultValue, BackColor = Color.FromArgb(30, 30, 30), ForeColor = Color.White };
-            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 280, Top = textBox.Top + textBox.Height + 12, Width = 100, Height = fh + 12, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(62, 62, 66) };
+            TextBox textBox = new TextBox() { Left = 20, Top = 14 + fh + 10, Width = 350, Text = defaultValue, BackColor = panel, ForeColor = fg };
+            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 280, Top = textBox.Top + textBox.Height + 12, Width = 100, Height = fh + 12, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = fg };
             confirmation.FlatAppearance.BorderSize = 0;
             prompt.ClientSize = new Size(400, confirmation.Top + confirmation.Height + 14);
 
@@ -5165,10 +5491,9 @@ namespace WinPanel
         private ConfirmDialog(string title, string message, string danger)
         {
             Settings st = MainForm.CurrentSettings;
-            bool light = st != null && st.IsLightTheme;
-            Color bg = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
-            Color panel = light ? Color.FromArgb(214, 214, 218) : Color.FromArgb(45, 45, 48);
-            Color txt = light ? Color.Black : Color.White;
+            Color bg = UiPalette.Bg;
+            Color panel = UiPalette.Panel;
+            Color txt = UiPalette.Text;
 
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
@@ -5301,11 +5626,10 @@ namespace WinPanel
         private DescriptionDialog(ShortcutItem item)
         {
             Settings st = MainForm.CurrentSettings;
-            bool light = st != null && st.IsLightTheme;
-            Color bg = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
-            Color panel = light ? Color.FromArgb(214, 214, 218) : Color.FromArgb(45, 45, 48);
-            Color txt = light ? Color.Black : Color.White;
-            Color dim = light ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
+            Color bg = UiPalette.Bg;
+            Color panel = UiPalette.Panel;
+            Color txt = UiPalette.Text;
+            Color dim = UiPalette.Dim;
 
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
@@ -5367,10 +5691,10 @@ namespace WinPanel
 
             var cancel = new Button { Text = Loc.S("Cancel", "Отмена"), Left = 250, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
             cancel.FlatAppearance.BorderSize = 0;
-            cancel.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
+            cancel.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
             var ok = new Button { Text = Loc.S("OK", "ОК"), Left = 355, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
             ok.FlatAppearance.BorderSize = 0;
-            ok.FlatAppearance.MouseOverBackColor = light ? Color.FromArgb(190, 190, 195) : Color.FromArgb(62, 62, 66);
+            ok.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
             ok.Click += (s, e) => { accepted = true; };
             this.Controls.Add(cancel);
             this.Controls.Add(ok);
@@ -5485,6 +5809,116 @@ namespace WinPanel
                 else hi = mid - 1;
             }
             return s.Substring(0, keep) + ell;
+        }
+
+        // Tile labels: when the whole name does not fit, draw "head…tail" —
+        // the head takes as much room as is left (but never fewer than 3
+        // characters), the tail keeps the last 3 characters. When the room is
+        // really tight the tail shrinks (3 → 2 → 1 → 0), and in the extreme it
+        // degrades to a plain "head…". Measured with the same GDI+ engine the
+        // tiles draw with (DrawString/MeasureString), so what we build here is
+        // what fits. maxWidth is the drawing rectangle's width in pixels.
+        private static readonly StringFormat AbbrevFormat = new StringFormat(StringFormatFlags.NoWrap);
+        private static readonly Dictionary<string, string> AbbrevCache = new Dictionary<string, string>();
+
+        public static string AbbreviateMiddle(string s, Graphics g, Font f, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(s) || maxWidth <= 0) return s;
+            string key = s + "|" + f.Name + "|" + f.Size.ToString("0.#") + "|" + maxWidth.ToString();
+            string hit;
+            lock (AbbrevCache)
+            {
+                if (AbbrevCache.TryGetValue(key, out hit)) return hit;
+            }
+            string result = AbbreviateMiddleCore(s, g, f, maxWidth);
+            lock (AbbrevCache)
+            {
+                if (AbbrevCache.Count > 1024) AbbrevCache.Clear();
+                AbbrevCache[key] = result;
+            }
+            return result;
+        }
+
+        private static string AbbreviateMiddleCore(string s, Graphics g, Font f, int maxWidth)
+        {
+            try
+            {
+                if (g.MeasureString(s, f, int.MaxValue, AbbrevFormat).Width <= maxWidth) return s;
+                const int minHead = 3;
+                const string ell = "…";
+                float ellW = g.MeasureString(ell, f, int.MaxValue, AbbrevFormat).Width;
+                // Head must keep at least 3 characters: smaller tails leave MORE
+                // room for the head, so walk the tail down instead of breaking.
+                for (int tail = 3; tail >= 1; tail--)
+                {
+                    if (s.Length - tail < minHead) continue;
+                    string tailS = s.Substring(s.Length - tail);
+                    float tailW = g.MeasureString(tailS, f, int.MaxValue, AbbrevFormat).Width;
+                    string head = FitPrefix(g, f, s, s.Length - tail, maxWidth - (int)Math.Ceiling(ellW + tailW), minHead);
+                    if (head != null) return head + ell + tailS;
+                }
+                // Very tight: plain head + "…" (the end is cut off entirely).
+                string headOnly = FitPrefix(g, f, s, s.Length, maxWidth - (int)Math.Ceiling(ellW), 1);
+                return headOnly != null ? headOnly + ell : s; // s = GDI trims as the last resort
+            }
+            catch { return s; }
+        }
+
+        // Longest prefix of s (up to maxChars characters) that fits into
+        // maxWidth; null when even minChars characters are too wide. Binary
+        // search over MeasureString.
+        private static string FitPrefix(Graphics g, Font f, string s, int maxChars, float maxWidth, int minChars)
+        {
+            if (maxWidth <= 0 || maxChars <= 0 || s.Length == 0) return null;
+            int hi = Math.Min(maxChars, s.Length);
+            int min = Math.Min(minChars, hi);
+            if (min > 0 && g.MeasureString(s.Substring(0, min), f, int.MaxValue, AbbrevFormat).Width > maxWidth) return null;
+            if (min == hi) return s.Substring(0, hi);
+            if (g.MeasureString(s.Substring(0, hi), f, int.MaxValue, AbbrevFormat).Width <= maxWidth) return s.Substring(0, hi);
+            int lo = min; // lo fits, hi does not
+            while (hi - lo > 1)
+            {
+                int mid = (lo + hi) / 2;
+                if (g.MeasureString(s.Substring(0, mid), f, int.MaxValue, AbbrevFormat).Width <= maxWidth) lo = mid;
+                else hi = mid;
+            }
+            return s.Substring(0, lo);
+        }
+
+        // Greedy two-line wrap for tile labels: line 1 takes as many whole
+        // words as fit (a first word wider than the tile is character-filled),
+        // line 2 gets the rest. Returns null when s already fits one line or
+        // nothing sensible can be split off.
+        public static string[] WrapTwo(string s, Graphics g, Font f, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(s) || maxWidth <= 0) return null;
+            try
+            {
+                if (g.MeasureString(s, f, int.MaxValue, AbbrevFormat).Width <= maxWidth) return null;
+                string[] words = s.Split(' ');
+                string line1 = null;
+                int i = 0;
+                for (; i < words.Length; i++)
+                {
+                    string cand = line1 == null ? words[i] : line1 + " " + words[i];
+                    if (g.MeasureString(cand, f, int.MaxValue, AbbrevFormat).Width > maxWidth) break;
+                    line1 = cand;
+                }
+                string rest;
+                if (line1 == null)
+                {
+                    line1 = FitPrefix(g, f, s, s.Length, maxWidth, 1);
+                    if (line1 == null) return null;
+                    rest = s.Substring(line1.Length).TrimStart();
+                }
+                else
+                {
+                    rest = s.Substring(line1.Length).TrimStart();
+                }
+                if (rest.Length == 0) return null;
+                return new[] { line1, rest };
+            }
+            catch { return null; }
         }
 
         // Finds the earliest query variant occurrence inside a lowercase text.
