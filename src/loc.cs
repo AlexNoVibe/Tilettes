@@ -208,6 +208,21 @@ namespace WinPanel
             { "Open standard", "Стандартное открытие" },
             { "Import...", "Импорт..." },
             { "Export...", "Экспорт..." },
+
+            // Tab menus / prompts (previously hard-coded English)
+            { "Create Folder", "Создать папку" },
+            { "Folder Name", "Имя папки" },
+            { "Delete Tab", "Удалить вкладку" },
+            { "Rename Tab", "Переименовать вкладку" },
+            { "Toggle Layout (Free / Grid)", "Переключить раскладку (свободная / сетка)" },
+            { "New Tab Name", "Новое имя вкладки" },
+            { "Are you sure you want to delete this tab?", "Вы уверены, что хотите удалить эту вкладку?" },
+            { "Cannot remove the last tab.", "Нельзя удалить последнюю вкладку." },
+            { "Empty", "Пусто" },
+            { "Mini Explorer", "Мини-проводник" },
+            { "Rebuild icons & paths", "Пересобрать иконки и пути" },
+            { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
+              "Проверено: {0} · потерянных путей: {1} · файлов кеша удалено: {2}" },
         };
 
         // Applies dictionary translation to every static text in the control tree

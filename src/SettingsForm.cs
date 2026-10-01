@@ -66,6 +66,8 @@ namespace WinPanel
         private CheckBox chkAutoInstall;
         public bool RunBackupNow { get; private set; }
         public bool RunSyncNow { get; private set; }
+        // Maintenance: re-check tile paths, drop the icon cache, re-extract icons.
+        public bool RebuildIconsNow { get; private set; }
         // "Do it now" flags for the update section: a manual GitHub check and a
         // replay of the first-start welcome window.
         public bool RunCheckNow { get; private set; }
@@ -106,20 +108,13 @@ namespace WinPanel
             this.settingsPath = settingsPath;
             this.liveRect = liveWindowRect;
 
-            if (settings.IsLightTheme)
-            {
-                bgColor = Color.FromArgb(228, 228, 230);
-                panelColor = Color.FromArgb(210, 210, 214);
-                hoverColor = Color.FromArgb(190, 190, 195);
-                textColor = Color.Black;
-            }
-            else
-            {
-                bgColor = Color.FromArgb(22, 22, 26);
-                panelColor = Color.FromArgb(45, 45, 48);
-                hoverColor = Color.FromArgb(62, 62, 66);
-                textColor = Color.White;
-            }
+            // Follow the active skin when one is on, otherwise the classic
+            // light/dark theme (see UiPalette): the dialog used to be classic
+            // gray even with a decorative skin active.
+            bgColor = UiPalette.Bg;
+            panelColor = UiPalette.Panel;
+            hoverColor = UiPalette.Hover;
+            textColor = UiPalette.Text;
 
             this.Text = "Settings";
             this.Width = 588;
@@ -450,6 +445,20 @@ namespace WinPanel
             btnRunSync.FlatAppearance.BorderSize = 0;
             btnRunSync.Click += (s, e) => { RunSyncNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
             Tip(btnRunSync, "Re-scan the system Start Menu and update the mirror tab now", "Пересканировать системный Пуск и обновить зеркальную вкладку");
+            var btnRebuildIcons = new Button
+            {
+                Text = Loc.S("Rebuild icons & paths", "Пересобрать иконки и пути"),
+                Left = 365,
+                Top = y - 3,
+                Width = 185,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
+            };
+            btnRebuildIcons.FlatAppearance.BorderSize = 0;
+            btnRebuildIcons.Click += (s, e) => { RebuildIconsNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnRebuildIcons, "Re-check every tile's path, drop the icon cache and re-extract all icons",
+                "Перепроверить пути всех плиток, сбросить кеш иконок и извлечь все значки заново");
             scrollPanel.Controls.Add(lblMaint);
             scrollPanel.Controls.Add(lblSkin);
             scrollPanel.Controls.Add(cmbSkin);
@@ -459,6 +468,7 @@ namespace WinPanel
             scrollPanel.Controls.Add(numSyncHours);
             scrollPanel.Controls.Add(btnRunBackup);
             scrollPanel.Controls.Add(btnRunSync);
+            scrollPanel.Controls.Add(btnRebuildIcons);
             y += 30;
 
             btnBackup = new Button { Text = Loc.S("Save backup (zip)", "Сохранить бэкап (zip)"), Left = 20, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };

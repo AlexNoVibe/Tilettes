@@ -230,7 +230,22 @@ namespace WinPanel
             { "rows", "行" },
             { "sec idle", "秒无操作" },
             { "text", "文本" },
-            { "♥ Donate", "♥ 捐助" }
+            { "♥ Donate", "♥ 捐助" },
+
+            // Tab menus / prompts (previously hard-coded English)
+            { "Create Folder", "新建文件夹" },
+            { "Folder Name", "文件夹名称" },
+            { "Delete Tab", "删除标签页" },
+            { "Rename Tab", "重命名标签页" },
+            { "Toggle Layout (Free / Grid)", "切换布局（自由 / 网格）" },
+            { "New Tab Name", "新标签页名称" },
+            { "Are you sure you want to delete this tab?", "确定要删除该标签页吗？" },
+            { "Cannot remove the last tab.", "无法删除最后一个标签页。" },
+            { "Empty", "空" },
+            { "Mini Explorer", "迷你资源管理器" },
+            { "Rebuild icons & paths", "重建图标和路径" },
+            { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
+              "已检查：{0} · 丢失路径：{1} · 已删除缓存文件：{2}" }
         };
     }
 }

@@ -228,6 +228,72 @@ namespace WinPanel
             return img != null ? (Image)img.Clone() : null;
         }
 
+        // Cached-only probe of GetIconAuto: returns the icon when it is already
+        // in the session memory cache or the persistent disk cache and NEVER
+        // extracts (no shell call, no network). Panel rebuilds use it to assign
+        // known icons synchronously - the panel then appears complete instead of
+        // refilling tile by tile from the extraction queue (the "flickering
+        // icons" on every move / tab switch). Not cached → false, the caller
+        // falls back to the async path.
+        public static bool TryGetCachedAuto(string path, bool large, out Image img)
+        {
+            img = null;
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                string key = (large ? "L|" : "S|") + path;
+                Image hit = CacheGet(key);
+                if (hit != null) { img = hit; return true; }
+                if (IsNetworkPath(path)) return false; // never stat a share on the UI thread
+                string diskFile = DiskCacheFile(path, large);
+                img = DiskCacheGet(diskFile);
+                if (img == null) return false;
+                CachePut(key, img);
+                img = (Image)img.Clone();
+                return true;
+            }
+            catch { img = null; return false; }
+        }
+
+        // Cached-only probe of LoadAny: custom/type icons already decoded this
+        // session (LoadAny caches before any file re-read).
+        public static bool TryGetCachedAny(string path, out Image img)
+        {
+            img = null;
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                img = CacheGet("A|" + path);
+                return img != null;
+            }
+            catch { img = null; return false; }
+        }
+
+        // Drops the whole icon cache (session dictionary + iconcache\ PNG files).
+        // Used by the settings "rebuild icons" button so every tile re-extracts
+        // fresh icons from the shell on the next render. Returns the number of
+        // deleted cache files.
+        public static int ClearAllCaches()
+        {
+            int removed = 0;
+            lock (CacheGate) { IconCache.Clear(); }
+            try
+            {
+                if (IconCacheDir != null)
+                {
+                    var dir = new DirectoryInfo(IconCacheDir);
+                    if (dir.Exists)
+                        foreach (var f in dir.GetFiles("*.png"))
+                        {
+                            try { f.Delete(); removed++; } catch { }
+                        }
+                }
+            }
+            catch { }
+            System.Threading.Interlocked.Exchange(ref diskCleanupDone, 1); // nothing left to clean up
+            return removed;
+        }
+
         private static Image ExtractIconAuto(string path, bool large)
         {
             try

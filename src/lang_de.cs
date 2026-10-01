@@ -230,7 +230,22 @@ namespace WinPanel
             { "rows", "Zeilen" },
             { "sec idle", "Sek. Leerlauf" },
             { "text", "Text" },
-            { "♥ Donate", "♥ Spenden" }
+            { "♥ Donate", "♥ Spenden" },
+
+            // Tab menus / prompts (previously hard-coded English)
+            { "Create Folder", "Ordner erstellen" },
+            { "Folder Name", "Ordnername" },
+            { "Delete Tab", "Tab löschen" },
+            { "Rename Tab", "Tab umbenennen" },
+            { "Toggle Layout (Free / Grid)", "Layout umschalten (frei / Raster)" },
+            { "New Tab Name", "Neuer Tab-Name" },
+            { "Are you sure you want to delete this tab?", "Diesen Tab wirklich löschen?" },
+            { "Cannot remove the last tab.", "Der letzte Tab kann nicht entfernt werden." },
+            { "Empty", "Leer" },
+            { "Mini Explorer", "Mini-Explorer" },
+            { "Rebuild icons & paths", "Symbole & Pfade neu einlesen" },
+            { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
+              "Geprüft: {0} · fehlende Pfade: {1} · Cachedateien gelöscht: {2}" }
         };
     }
 }

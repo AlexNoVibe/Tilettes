@@ -91,4 +91,120 @@ namespace WinPanel
 
         public static bool IsActive(Skin s) { return s != null && !ReferenceEquals(s, None); }
     }
+
+    // One palette for every secondary surface (settings dialog, prompt /
+    // confirmation / description dialogs, mini explorer): the active skin's
+    // colors when a decorative skin is on, otherwise the classic light/dark
+    // theme. These surfaces used to read only IsLightTheme, so with a skin
+    // active they stayed classic gray instead of matching the panel.
+    public static class UiPalette
+    {
+        private static Settings Current
+        {
+            get { try { return MainForm.CurrentSettings; } catch { return null; } }
+        }
+
+        private static Skin SkinOf(Settings st)
+        {
+            try { return Skin.Find(st != null ? st.SkinName : null); } catch { return Skin.None; }
+        }
+
+        public static bool IsLight
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return !skin.IsDark;
+                var st = Current;
+                return st != null && st.IsLightTheme;
+            }
+        }
+
+        private static Color Classic(bool light, Color lightColor, Color darkColor)
+        {
+            return light ? lightColor : darkColor;
+        }
+
+        public static Color Bg
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.BgTop;
+                return Classic(IsLight, Color.FromArgb(232, 232, 234), Color.FromArgb(24, 24, 28));
+            }
+        }
+
+        public static Color Panel
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.Panel;
+                return Classic(IsLight, Color.FromArgb(212, 212, 216), Color.FromArgb(45, 45, 48));
+            }
+        }
+
+        public static Color Hover
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.Hover;
+                return Classic(IsLight, Color.FromArgb(196, 196, 202), Color.FromArgb(62, 62, 66));
+            }
+        }
+
+        public static Color Text
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.Text;
+                return Classic(IsLight, Color.Black, Color.White);
+            }
+        }
+
+        public static Color Dim
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return Color.FromArgb(150, skin.Text);
+                return Classic(IsLight, Color.FromArgb(110, 110, 115), Color.FromArgb(165, 165, 170));
+            }
+        }
+
+        public static Color Accent
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.Accent;
+                return Classic(IsLight, Color.FromArgb(0, 102, 204), Color.FromArgb(70, 165, 245));
+            }
+        }
+
+        // Slightly lighter/darker than Bg: list and console surfaces.
+        public static Color ListBg
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin)) return skin.BgBottom;
+                return Classic(IsLight, Color.FromArgb(246, 246, 248), Color.FromArgb(18, 18, 22));
+            }
+        }
+
+        public static Color ConsoleBg
+        {
+            get
+            {
+                var skin = SkinOf(Current);
+                if (Skin.IsActive(skin))
+                    return skin.IsDark ? System.Windows.Forms.ControlPaint.Dark(skin.BgBottom) : System.Windows.Forms.ControlPaint.Light(skin.BgBottom);
+                return Classic(IsLight, Color.FromArgb(250, 250, 252), Color.FromArgb(12, 12, 15));
+            }
+        }
+    }
 }

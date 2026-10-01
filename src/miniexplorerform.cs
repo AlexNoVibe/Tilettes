@@ -100,17 +100,19 @@ namespace WinPanel
             topBarVisible = settings.MiniExplorerTopBar;
             if (settings.MiniExplorerConsole >= 15 && settings.MiniExplorerConsole <= 85)
                 consoleFrac = settings.MiniExplorerConsole / 100.0;
-            bool light = settings.IsLightTheme;
-            bgColor = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
-            panelColor = light ? Color.FromArgb(212, 212, 216) : Color.FromArgb(45, 45, 48);
-            hoverColor = light ? Color.FromArgb(196, 196, 202) : Color.FromArgb(62, 62, 66);
-            textColor = light ? Color.Black : Color.White;
-            dimColor = light ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
-            accentColor = light ? Color.FromArgb(0, 102, 204) : Color.FromArgb(70, 165, 245);
-            listColor = light ? Color.FromArgb(246, 246, 248) : Color.FromArgb(18, 18, 22);
-            consoleBg = light ? Color.FromArgb(250, 250, 252) : Color.FromArgb(12, 12, 15);
+            // UiPalette: follows the active skin, falls back to the classic
+            // light/dark theme (previously the window ignored decorative skins).
+            bool light = UiPalette.IsLight;
+            bgColor = UiPalette.Bg;
+            panelColor = UiPalette.Panel;
+            hoverColor = UiPalette.Hover;
+            textColor = UiPalette.Text;
+            dimColor = UiPalette.Dim;
+            accentColor = UiPalette.Accent;
+            listColor = UiPalette.ListBg;
+            consoleBg = UiPalette.ConsoleBg;
 
-            this.Text = "Mini Explorer";
+            this.Text = Loc.S("Mini Explorer", "Мини-проводник");
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.Manual;
             this.ShowInTaskbar = true;
@@ -172,7 +174,7 @@ namespace WinPanel
                     SendMessage(Handle, 0xA1, 0x2, 0);
                 }
             };
-            titleLbl = new Label { Text = "Mini Explorer", ForeColor = textColor, AutoSize = true, Location = new Point(10, 7) };
+            titleLbl = new Label { Text = Loc.S("Mini Explorer", "Мини-проводник"), ForeColor = textColor, AutoSize = true, Location = new Point(10, 7) };
             titleBar.Controls.Add(titleLbl);
             var closeBtn = new Button { Text = "X", Width = 30, Height = 30, Dock = DockStyle.Right, FlatStyle = FlatStyle.Flat, ForeColor = textColor, BackColor = panelColor };
             closeBtn.FlatAppearance.BorderSize = 0;
@@ -883,6 +885,20 @@ namespace WinPanel
                 return;
             }
             Navigate(path);
+        }
+
+        // Navigates to `folder` and (optionally) selects the child entry with
+        // that name — used by the panel-search context menu ("open the original
+        // folder" for a search result).
+        public void NavigateExternalSelect(string folder, string selectName)
+        {
+            if (this.InvokeRequired)
+            {
+                try { this.BeginInvoke((Action)delegate { Navigate(folder); SelectEntryByName(selectName); }); } catch { }
+                return;
+            }
+            Navigate(folder);
+            SelectEntryByName(selectName);
         }
 
         private void Navigate(string path)

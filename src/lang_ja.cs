@@ -230,7 +230,22 @@ namespace WinPanel
             { "rows", "行" },
             { "sec idle", "秒で戻る" },
             { "text", "テキスト" },
-            { "♥ Donate", "♥ 寄付" }
+            { "♥ Donate", "♥ 寄付" },
+
+            // Tab menus / prompts (previously hard-coded English)
+            { "Create Folder", "フォルダーを作成" },
+            { "Folder Name", "フォルダー名" },
+            { "Delete Tab", "タブを削除" },
+            { "Rename Tab", "タブの名前を変更" },
+            { "Toggle Layout (Free / Grid)", "レイアウト切替（フリー / グリッド）" },
+            { "New Tab Name", "新しいタブ名" },
+            { "Are you sure you want to delete this tab?", "このタブを削除してもよろしいですか？" },
+            { "Cannot remove the last tab.", "最後のタブは削除できません。" },
+            { "Empty", "空" },
+            { "Mini Explorer", "ミニエクスプローラー" },
+            { "Rebuild icons & paths", "アイコンとパスを再構築" },
+            { "Checked: {0} · missing paths: {1} · cache files removed: {2}",
+              "確認済み: {0} · 見つからないパス: {1} · 削除されたキャッシュファイル: {2}" }
         };
     }
 }
