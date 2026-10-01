@@ -10,7 +10,7 @@
 
 A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 
-Current version: **v0.5** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+Current version: **v0.6.0-beta** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
 
 ## Features
 
@@ -125,7 +125,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 
 | Keys / action | Result |
 |---|---|
-| Hotkey (default Ctrl+J) | Show / activate the panel. |
+| Hotkey (default Ctrl+Q) | Show / activate the panel. |
 | Just type any text, or Ctrl+F | Open the panel search. |
 | ↓ | Jump into the result list. |
 | Enter | Open the selected result (folder → navigate, file → launch). |
@@ -195,7 +195,7 @@ or directly:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
 ```
 
-Releases are created automatically by GitHub Actions on every `v*` tag: the workflow verifies the build and attaches a portable zip (Tilettes.exe + README + LICENSE); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
+Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
 
 ## Data files (created next to the EXE)
 
@@ -263,6 +263,15 @@ Other ways to help: report bugs and ideas in [Issues](https://github.com/AlexNoV
 
 <a name="changelog"></a>
 ## Changelog
+
+### v0.6.0-beta (2026-10-01)
+
+- Performance: faster startup (lazy tab rendering — only the active tab is built), persistent icon cache (shell icons are extracted once per tile lifetime), search metadata collected once when an item is added; the mini explorer search field is disabled (code kept for re-enable).
+- Network shares never block the UI thread: icons and .lnk targets on network paths resolve in background.
+- An active skin now drives the light/dark palette everywhere (picking Mint no longer leaves dark windows); mint is the default theme and all fonts default to 14.
+- First start: on monitors with working area below 900px the default window and grid shrink proportionally to fit.
+- Hardening: strong name, VERSIONINFO, explicit manifest, Win-key capture is opt-in — 0 detections on VirusTotal.
+- Release assets are plain exe files per CPU (AnyCPU/x86/x64) instead of a zip archive; release notes come from CHANGELOG.md.
 
 ### v0.5 (2026-09-30)
 
