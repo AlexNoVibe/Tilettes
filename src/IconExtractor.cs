@@ -173,6 +173,35 @@ namespace WinPanel
             catch { return null; }
         }
 
+        // Generic key/value access to the persistent cache folder (same cleanup
+        // rules). Used by the media frame extractor: same folder, custom key that
+        // already includes the source mtime.
+        public static Image DiskCacheGetByKey(string key)
+        {
+            return DiskCacheGet(CacheFileForKey(key));
+        }
+
+        public static void DiskCachePutByKey(string key, Image img)
+        {
+            DiskCachePut(CacheFileForKey(key), img);
+        }
+
+        private static string CacheFileForKey(string key)
+        {
+            if (IconCacheDir == null || string.IsNullOrEmpty(key)) return null;
+            try
+            {
+                using (var md5 = System.Security.Cryptography.MD5.Create())
+                {
+                    var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(key));
+                    var sb = new StringBuilder(bytes.Length * 2);
+                    foreach (var b in bytes) sb.Append(b.ToString("x2"));
+                    return Path.Combine(IconCacheDir, sb + ".png");
+                }
+            }
+            catch { return null; }
+        }
+
         private static void DiskCachePut(string file, Image img)
         {
             try
