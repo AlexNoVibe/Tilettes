@@ -2442,6 +2442,11 @@ namespace WinPanel
             try
             {
                 if (item == null) return false;
+                // Media previews must NOT come from the icon cache: it still holds
+                // the pre-preview generic icon for that path, and serving it would
+                // freeze the tile on the generic icon forever. Media items always
+                // go through LoadIconForItem (shell thumbnail pipeline).
+                if (IsMediaFile(item.Path)) return false;
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
                 string typeIcon = FileTypes.GetIconForPath(item.Path);

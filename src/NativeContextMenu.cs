@@ -186,7 +186,19 @@ namespace WinPanel
         {
             uint dummy;
             IntPtr pidl;
-            if (SHParseDisplayName(path, IntPtr.Zero, out pidl, 0, out dummy) != 0) return;
+            bool pathAlive = SHParseDisplayName(path, IntPtr.Zero, out pidl, 0, out dummy) == 0;
+            if (!pathAlive)
+            {
+                // The target file/folder is gone (deleted or moved away): the shell
+                // can not build an Explorer menu, but our own actions still make
+                // sense (remove the dead tile, rename it, open the parent...).
+                // A silent "nothing happens" looked like the tile not existing.
+                ShowOwnMenuFallback(x, y, handle, editMode, descriptionLabel, onEditDescription,
+                    canMoveOutOfFolder, onMoveOutOfFolder, onOpenContainingFolder, onOpenMiniExplorer,
+                    onSize1, onSize2, onSize3, onSize4, onSize5, onSize6,
+                    onRemove, onRename, onChangeIcon, moveToTabs, onMoveToTab);
+                return;
+            }
 
             Guid riid = typeof(IShellFolder).GUID;
             IShellFolder parentFolder;
@@ -302,6 +314,69 @@ namespace WinPanel
                 Marshal.ReleaseComObject(parentFolder);
             }
             CoTaskMemFree(pidl);
+        }
+
+        // Our own menu for a dead path (no Explorer items): everything the user
+        // can still do with the tile. Reuses the same Action delegates as the
+        // native menu.
+        private static void ShowOwnMenuFallback(int x, int y, IntPtr handle, bool editMode,
+            string descriptionLabel, Action onEditDescription,
+            bool canMoveOutOfFolder, Action onMoveOutOfFolder,
+            Action onOpenContainingFolder, Action onOpenMiniExplorer,
+            Action onSize1, Action onSize2, Action onSize3, Action onSize4,
+            Action onSize5, Action onSize6,
+            Action onRemove, Action onRename, Action onChangeIcon,
+            string[] moveToTabs, Action<int> onMoveToTab)
+        {
+            try
+            {
+                var m = new System.Windows.Forms.ContextMenu();
+                if (onOpenContainingFolder != null)
+                    m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => onOpenContainingFolder());
+                if (onOpenMiniExplorer != null)
+                    m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => onOpenMiniExplorer());
+                if (descriptionLabel != null && onEditDescription != null)
+                    m.MenuItems.Add(descriptionLabel, (s2, e2) => onEditDescription());
+                if (editMode && canMoveOutOfFolder && onMoveOutOfFolder != null)
+                    m.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) => onMoveOutOfFolder());
+
+                if (editMode)
+                {
+                    m.MenuItems.Add("-");
+                    if (onSize1 != null && onSize2 != null && onSize3 != null && onSize4 != null)
+                    {
+                        var size = m.MenuItems.Add(Loc.S("Size"));
+                        size.MenuItems.Add("1 x 1", (s2, e2) => onSize1());
+                        size.MenuItems.Add("2 x 2", (s2, e2) => onSize2());
+                        size.MenuItems.Add("3 x 3", (s2, e2) => onSize3());
+                        size.MenuItems.Add("4 x 4", (s2, e2) => onSize4());
+                        if (onSize5 != null) size.MenuItems.Add("5 x 5", (s2, e2) => onSize5());
+                        if (onSize6 != null) size.MenuItems.Add("6 x 6", (s2, e2) => onSize6());
+                    }
+                    if (onRename != null) m.MenuItems.Add(Loc.S("Rename"), (s2, e2) => onRename());
+                    if (onChangeIcon != null) m.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => onChangeIcon());
+                    if (onRemove != null) m.MenuItems.Add(Loc.S("Remove from Panel"), (s2, e2) => onRemove());
+                    if (moveToTabs != null && moveToTabs.Length > 0 && onMoveToTab != null)
+                    {
+                        var moveTo = m.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
+                        for (int i = 0; i < moveToTabs.Length; i++)
+                        {
+                            int idx = i;
+                            moveTo.MenuItems.Add(moveToTabs[i], (s2, e2) => onMoveToTab(idx));
+                        }
+                    }
+                }
+                if (m.MenuItems.Count > 0)
+                {
+                    var ctl = System.Windows.Forms.Control.FromHandle(handle);
+                    if (ctl == null) ctl = new System.Windows.Forms.Control();
+                    System.Drawing.Point client;
+                    try { client = ctl.PointToClient(new System.Drawing.Point(x, y)); }
+                    catch { client = new System.Drawing.Point(x, y); }
+                    m.Show(ctl, client);
+                }
+            }
+            catch { }
         }
 
         // Inserts one of our own items (with the round marker icon) at the given position.
