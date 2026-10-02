@@ -2343,6 +2343,198 @@ namespace WinPanel
             return CallNextHookEx(winKeyHook, nCode, wParam, lParam);
         }
 
+        // Clicks on the physical Start button (the screen corner): with the Win
+        // capture on, a plain left click opens the panel too. A WH_MOUSE_LL hook
+        // compares the click point against the taskbar's Start button window
+        // (class "Start" inside Shell_TrayWnd); modifier clicks and the right
+        // button (the Win+X menu) pass through. Fail-soft: when the button
+        // window cannot be found, only the keyboard capture stays active.
+        private IntPtr startMouseHook = IntPtr.Zero;
+        private LowLevelHookProc mouseHookRef;
+        private bool startClickSwallowed;
+
+        private const int WH_MOUSE_LL = 14;
+        private const int WM_MOUSE_LDOWN_LL = 0x0201;
+        private const int WM_MOUSE_LUP_LL = 0x0202;
+
+        private struct MSLLHOOKSTRUCT
+        {
+            public System.Drawing.Point pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "FindWindowW", SetLastError = true)]
+        private static extern IntPtr FindWindowNative(string cls, string title);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "FindWindowExW")]
+        private static extern IntPtr FindWindowExNative(IntPtr parent, IntPtr after, string cls, string title);
+
+        private struct Win32Rect { public int L, T, R, B; }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")]
+        private static extern bool GetWindowRectNative(IntPtr h, out Win32Rect r);
+
+        private static Rectangle StartButtonRect()
+        {
+            try
+            {
+                IntPtr tray = FindWindowNative("Shell_TrayWnd", null);
+                if (tray == IntPtr.Zero) return Rectangle.Empty;
+                Win32Rect tr;
+                if (!GetWindowRectNative(tray, out tr)) return Rectangle.Empty;
+                int tw = tr.R - tr.L, th = tr.B - tr.T;
+                if (tw <= 0 || th <= 0) return Rectangle.Empty;
+                // The button is a window of class "Start" on some builds (exact
+                // rect); on others it has no HWND at all — then derive it as the
+                // leftmost square of the primary taskbar, one taskbar-thickness
+                // side wide (+ the small padding before the next tray button).
+                IntPtr btn = FindWindowExNative(tray, IntPtr.Zero, "Start", null);
+                if (btn == IntPtr.Zero) btn = FindStartButtonNested(tray);
+                if (btn != IntPtr.Zero)
+                {
+                    Win32Rect r;
+                    if (GetWindowRectNative(btn, out r) && r.R > r.L && r.B > r.T)
+                        return new Rectangle(r.L, r.T, r.R - r.L, r.B - r.T);
+                }
+                if (tw >= th) return new Rectangle(tr.L, tr.T, Math.Min(tw, th + 8), th);
+                return new Rectangle(tr.L, tr.T, tw, Math.Min(th, tw + 8));
+            }
+            catch (Exception ex)
+            {
+                // Throttled: this runs on every mouse click system-wide.
+                if (!startRectErrLogged)
+                {
+                    startRectErrLogged = true;
+                    AppLog.Write("Start button rect lookup failed, click capture may be off", ex);
+                }
+                return Rectangle.Empty;
+            }
+        }
+
+        private static bool startRectErrLogged;
+
+        // Depth-first search for the class-"Start" window inside the taskbar tree.
+        private static IntPtr FindStartButtonNested(IntPtr parent)
+        {
+            IntPtr child = IntPtr.Zero;
+            do
+            {
+                child = FindWindowExNative(parent, child, null, null);
+                if (child == IntPtr.Zero) return IntPtr.Zero;
+                var sb = new System.Text.StringBuilder(64);
+                if (GetClassNameNative(child, sb, 64) > 0 && sb.ToString() == "Start") return child;
+                IntPtr deep = FindStartButtonNested(child);
+                if (deep != IntPtr.Zero) return deep;
+            } while (true);
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "GetClassNameW")]
+        private static extern int GetClassNameNative(IntPtr h, System.Text.StringBuilder sb, int max);
+
+        private IntPtr StartMouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0)
+                {
+                    int msg = wParam.ToInt32();
+                    if (msg == WM_MOUSE_LDOWN_LL || msg == WM_MOUSE_LUP_LL)
+                    {
+                        var m = (MSLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                        Rectangle r = StartButtonRect();
+                        bool modified = (Control.ModifierKeys & (Keys.Control | Keys.Shift | Keys.Alt)) != 0;
+                        bool inside = !r.IsEmpty && r.Contains(m.pt);
+                        if (msg == WM_MOUSE_LDOWN_LL)
+                        {
+                            if (inside && !modified)
+                            {
+                                startClickSwallowed = true;
+                                try { BeginInvoke((MethodInvoker)delegate { ToggleByWinKey(); }); }
+                                catch { }
+                                return (IntPtr)1;
+                            }
+                            startClickSwallowed = false;
+                        }
+                        else if (startClickSwallowed)
+                        {
+                            // pair of a swallowed down: eat the orphan up as well
+                            startClickSwallowed = false;
+                            return (IntPtr)1;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return CallNextHookEx(startMouseHook, nCode, wParam, lParam);
+        }
+
+        // The built-in tile that opens the real Start menu (its path is a virtual
+        // protocol, see LaunchItem).
+        private const string StartMenuPath = "startmenu:";
+
+        // The real Start menu: the Win capture swallows the Win key, so the tile
+        // inside the panel opens it with Ctrl+Esc — the system shortcut the hook
+        // never touches. The panel hides first (the tile lives inside it).
+        internal static void OpenRealStartMenu()
+        {
+            try
+            {
+                foreach (Form f in Application.OpenForms)
+                {
+                    var mf = f as MainForm;
+                    if (mf != null && !mf.IsDisposed)
+                    {
+                        if (mf.Visible) mf.Hide();
+                        break;
+                    }
+                }
+            }
+            catch { }
+            try
+            {
+                keybd_event(0x11, 0, 0, System.UIntPtr.Zero);                  // Ctrl down
+                keybd_event(0x1B, 0, 0, System.UIntPtr.Zero);                  // Esc down
+                keybd_event(0x1B, 0, KEYEVENTF_KEYUP_LL, System.UIntPtr.Zero); // Esc up
+                keybd_event(0x11, 0, KEYEVENTF_KEYUP_LL, System.UIntPtr.Zero); // Ctrl up
+            }
+            catch { }
+        }
+
+        // Adds the "Start menu" tile to the mirrored Start tab once (the sync
+        // keeps foreign items — their Src is not a sync key). Only when the
+        // capture is on: without it the real menu is still reachable normally.
+        private void EnsureRealStartTile()
+        {
+            try
+            {
+                TabData startTab = null;
+                foreach (var t in records.Tabs)
+                    if (t.Kind == "startmenu") { startTab = t; break; }
+                if (startTab == null) return;
+                foreach (var it in startTab.Items)
+                    if (string.Equals(it.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase)) return;
+                var item = new ShortcutItem
+                {
+                    Name = Loc.S("Start menu", "Меню «Пуск»"),
+                    Path = StartMenuPath,
+                    Src = "builtin:startmenu",
+                    Size = ClampItemSize(settings.DefaultItemSize)
+                };
+                MainForm.PlaceIntoGridStatic(startTab.Items, item,
+                    Math.Max(1, settings.GridColumns), Math.Max(1, settings.GridRows));
+                startTab.Items.Add(item);
+                records.Save(recordsPath);
+                if (activeTabData == startTab && activeLayoutPanel != null)
+                    RenderCurrentFolder(activeLayoutPanel, startTab);
+                else
+                    renderedTabs.Remove(startTab); // re-render lazily on next activation
+            }
+            catch (Exception ex) { AppLog.Write("EnsureRealStartTile", ex); }
+        }
+
         private void ApplyWinKeyHotkey()
         {
             try
@@ -2354,6 +2546,11 @@ namespace WinPanel
                     {
                         try { UnhookWindowsHookEx(winKeyHook); } catch { }
                         winKeyHook = IntPtr.Zero;
+                    }
+                    if (startMouseHook != IntPtr.Zero)
+                    {
+                        try { UnhookWindowsHookEx(startMouseHook); } catch { }
+                        startMouseHook = IntPtr.Zero;
                     }
                     if (hotkeyWinRegistered)
                     {
@@ -2375,7 +2572,18 @@ namespace WinPanel
                     bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, 0x5B);
                     bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, 0x5C);
                     hotkeyWinRegistered = left || right;
+                    return;
                 }
+                // The keyboard hook works: also route plain left clicks on the
+                // physical Start button (screen corner) to the panel, and make
+                // sure the real Start menu stays reachable via the tile.
+                mouseHookRef = new LowLevelHookProc(StartMouseHookProc);
+                startMouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseHookRef, GetModuleHandle(null), 0);
+                if (startMouseHook == IntPtr.Zero)
+                    AppLog.Write("Start button mouse hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                else
+                    AppLog.Write("Start button click capture on, rect=" + StartButtonRect().ToString());
+                EnsureRealStartTile();
             }
             catch (Exception ex) { AppLog.Write("Win key hook", ex); }
         }
@@ -2609,6 +2817,10 @@ namespace WinPanel
                 // 1) direct icon of the item (Change Icon)
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.LoadAny(item.CustomIconPath);
+                // The built-in "Start menu" tile: its path is a virtual protocol,
+                // extraction would fail — draw the Windows flag instead.
+                if (string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase))
+                    return SystemIcons.WinLogo.ToBitmap();
                 // 2) icon assigned to the file type
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
@@ -2913,6 +3125,13 @@ namespace WinPanel
         public static void LaunchItem(string path)
         {
             if (string.IsNullOrEmpty(path)) return;
+            // The built-in "Start menu" tile: open the real Start menu and stop.
+            if (string.Equals(path, StartMenuPath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (SuppressDoubleLaunch(StartMenuPath)) return;
+                OpenRealStartMenu();
+                return;
+            }
             if (SuppressDoubleLaunch("item:" + path)) return;
 
             // File-type rule: open with the program assigned to this extension (if any).

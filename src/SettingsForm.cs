@@ -334,8 +334,8 @@ namespace WinPanel
                 ForeColor = textColor
             };
             var winKeyTip = new ToolTip();
-            winKeyTip.SetToolTip(chkWinKey, Loc.S("Pressing the Win key shows the panel instead of the Start menu",
-                "Кнопка Пуск (Win) открывает панель вместо меню Пуск"));
+            winKeyTip.SetToolTip(chkWinKey, Loc.S("The Win key and a left click on the Start button open the panel instead of the Start menu; the real Start menu stays reachable via the \"Start menu\" tile on the Start tab",
+                "Клавиша Win и левый клик по кнопке Пуск в углу открывают панель вместо меню Пуск; настоящий Пуск остаётся доступным плиткой «Меню «Пуск»» на вкладке Пуск"));
             scrollPanel.Controls.Add(chkWinKey);
             y += 30;
 
