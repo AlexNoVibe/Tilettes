@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -507,6 +507,12 @@ namespace WinPanel
 
             AddEdgeGrips();
 
+            // The grips raise themselves above everything; the frame segments must
+            // sit above them or the opaque grip strips hide the frame along the
+            // window edges (the frame only re-raises on resize, which can happen
+            // before this point).
+            UpdateBorderOverlay();
+
             // Scheduled maintenance: a full backup (3 minutes after launch when due)
             // and the Start Menu mirror sync (20 seconds after launch when due).
             try { BackupManager.ScheduleIfNeeded(this, settings); }
@@ -552,14 +558,29 @@ namespace WinPanel
             // GDI rounds the region off by the last pixel column/row (the form client
             // is Width x Height, but a W x H region stops at W-1 / H-1) — a 1px stripe
             // of whatever is behind the window shone through on the right/bottom edge.
-            // Extending the region by 1px covers the full client area.
-            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 15, 15));
+            // The region is built from the same rounded path the frame overlay
+            // paints (radius 15), so the aliased region edge sits exactly under the
+            // painted border line. (CreateRoundRectRgn's "15" is an ellipse WIDTH,
+            // i.e. a 7.5px corner — its stepped edge used to slice right through
+            // the close button's hovered corner, well inside the painted arc.)
+            using (var path = GetRoundedRectPath(new Rectangle(0, 0, Width - 1, Height - 1), 15))
+            {
+                var oldRegion = this.Region;
+                this.Region = new System.Drawing.Region(path);
+                if (oldRegion != null) { try { oldRegion.Dispose(); } catch { } }
+            }
             UpdateBorderOverlay();
         }
 
         // Decorative skin frame: a thin colored line following the rounded window
-        // contour. Lives on an overlay that is transparent to the mouse, so tiles,
-        // grips and panels underneath keep working.
+        // contour. One mouse-transparent overlay whose window region is EXACTLY
+        // the painted band (window edge down to the border's inner edge), and
+        // every pixel of that region is filled with the border color. The region
+        // keeps hover tooltips working outside the band (a full-window
+        // region-less overlay defeats the native tooltip tool tracking), and the
+        // full fill means the band can never show blank or stale surface over
+        // the content beneath - the pale stepped notch on the red close button
+        // appeared when the clipped band was wider than the painted stroke.
         private BorderOverlay borderOverlay;
 
         private void UpdateBorderOverlay()
@@ -579,15 +600,16 @@ namespace WinPanel
                 borderOverlay.SkinBorder = skin.Border;
                 borderOverlay.BorderSize = Math.Max(1, skin.BorderWidth);
                 borderOverlay.Bounds = new Rectangle(0, 0, Width, Height);
+                borderOverlay.UpdateFrameRegion();
+                // Must sit above the edge grips: they are opaque strips along the
+                // same edges and would otherwise hide the whole frame.
                 borderOverlay.BringToFront();
                 borderOverlay.Invalidate();
+                if (borderOverlay.IsHandleCreated) borderOverlay.Update();
             }
             catch (Exception ex) { AppLog.Write("Border overlay", ex); }
         }
 
-        // Clicks and drag-resize must fall through the frame to the real controls.
-        // The frame is drawn in OnPaint (no Control.Region: assigning a Region
-        // before the handle exists blows up in Region.GetHrgn on some systems).
         private class BorderOverlay : Control
         {
             public Color SkinBorder = Color.Gray;
@@ -597,13 +619,42 @@ namespace WinPanel
             {
                 this.Enabled = false;
                 this.TabStop = false;
-                // No DoubleBuffered here: a buffered transparent control copies the
-                // uninitialized buffer to the screen and renders as a black rect.
+                // Without UserPaint WinForms never calls OnPaint for this window.
                 SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
             }
             protected override CreateParams CreateParams
             {
                 get { var cp = base.CreateParams; cp.ExStyle |= 0x20; return cp; } // WS_EX_TRANSPARENT
+            }
+
+            // The overlay window must cover ONLY the frame band, and the band must
+            // be FILLED, not stroked: a stroke leaves the inner part of the clipped
+            // band unpainted, and those pixels composite as blank surface over the
+            // content beneath (the stepped notch in the rounded corners).
+            internal void UpdateFrameRegion()
+            {
+                if (!IsHandleCreated) return;
+                int bw = Math.Max(1, BorderSize);
+                using (var outer = GetRoundedRectPath(new Rectangle(0, 0, Width - 1, Height - 1), 15))
+                using (var inner = GetRoundedRectPath(new Rectangle(bw, bw, Math.Max(1, Width - 1 - 2 * bw), Math.Max(1, Height - 1 - 2 * bw)), 15))
+                {
+                    var ring = new System.Drawing.Region(outer);
+                    ring.Exclude(inner);
+                    var old = this.Region;
+                    this.Region = ring;
+                    if (old != null) { try { old.Dispose(); } catch { } }
+                }
+            }
+
+            protected override void OnHandleCreated(EventArgs e)
+            {
+                base.OnHandleCreated(e);
+                UpdateFrameRegion();
+            }
+            protected override void OnResize(EventArgs e)
+            {
+                base.OnResize(e);
+                UpdateFrameRegion();
             }
             protected override void OnPaintBackground(PaintEventArgs e) { }
             protected override void OnPaint(PaintEventArgs e)
@@ -612,8 +663,14 @@ namespace WinPanel
                 {
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     int bw = Math.Max(1, BorderSize);
-                    using (var pen = new Pen(SkinBorder, bw))
-                        e.Graphics.DrawPath(pen, GetRoundedRectPath(new Rectangle(bw / 2, bw / 2, Math.Max(1, Width - bw - 1), Math.Max(1, Height - bw - 1)), 15));
+                    using (var outer = GetRoundedRectPath(new Rectangle(0, 0, Width - 1, Height - 1), 15))
+                    using (var inner = GetRoundedRectPath(new Rectangle(bw, bw, Math.Max(1, Width - 1 - 2 * bw), Math.Max(1, Height - 1 - 2 * bw)), 15))
+                    {
+                        outer.AddPath(inner, false);
+                        outer.FillMode = System.Drawing.Drawing2D.FillMode.Alternate;
+                        using (var brush = new SolidBrush(SkinBorder))
+                            e.Graphics.FillPath(brush, outer);
+                    }
                 }
                 catch { }
             }
@@ -645,7 +702,24 @@ namespace WinPanel
 
         private void AddEdgeGrip(int x, int y, int w, int h, Cursor cur, int hitTest, AnchorStyles anchor)
         {
+            AddEdgeGrip(x, y, w, h, cur, hitTest, anchor, Rectangle.Empty);
+        }
+
+        // excludeLocal (grip-local coordinates) is cut out of the grip's window
+        // region: the grips sit above the whole panel hierarchy, so an opaque grip
+        // strip would cover the hovered close button's corner (and the first tab
+        // chip) with background color - a stepped notch that only shows when the
+        // button turns red. The excluded pixels simply belong to the controls
+        // beneath; the grip keeps the remaining edge strip for resizing.
+        private void AddEdgeGrip(int x, int y, int w, int h, Cursor cur, int hitTest, AnchorStyles anchor, Rectangle excludeLocal)
+        {
             var p = new Panel { Size = new Size(w, h), Location = new Point(x, y), Cursor = cur, BackColor = bgColor, Anchor = anchor };
+            if (!excludeLocal.IsEmpty)
+            {
+                var rgn = new Region(new Rectangle(0, 0, w, h));
+                rgn.Exclude(excludeLocal);
+                p.Region = rgn;
+            }
             p.MouseDown += (s, e) =>
             {
                 if (e.Button == MouseButtons.Left)
@@ -661,12 +735,18 @@ namespace WinPanel
 
         private void AddEdgeGrips()
         {
-            AddEdgeGrip(0, 0, Width, 6, Cursors.SizeNS, 12, AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
+            // The top edge stops before the min/max/close block (the right 105px):
+            // those buttons own their corner.
+            AddEdgeGrip(0, 0, Math.Max(0, Width - 105), 6, Cursors.SizeNS, 12, AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
             AddEdgeGrip(0, 0, 6, Height, Cursors.SizeWE, 10, AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Bottom);
             AddEdgeGrip(Width - 6, 0, 6, Height, Cursors.SizeWE, 11, AnchorStyles.Right | AnchorStyles.Top | AnchorStyles.Bottom);
             AddEdgeGrip(0, Height - 6, Width, 6, Cursors.SizeNS, 15, AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
-            AddEdgeGrip(0, 0, 14, 14, Cursors.SizeNWSE, 13, AnchorStyles.Top | AnchorStyles.Left);
-            AddEdgeGrip(Width - 14, 0, 14, 14, Cursors.SizeNESW, 14, AnchorStyles.Top | AnchorStyles.Right);
+            // Top-left corner: keep an L outside the first tab chip (it starts
+            // around x=8, y=4).
+            AddEdgeGrip(0, 0, 14, 14, Cursors.SizeNWSE, 13, AnchorStyles.Top | AnchorStyles.Left, new Rectangle(6, 2, 8, 12));
+            // Top-right corner: keep an L outside the close button (its top-left
+            // corner sits at grip-local (0, 3), the button reaches grip-local x=11).
+            AddEdgeGrip(Width - 14, 0, 14, 14, Cursors.SizeNESW, 14, AnchorStyles.Top | AnchorStyles.Right, new Rectangle(0, 3, 11, 11));
             AddEdgeGrip(0, Height - 14, 14, 14, Cursors.SizeNESW, 16, AnchorStyles.Bottom | AnchorStyles.Left);
             AddEdgeGrip(Width - 14, Height - 14, 14, 14, Cursors.SizeNWSE, 17, AnchorStyles.Bottom | AnchorStyles.Right);
         }
@@ -4000,9 +4080,10 @@ namespace WinPanel
                 Location = new Point(xPos, yPos)
             };
 
-            // Tooltip: description / full name + separator + full paths.
+            // Tooltip: description (priority) + full name only when the tile
+            // face has to abbreviate the label.
             if (itemTip != null)
-                itemTip.SetToolTip(tile, BuildItemTooltipText(item));
+                itemTip.SetToolTip(tile, BuildItemTooltipText(item, tile.IsLabelShownPartial()));
 
             if (item.IsFolder)
             {
@@ -4330,18 +4411,28 @@ namespace WinPanel
             UpdateItemTooltip(item);
         }
 
-        // Refreshes the hover tooltip of the tile that shows this item.
+        // Refreshes the hover tooltip of the tile that shows this item. Tiles
+        // are not direct children of contentPanel: each tab renders into its
+        // own layout panel nested inside, so the walk has to be recursive.
         private void UpdateItemTooltip(ShortcutItem item)
         {
             if (itemTip == null) return;
-            foreach (Control c in contentPanel.Controls)
+            UpdateTooltipInControl(contentPanel, item);
+        }
+
+        private void UpdateTooltipInControl(Control root, ShortcutItem item)
+        {
+            foreach (Control c in root.Controls)
             {
                 var tc = c as TileControl;
-                if (tc != null && tc.Item == item)
+                if (tc != null)
                 {
-                    itemTip.SetToolTip(tc, BuildItemTooltipText(item));
-                    return;
+                    if (tc.Item == item)
+                        itemTip.SetToolTip(tc, BuildItemTooltipText(item, tc.IsLabelShownPartial()));
+                    continue;
                 }
+                if (c.Controls.Count > 0)
+                    UpdateTooltipInControl(c, item);
             }
         }
 
@@ -4366,35 +4457,22 @@ namespace WinPanel
             catch { }
         }
 
-        // Tooltip text for any item: first line is the description when there is
-        // one, otherwise the full (untruncated) tile name; then a separator and
-        // the full paths (a .lnk shows both the shortcut and its resolved target).
-        internal static string BuildItemTooltipText(ShortcutItem item)
+        // Tooltip text for any item: 1) the description has priority (first
+        // line); 2) the full (untruncated) name is added only when the tile
+        // face shows the label abbreviated ("head…tail"). A tile without a
+        // description whose name already fits shows NO tooltip at all — there
+        // is nothing to reveal. No paths: they made the tip noisy.
+        internal static string BuildItemTooltipText(ShortcutItem item, bool labelPartial)
         {
             try
             {
                 if (item == null) return null;
-                string head;
-                if (!string.IsNullOrEmpty(item.ShortDescription))
-                    head = item.ShortDescription;
-                else
-                    head = UiText.TileLabel(item.Name, item.Path, true, true);
-
-                string paths = item.Path ?? "";
-                try
-                {
-                    if (paths.Length > 0 && paths.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string target = PanelSearch.GetTarget(item);
-                        if (!string.IsNullOrEmpty(target) && !string.Equals(target, paths, StringComparison.OrdinalIgnoreCase))
-                            paths = paths + "\n→ " + target;
-                    }
-                }
-                catch { }
-
-                if (paths.Length == 0) return head;
-                string sep = new string('─', 32);
-                return head + "\n" + sep + "\n" + paths;
+                string desc = item.ShortDescription;
+                bool hasDesc = !string.IsNullOrEmpty(desc);
+                if (!hasDesc && !labelPartial) return null;
+                if (!hasDesc) return UiText.TileLabel(item.Name, item.Path, true, true);
+                if (!labelPartial) return desc;
+                return desc + "\n" + UiText.TileLabel(item.Name, item.Path, true, true);
             }
             catch { return null; }
         }
@@ -4968,8 +5046,7 @@ namespace WinPanel
                 }
                 tile.Margin = new Padding(TileGap / 2);
                 AttachTileHandlers(tile, child);
-                if (!string.IsNullOrEmpty(child.ShortDescription))
-                    tip.SetToolTip(tile, MainForm.BuildItemTooltipText(child));
+                tip.SetToolTip(tile, MainForm.BuildItemTooltipText(child, tile.IsLabelShownPartial()));
                 flow.Controls.Add(tile);
             }
         }
@@ -5139,6 +5216,24 @@ namespace WinPanel
                 }
             }
             return sharedLabelFont != null ? sharedLabelFont : FallbackLabelFont;
+        }
+
+        // True when the popup tile's one-row label is abbreviated
+        // ("head…tail") — the hover tooltip then carries the full name.
+        public bool IsLabelShownPartial()
+        {
+            try
+            {
+                if (item == null) return false;
+                Settings cfg = MainForm.CurrentSettings;
+                string label = UiText.TileLabel(item.Name, item.Path,
+                    cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
+                Font font = cfg != null && !string.IsNullOrEmpty(cfg.FontItemsName)
+                    ? GetSharedLabelFont(cfg.FontItemsName, cfg.FontItemsSize)
+                    : FallbackLabelFont;
+                return UiText.LabelShownPartial(label, font, this.Width - 4, false);
+            }
+            catch { return false; }
         }
 
         private GraphicsPath roundPath;
@@ -5454,6 +5549,27 @@ namespace WinPanel
             }
             catch { }
             return 20;
+        }
+
+        // True when OnPaint has to abbreviate this tile's label ("head…tail")
+        // at the current tile size — the hover tooltip then carries the full
+        // name. Uses the same label text, font and band logic as OnPaint.
+        public bool IsLabelShownPartial()
+        {
+            try
+            {
+                if (Item == null) return false;
+                Settings cfg = MainForm.CurrentSettings;
+                string label = UiText.TileLabel(Item.Name, Item.Path,
+                    cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
+                int labelSpace = GetTextSpace();
+                if (labelSpace <= 0) return false; // no label band: the face shows no truncated text
+                string fontName = cfg != null ? cfg.FontItemsName : null;
+                int fontSize = cfg != null ? cfg.FontItemsSize : 0;
+                Font font = fontName != null ? GetSharedLabelFont(fontName, fontSize) : FallbackLabelFont;
+                return UiText.LabelShownPartial(label, font, this.Width - 4, labelSpace > 30);
+            }
+            catch { return false; }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -6062,6 +6178,46 @@ namespace WinPanel
         // what fits. maxWidth is the drawing rectangle's width in pixels.
         private static readonly StringFormat AbbrevFormat = new StringFormat(StringFormatFlags.NoWrap);
         private static readonly Dictionary<string, string> AbbrevCache = new Dictionary<string, string>();
+
+        private static readonly object measureLock = new object();
+        private static Bitmap measureBitmap;
+        private static Graphics measureGraphics;
+
+        // Scratch Graphics for the one-off width measurements made outside
+        // OnPaint (tooltip building): MeasureString needs a Graphics, but the
+        // result only depends on font metrics, so one bitmap-backed instance
+        // serves every caller. Tooltip building runs on the UI thread only.
+        private static Graphics MeasureGraphics()
+        {
+            lock (measureLock)
+            {
+                if (measureGraphics == null)
+                {
+                    measureBitmap = new Bitmap(1, 1);
+                    measureGraphics = Graphics.FromImage(measureBitmap);
+                }
+                return measureGraphics;
+            }
+        }
+
+        // True when the label does not fit the tile's text band and OnPaint
+        // shows it abbreviated ("head…tail") — the hover tooltip must then
+        // reveal the full name. Mirrors TileControl.OnPaint's composition:
+        // one row when two rows are off (or WrapTwo fits the text on a single
+        // line), otherwise it is the second wrapped row that may get cut.
+        public static bool LabelShownPartial(string label, Font f, int textWidth, bool twoRows)
+        {
+            if (string.IsNullOrEmpty(label) || f == null || textWidth <= 4) return false;
+            try
+            {
+                Graphics g = MeasureGraphics();
+                string[] rows = twoRows ? WrapTwo(label, g, f, textWidth) : null;
+                if (rows == null)
+                    return AbbreviateMiddle(label, g, f, textWidth) != label;
+                return AbbreviateMiddle(rows[1], g, f, textWidth) != rows[1];
+            }
+            catch { return false; }
+        }
 
         public static string AbbreviateMiddle(string s, Graphics g, Font f, int maxWidth)
         {

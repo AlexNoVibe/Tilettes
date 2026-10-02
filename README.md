@@ -205,6 +205,15 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 
 Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
 
+## Antivirus false positives
+
+Some antivirus products occasionally flag `Tilettes.exe` with a generic heuristic detection (unsigned small utilities that install a global keyboard hook, parse `.lnk` shortcuts and extract shell icons fit the pattern heuristics dislike). Treat such a detection as a **false positive** until proven otherwise — and you do not have to trust the shipped binary, because everything is verifiable:
+
+- The **source code is fully open** in this repository — every line that ends up in the exe is here.
+- **Releases are built automatically by GitHub Actions** from the tagged commit on Microsoft-hosted runners (`.github/workflows/build.yml`). Nothing is uploaded by hand: the exe attached to a release is compiled from exactly the source you see at that tag.
+- You can **build the exe yourself** with `build.bat` (the C# compiler ships with Windows) and run your own build instead of the downloaded one.
+- The strong name key (`Tilettes.snk`) is generated for the build only; a strong name proves assembly identity, not a vendor's trust — look at the code and the build pipeline instead.
+
 ## Data files (created next to the EXE)
 
 | File | Purpose |
