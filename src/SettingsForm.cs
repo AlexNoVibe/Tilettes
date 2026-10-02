@@ -303,8 +303,8 @@ namespace WinPanel
                     if (ofd.ShowDialog(this) == DialogResult.OK) txtFolderOpenProgram.Text = ofd.FileName;
                 }
             };
-            Tip(txtFolderOpenProgram, "Total Commander etc.: the .exe that opens directory tiles and \"open containing folder\". Empty or explorer.exe = the system default. The folder is passed as the quoted argument",
-                "Total Commander и т.п.: .exe, которым открываются папки и «открыть содержащую папку». Пусто или explorer.exe — системный проводник. Путь папки передаётся аргументом в кавычках");
+            Tip(txtFolderOpenProgram, "Total Commander etc.: the .exe that opens directory tiles and \"open containing folder\". Switches are allowed, %1 marks the folder position, e.g. C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Empty or explorer.exe = the system default. For Total Commander /O is added automatically",
+                "Total Commander и т.п.: .exe, которым открываются папки и «открыть содержащую папку». Можно указывать ключи, %1 — место папки, например C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Пусто или explorer.exe — системный проводник. Для Total Commander ключ /O подставляется автоматически");
             scrollPanel.Controls.Add(lblOpenWith);
             scrollPanel.Controls.Add(txtFolderOpenProgram);
             scrollPanel.Controls.Add(btnPickFm);

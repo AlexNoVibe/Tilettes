@@ -2938,28 +2938,78 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError("Error opening: " + path); }
         }
 
-        // The folder-opening program from the settings: a path to a .exe that
-        // opens directories instead of the system default. Null (= keep the
-        // system default) when the setting is empty, names Explorer itself
-        // ("если проводник — то по умолчанию") or the file does not exist.
-        internal static string FolderOpenExe()
+        // The folder-opening command from the settings. Accepted forms:
+        //   C:\tools\TOTALCMD64.EXE                - the folder is the one argument
+        //   C:\tools\TOTALCMD64.EXE /O             - exe + fixed switches (folder appended, quoted)
+        //   C:\tools\TOTALCMD64.EXE /O "%1"        - %1 is replaced by the quoted folder
+        // The exe is separated tolerating spaces in its path (the longest
+        // existing-file prefix wins). Returns false (= keep the system default)
+        // when the setting is empty, names Explorer itself ("если проводник — то
+        // по умолчанию") or the executable does not exist.
+        internal static bool TryGetFolderOpenCommand(out string exe, out string argsTemplate)
         {
+            exe = null; argsTemplate = null;
             try
             {
                 string p = CurrentSettings != null ? CurrentSettings.FolderOpenProgram : null;
-                if (string.IsNullOrEmpty(p)) return null;
-                p = p.Trim().Trim('"');
-                if (p.Length == 0) return null;
-                string name = Path.GetFileName(p).ToLowerInvariant();
-                if (name == "explorer" || name == "explorer.exe") return null;
-                if (!File.Exists(p))
+                if (string.IsNullOrEmpty(p)) return false;
+                p = p.Trim();
+                if (p.Length == 0) return false;
+
+                string rest = "";
+                if (p.StartsWith("\"", StringComparison.Ordinal))
                 {
-                    AppLog.Write("FolderOpenProgram not found, using the system default: " + p);
-                    return null;
+                    int close = p.IndexOf('"', 1);
+                    if (close < 0) exe = p.Trim('"');
+                    else { exe = p.Substring(1, close - 1); rest = p.Substring(close + 1).Trim(); }
                 }
-                return p;
+                else
+                {
+                    exe = p;
+                    if (!File.Exists(p))
+                    {
+                        // "C:\Program Files\TC\tc.exe /O "%1"": walk the spaces and
+                        // cut at the first prefix that exists as a file.
+                        for (int i = 0; i < p.Length; i++)
+                        {
+                            if (p[i] != ' ') continue;
+                            string cand = p.Substring(0, i);
+                            if (File.Exists(cand)) { exe = cand; rest = p.Substring(i + 1).Trim(); break; }
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(exe)) return false;
+                string name = Path.GetFileName(exe).ToLowerInvariant();
+                if (name == "explorer" || name == "explorer.exe") return false;
+                if (!File.Exists(exe))
+                {
+                    AppLog.Write("FolderOpenProgram not found, using the system default: " + exe);
+                    return false;
+                }
+                argsTemplate = rest;
+                return true;
             }
-            catch { return null; }
+            catch { return false; }
+        }
+
+        // Builds the argument line for opening `folder` with the configured
+        // manager. A "%1" placeholder (quoted or bare) becomes the quoted folder;
+        // fixed switches are followed by the quoted folder; a bare exe gets just
+        // the quoted folder — except Total Commander, which ignores a bare path
+        // when an instance is already running: its documented switch for opening
+        // in the running instance is /O, so that is defaulted for it.
+        internal static string FolderOpenArgs(string argsTemplate, string exe, string folder)
+        {
+            string q = "\"" + folder + "\"";
+            if (!string.IsNullOrEmpty(argsTemplate))
+            {
+                if (argsTemplate.IndexOf("%1", StringComparison.Ordinal) >= 0)
+                    return argsTemplate.Replace("\"%1\"", q).Replace("%1", q);
+                return argsTemplate + " " + q;
+            }
+            string name = Path.GetFileName(exe).ToLowerInvariant();
+            if (name.StartsWith("totalcmd", StringComparison.Ordinal)) return "/O " + q;
+            return q;
         }
 
         private static bool IsDirectoryPath(string path)
@@ -2981,10 +3031,10 @@ namespace WinPanel
                         // Folder tiles: redirect directories to the file manager
                         // chosen in the settings. The directory probe runs here on
                         // the worker thread - a network folder must not stall the UI.
-                        string fm = FolderOpenExe();
-                        if (fm != null && IsDirectoryPath(fileName))
+                        string fmExe, fmTemplate;
+                        if (TryGetFolderOpenCommand(out fmExe, out fmTemplate) && IsDirectoryPath(fileName))
                         {
-                            System.Diagnostics.Process.Start(fm, "\"" + fileName + "\"");
+                            System.Diagnostics.Process.Start(fmExe, FolderOpenArgs(fmTemplate, fmExe, fileName));
                             return;
                         }
                         System.Diagnostics.Process.Start(fileName);
@@ -4499,13 +4549,13 @@ namespace WinPanel
             string dir = null;
             try { dir = Path.GetDirectoryName(path); }
             catch (Exception ex) { AppLog.Write("RevealInExplorer: GetDirectoryName", ex); }
-            string fm = FolderOpenExe();
-            if (fm != null)
+            string fmExe, fmTemplate;
+            if (TryGetFolderOpenCommand(out fmExe, out fmTemplate))
             {
                 string openDir = !string.IsNullOrEmpty(dir) ? dir : path;
                 if (IsDirectoryPath(openDir))
                 {
-                    StartDetached(fm, "\"" + openDir + "\"");
+                    StartDetached(fmExe, FolderOpenArgs(fmTemplate, fmExe, openDir));
                     return;
                 }
             }
