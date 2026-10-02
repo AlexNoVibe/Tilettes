@@ -2500,22 +2500,47 @@ namespace WinPanel
             return false;
         }
 
-        // Shell thumbnail for a photo/video; null when the shell cannot make one
-        // (the caller then falls back to the normal icon chain).
+        // Shell thumbnail for a photo/video (photo itself / video frame) or a
+        // FOLDER (the preview the shell composes from the files inside); null
+        // when the shell cannot make one (the caller then falls back to the
+        // normal icon chain).
         //
         // The preview is ALSO stored in our own disk cache: the Windows thumbnail
         // cache evicts entries over time, and a tile that once showed a picture
         // must not fall back to a generic icon later ("the thumbnail disappeared").
         // The cache key includes the source mtime, so a replaced file re-previews.
-        internal static Image LoadMediaThumbnail(string path, int size)
+        internal static Image LoadMediaThumbnail(string path, int size, bool isFolder)
         {
             try
             {
-                if (!IsMediaFile(path)) return null;
+                if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return null;
+                if (!isFolder && !IsMediaFile(path)) return null;
                 string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
                              File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
                 Image own = IconExtractor.DiskCacheGetByKey(key);
                 if (own != null) return own;
+                if (isFolder)
+                {
+                    // A folder without composeable pictures fails the attempt;
+                    // remember it for the session so every tab switch does not
+                    // re-run the composition. The mtime in the key re-arms the
+                    // entry when the folder content changes.
+                    string negKey = key.Substring(0, key.LastIndexOf('|'));
+                    lock (FolderNoThumb)
+                    {
+                        if (FolderNoThumb.ContainsKey(negKey)) return null;
+                    }
+                    Image fimg = ShellItemApi.GetShellThumbnail(path, size);
+                    if (fimg != null)
+                        IconExtractor.DiskCachePutByKey(key, fimg);
+                    else
+                        lock (FolderNoThumb)
+                        {
+                            if (FolderNoThumb.Count > 512) FolderNoThumb.Clear();
+                            FolderNoThumb[negKey] = 1;
+                        }
+                    return fimg;
+                }
                 Image img = ShellItemApi.GetShellThumbnail(path, size);
                 if (img == null && IsVideoFile(path))
                     img = MediaFrame.ExtractFrame(path, 512); // own extractor + own cache
@@ -2524,6 +2549,40 @@ namespace WinPanel
                 return img;
             }
             catch { return null; }
+        }
+
+        // Session memory of folders whose thumbnail attempt failed (nothing the
+        // shell can compose a preview from) - see LoadMediaThumbnail.
+        private static readonly Dictionary<string, byte> FolderNoThumb = new Dictionary<string, byte>();
+
+        // Session cache of "is this path a filesystem directory" (UI-thread safe:
+        // network paths are excluded here, they are probed directly only inside
+        // the slow-source worker branches). The user's directory tiles do not
+        // carry any folder flag - IsFolder on ShortcutItem marks group tiles.
+        private static readonly Dictionary<string, bool> IsDirCache = new Dictionary<string, bool>();
+
+        internal static bool IsFolderPathCached(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return false;
+                if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return false;
+                if (IconExtractor.IsNetworkPath(path)) return false;
+                string key = path.ToLowerInvariant();
+                lock (IsDirCache)
+                {
+                    bool hit;
+                    if (IsDirCache.TryGetValue(key, out hit)) return hit;
+                }
+                bool isDir = Directory.Exists(path);
+                lock (IsDirCache)
+                {
+                    if (IsDirCache.Count > 2048) IsDirCache.Clear();
+                    IsDirCache[key] = isDir;
+                }
+                return isDir;
+            }
+            catch { return false; }
         }
 
         private static Image LoadIconForItem(ShortcutItem item)
@@ -2537,8 +2596,13 @@ namespace WinPanel
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                     return IconExtractor.LoadAny(typeIcon);
-                // 3) photo/video live preview (photo itself, video frame)
-                Image mediaThumb = LoadMediaThumbnail(item.Path, 256);
+                // 3) photo/video live preview (photo itself, video frame) and the
+                // folder preview for directory tiles. Slow (network) sources run
+                // here on a worker thread, so the direct Directory.Exists probe
+                // is safe exactly when IsSlowIconSource is true.
+                bool isFolderPreview = item.IsFolder || IsFolderPathCached(item.Path) ||
+                                       (IsSlowIconSource(item) && Directory.Exists(item.Path ?? ""));
+                Image mediaThumb = LoadMediaThumbnail(item.Path, 256, isFolderPreview);
                 if (mediaThumb != null) return mediaThumb;
                 // 4) standard shell icon (shell: paths = UWP apps)
                 return IconExtractor.GetIconAuto(item.Path, true);
@@ -2560,11 +2624,14 @@ namespace WinPanel
             try
             {
                 if (item == null) return false;
-                // Media previews must NOT come from the icon cache: it still holds
-                // the pre-preview generic icon for that path, and serving it would
-                // freeze the tile on the generic icon forever. Media items always
-                // go through LoadIconForItem (shell thumbnail pipeline).
-                if (IsMediaFile(item.Path)) return false;
+                // Media previews and folder previews must NOT come from the icon
+                // cache: it still holds the pre-preview generic icon for that
+                // path, and serving it would freeze the tile on the generic icon
+                // forever. Media and folder items always go through
+                // LoadIconForItem (shell thumbnail pipeline). (Network paths are
+                // not probed here - their slow-source routing never uses this
+                // synchronous path anyway.)
+                if (IsMediaFile(item.Path) || item.IsFolder || IsFolderPathCached(item.Path)) return false;
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
@@ -2704,14 +2771,20 @@ namespace WinPanel
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
-            if (!child.IsFolder && IsSlowIconSource(child))
+            if (IsSlowIconSource(child))
             {
                 // Network source: extract on a worker thread (see LoadTileIcon).
+                // Folder children too - they may need a shell preview, which must
+                // not touch an unreachable share on the UI thread.
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate
                 {
                     Image bimg = null;
                     try
                     {
+                        // This is the slow-source worker branch: a direct
+                        // directory probe is safe here (network path or not).
+                        bool cfolder = child.IsFolder || IsFolderPathCached(child.Path) ||
+                                       Directory.Exists(child.Path ?? "");
                         if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
                             bimg = IconExtractor.LoadAny(child.CustomIconPath);
                         else
@@ -2721,7 +2794,9 @@ namespace WinPanel
                                 bimg = IconExtractor.LoadAny(typeIcon);
                             else
                             {
-                                bimg = LoadMediaThumbnail(child.Path, 96);
+                                bimg = LoadMediaThumbnail(child.Path, 96, cfolder);
+                                if (bimg == null && cfolder)
+                                    bimg = GetFolderIconImage();
                                 if (bimg == null)
                                     bimg = IconExtractor.GetIconAuto(child.Path, true);
                             }
@@ -2752,9 +2827,15 @@ namespace WinPanel
             Image img = null;
             try
             {
-                if (child.IsFolder)
+                // Group tiles and local directory children (the cached probe
+                // skips network paths - those never take this synchronous branch).
+                bool cfolder = child.IsFolder || IsFolderPathCached(child.Path);
+                if (cfolder)
                 {
-                    img = GetFolderIconImage();
+                    // Folder preview composed by the shell from the files inside;
+                    // the shared folder icon when it has none.
+                    img = LoadMediaThumbnail(child.Path, 96, true);
+                    if (img == null) img = GetFolderIconImage();
                 }
                 else
                 {
@@ -2769,7 +2850,7 @@ namespace WinPanel
                             img = IconExtractor.LoadAny(typeIcon);
                         else
                         {
-                            img = LoadMediaThumbnail(child.Path, 96);
+                            img = LoadMediaThumbnail(child.Path, 96, false);
                             if (img == null)
                                 img = IconExtractor.GetIconAuto(child.Path, true);
                         }
@@ -5010,40 +5091,53 @@ namespace WinPanel
             foreach (var child in children)
             {
                 var tile = new PopupTile(child, panelColor, hoverColor, textColor);
-                if (!child.IsFolder)
+                var t = tile;
+                EnqueuePopupIcon(delegate
                 {
-                    var t = tile;
-                    EnqueuePopupIcon(delegate
+                    if (t.IsDisposed || this.IsDisposed) return;
+                    if (MainForm.IsSlowIconSource(child))
                     {
-                        if (t.IsDisposed || this.IsDisposed) return;
-                        if (MainForm.IsSlowIconSource(child))
+                        // Network source: extract off the UI thread so an
+                        // unreachable share can not stall the popup.
+                        string cpath = child.Path;
+                        bool cgroup = child.IsFolder;
+                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
                         {
-                            // Network source: extract off the UI thread so an
-                            // unreachable share can not stall the popup.
-                            string cpath = child.Path;
-                            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                            Image img = null;
+                            try
                             {
-                                Image img = null;
-                                try { img = IconExtractor.GetIconAuto(cpath, true); } catch { }
-                                try
-                                {
-                                    if (this.IsDisposed || t.IsDisposed) { if (img != null) img.Dispose(); return; }
-                                    this.BeginInvoke((MethodInvoker)delegate { t.AssignIcon(img); });
-                                }
-                                catch { if (img != null) try { img.Dispose(); } catch { } }
-                            });
-                            return;
-                        }
-                        try
-                        {
-                            // Photo/video preview first, the generic icon as fallback.
-                            Image img2 = MainForm.LoadMediaThumbnail(child.Path, 256);
-                            if (img2 == null) img2 = IconExtractor.GetIconAuto(child.Path, true);
-                            t.AssignIcon(img2);
-                        }
-                        catch { }
-                    });
-                }
+                                // Worker thread: the directory probe is safe here.
+                                bool cfolder = cgroup || MainForm.IsFolderPathCached(cpath) ||
+                                               Directory.Exists(cpath ?? "");
+                                img = MainForm.LoadMediaThumbnail(cpath, 256, cfolder);
+                                if (img == null && cfolder)
+                                    img = MainForm.GetFolderIconImage();
+                                if (img == null) img = IconExtractor.GetIconAuto(cpath, true);
+                            }
+                            catch { }
+                            try
+                            {
+                                if (this.IsDisposed || t.IsDisposed) { if (img != null) img.Dispose(); return; }
+                                this.BeginInvoke((MethodInvoker)delegate { t.AssignIcon(img); });
+                            }
+                            catch { if (img != null) try { img.Dispose(); } catch { } }
+                        });
+                        return;
+                    }
+                    try
+                    {
+                        // Photo/video/folder preview first, the generic icon as
+                        // fallback (local paths only - network took the worker
+                        // branch above).
+                        Image img2 = MainForm.LoadMediaThumbnail(child.Path, 256,
+                            child.IsFolder || MainForm.IsFolderPathCached(child.Path));
+                        if (img2 == null && (child.IsFolder || MainForm.IsFolderPathCached(child.Path)))
+                            img2 = MainForm.GetFolderIconImage();
+                        if (img2 == null) img2 = IconExtractor.GetIconAuto(child.Path, true);
+                        t.AssignIcon(img2);
+                    }
+                    catch { }
+                });
                 tile.Margin = new Padding(TileGap / 2);
                 AttachTileHandlers(tile, child);
                 tip.SetToolTip(tile, MainForm.BuildItemTooltipText(child, tile.IsLabelShownPartial()));
@@ -5825,15 +5919,22 @@ namespace WinPanel
             // Row positions follow the (possibly large) UI font.
             int fh = prompt.Font.Height;
             Label textLabel = new Label() { Left = 20, Top = 14, Text = text, Width = 350, Height = fh + 4, AutoSize = false };
-            TextBox textBox = new TextBox() { Left = 20, Top = 14 + fh + 10, Width = 350, Text = defaultValue, BackColor = panel, ForeColor = fg };
-            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 280, Top = textBox.Top + textBox.Height + 12, Width = 100, Height = fh + 12, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = fg };
+            TextBox textBox = new TextBox() { Left = 20, Top = 14 + fh + 10, Width = 350, Text = defaultValue, Font = prompt.Font, BackColor = panel, ForeColor = fg };
+            Button confirmation = new Button() { Text = Loc.S("OK", "ОК"), Left = 280, Width = 100, Height = fh + 12, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = fg };
             confirmation.FlatAppearance.BorderSize = 0;
-            prompt.ClientSize = new Size(400, confirmation.Top + confirmation.Height + 14);
 
             prompt.Controls.Add(textBox);
             prompt.Controls.Add(confirmation);
             prompt.Controls.Add(textLabel);
             prompt.AcceptButton = confirmation;
+            // The OK button is placed from the font-derived height, NOT from
+            // textBox.Height: a single-line TextBox carries the FixedHeight
+            // style and only syncs its Height to the ambient (possibly large)
+            // UI font when its handle is recreated - asynchronously. Measuring
+            // it earlier yields the 9pt default, and with the 14pt UI font the
+            // grown box ran under the button, shoving it up into the textbox.
+            confirmation.Top = textBox.Top + textBox.PreferredHeight + 12;
+            prompt.ClientSize = new Size(400, confirmation.Top + confirmation.Height + 14);
 
             return prompt.ShowDialog() == DialogResult.OK ? textBox.Text : "";
         }
@@ -6350,13 +6451,52 @@ namespace WinPanel
             string s = name;
             if (trimShortcut)
             {
+                // Explorer names duplicate shortcuts "Name - Ярлык (2)" or
+                // "Video.mp4 - Ярлык (2).lnk": the copy counter and the extension
+                // sit AFTER the suffix and stop the match. Peel them off for the
+                // match; when no suffix matched everything is restored (a plain
+                // "Отчёт (2).docx" keeps its counter and extension). When one DID
+                // match, the counter goes away with the suffix - "(2)" only ever
+                // numbered the shortcut itself - and the extension is appended
+                // back so the extension checkbox below still sees it.
+                string core = s;
+                string tail = "";
+                try
+                {
+                    string ext = System.IO.Path.GetExtension(path ?? "");
+                    if (!string.IsNullOrEmpty(ext) && ext.Length <= 6 && core.Length > ext.Length &&
+                        core.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                    {
+                        tail = ext;
+                        core = core.Substring(0, core.Length - ext.Length);
+                    }
+                }
+                catch { }
+                string counter = null;
+                if (core.EndsWith(")", StringComparison.Ordinal))
+                {
+                    int open = core.LastIndexOf('(');
+                    if (open > 0 && core[open - 1] == ' ')
+                    {
+                        bool digits = true;
+                        for (int i = open + 1; i < core.Length - 1; i++)
+                            if (!char.IsDigit(core[i])) { digits = false; break; }
+                        if (digits && open + 1 < core.Length - 1)
+                        {
+                            counter = core.Substring(open - 1); // " (2)" including the space
+                            core = core.Substring(0, open - 1);
+                        }
+                    }
+                }
+                core = core.TrimEnd();
                 // Twice: rare but real "Name - Shortcut - Shortcut" nesting.
                 // TrimEnd between passes: "Name - Ярлык " must lose its trailing
                 // space before the next suffix check and the extension heuristic.
-                s = TrimShortcutSuffix(s);
-                s = s.TrimEnd();
-                s = TrimShortcutSuffix(s);
-                s = s.TrimEnd();
+                string t = TrimShortcutSuffix(core);
+                t = t.TrimEnd();
+                t = TrimShortcutSuffix(t);
+                t = t.TrimEnd();
+                if (t.Length < core.Length) s = t + tail; // counter dropped with the suffix
             }
             if (trimExtension)
             {

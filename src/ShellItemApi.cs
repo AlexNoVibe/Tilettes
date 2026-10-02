@@ -193,14 +193,16 @@ namespace WinPanel
             return ShellImage(shellPath, size, SIIGBF_ICONONLY);
         }
 
-        // Photo/video preview from the shell thumbnail cache: the picture itself
-        // for images, a frame for videos (everything Explorer can preview).
+        // Photo/video/folder preview from the shell thumbnail cache: the picture
+        // itself for images, a frame for videos, the preview composed from the
+        // files inside for folders (everything Explorer can preview).
         // Null when the shell cannot produce a thumbnail (no codec, unsupported).
         public static Bitmap GetShellThumbnail(string path, int size)
         {
             try
             {
-                if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+                if (string.IsNullOrEmpty(path)) return null;
+                if (!System.IO.File.Exists(path) && !System.IO.Directory.Exists(path)) return null;
                 Bitmap bmp = ShellImage(path, size, SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK);
                 return bmp; // thumbnails come pre-fitted, no alpha trim needed
             }
