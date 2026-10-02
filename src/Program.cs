@@ -451,7 +451,10 @@ namespace WinPanel
                     settings.WindowY = this.Location.Y;
                     settings.Save(settingsPath);
                 }
-                LoadTabs(); // Redraw grid if layout changed
+                // No LoadTabs() here: the grid tiles follow the panel resize live
+                // (ReflowGridTiles on the layout panel's Resize), so a rebuild at
+                // drag end would only flash and re-pop the icons - the "rescale
+                // jerk" after every move/resize of the window.
             };
 
             var formMenu = new ContextMenu();
@@ -512,6 +515,20 @@ namespace WinPanel
             // window edges (the frame only re-raises on resize, which can happen
             // before this point).
             UpdateBorderOverlay();
+
+            // The startup render runs inside the constructor; if the panel bounds
+            // settle only past it (docking layout, first Show), realign the active
+            // tab once - otherwise the first re-render would visibly rescale every
+            // tile of it.
+            this.Shown += (s, e) =>
+            {
+                try
+                {
+                    if (activeLayoutPanel != null && activeTabData != null)
+                        ReflowGridTiles(activeLayoutPanel, activeTabData);
+                }
+                catch { }
+            };
 
             // Scheduled maintenance: a full backup (3 minutes after launch when due)
             // and the Start Menu mirror sync (20 seconds after launch when due).
@@ -3296,7 +3313,11 @@ namespace WinPanel
                 layoutPanel.DragEnter += LayoutPanel_DragEnter;
                 layoutPanel.DragDrop += LayoutPanel_DragDrop;
                 layoutPanel.Paint += LayoutPanel_Paint;
-                layoutPanel.Resize += (s, e) => ((Panel)s).Invalidate();
+                layoutPanel.Resize += (s, e) =>
+                {
+                    ((Panel)s).Invalidate();
+                    ReflowGridTiles((Panel)s, tabData);
+                };
 
                 var panelMenu = new ContextMenu();
                 panelMenu.Popup += (s, e) =>
@@ -3654,9 +3675,39 @@ namespace WinPanel
             }
         }
 
-        private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
+        // Live tile reflow: grid tiles are sized from the panel's cell size at
+        // render time only; without this a window resize left the tiles stale
+        // until the next full re-render, which then snapped everything at once
+        // (the "rescale jerk" after a drag). Bounds-only recompute - the tiles,
+        // icons and their async loaders stay alive, DrawFit rescales the icon on
+        // the next paint. Free-layout tabs keep their fixed 40px cells.
+        private void ReflowGridTiles(Panel panel, TabData tabData)
         {
-            renderedTabs.Add(tabData);
+            try
+            {
+                if (!tabData.IsGridLayout) return;
+                int cols = Math.Max(1, settings.GridColumns);
+                int rows = Math.Max(1, settings.GridRows);
+                int cellWidth = Math.Max(1, panel.ClientSize.Width / cols);
+                int cellHeight = Math.Max(1, panel.ClientSize.Height / rows);
+                foreach (Control c in panel.Controls)
+                {
+                    var tile = c as TileControl;
+                    if (tile == null || tile.Item == null) continue;
+                    int s = ClampItemSize(tile.Item.Size);
+                    // Same clamps as AddShortcutControl: columns must stay inside
+                    // the visible grid, rows may overflow into AutoScroll.
+                    int col = Math.Max(0, Math.Min(cols - s, tile.Item.GridX));
+                    int row = Math.Max(0, tile.Item.GridY);
+                    var bounds = new Rectangle(col * cellWidth, row * cellHeight, s * cellWidth, s * cellHeight);
+                    if (tile.Bounds != bounds) tile.Bounds = bounds;
+                }
+            }
+            catch { }
+        }
+
+        private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
+        {            renderedTabs.Add(tabData);
             ClearMultiSelection();
             DisposeControlTree(layoutPanel);
             layoutPanel.Controls.Clear();
