@@ -41,21 +41,13 @@ namespace WinPanel
         {
             this.settings = settings;
 
-            if (MainForm.CurrentSettings != null && MainForm.CurrentSettings.IsLightTheme)
-            {
-                bgColor = Color.FromArgb(232, 232, 234);
-                panelColor = Color.FromArgb(214, 214, 218);
-                hoverColor = Color.FromArgb(200, 200, 200);
-                textColor = Color.Black;
-            }
-            else
-            {
-                bgColor = Color.FromArgb(24, 24, 28);
-                panelColor = Color.FromArgb(45, 45, 48);
-                hoverColor = Color.FromArgb(62, 62, 66);
-                textColor = Color.White;
-            }
-            dimColor = Color.FromArgb(150, 150, 155);
+            // UiPalette: follows the active skin, falls back to the classic
+            // light/dark colors without one (used to be hard-coded classic).
+            bgColor = UiPalette.Bg;
+            panelColor = UiPalette.Panel;
+            hoverColor = UiPalette.Hover;
+            textColor = UiPalette.Text;
+            dimColor = UiPalette.Dim;
 
             mainFont = Settings.MakeFont(this.settings.FontUiName, this.settings.FontUiSize);
             titleFont = Settings.MakeFont(this.settings.FontUiName, Math.Max(6, this.settings.FontUiSize + 2), FontStyle.Bold);

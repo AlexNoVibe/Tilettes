@@ -942,7 +942,7 @@ namespace WinPanel
                         int n;
                         string err = BackupManager.RestoreZip(sf.RestoreZipPath, out n);
                         if (err != null)
-                            MessageBox.Show(this, Loc.S("Restore failed: ", "Восстановление не удалось: ") + err, Loc.S("Tilettes", "Плиточки"));
+                            ConfirmDialog.ShowInfo(this, Loc.S("Restore failed: ", "Восстановление не удалось: ") + err);
                         else
                         {
                             restored = true;
@@ -1050,7 +1050,7 @@ namespace WinPanel
                           "Проверено: {0} · потерянных путей: {1} · файлов кеша удалено: {2}"),
                     items, missing.Count, removed);
                 if (missing.Count > 0) msg += "\n\n" + string.Join("\n", missing.ToArray());
-                MessageBox.Show(this, msg, Loc.S("Tilettes", "Плиточки"));
+                ConfirmDialog.ShowInfo(this, msg);
                 AppLog.Write("Icon rebuild: " + msg.Replace("\n", " | "));
             }
             catch (Exception ex) { AppLog.Write("RebuildAllIcons", ex); }
@@ -2977,7 +2977,7 @@ namespace WinPanel
                     var mf = f as MainForm;
                     if (mf != null && !mf.IsDisposed && mf.IsHandleCreated)
                     {
-                        mf.BeginInvoke((MethodInvoker)delegate { MessageBox.Show(message); });
+                        mf.BeginInvoke((MethodInvoker)delegate { ConfirmDialog.ShowInfo(mf, message); });
                         return;
                     }
                 }
@@ -3348,16 +3348,18 @@ namespace WinPanel
                 var tabMenu = new ContextMenu();
                 tabMenu.MenuItems.Add(Loc.S("Delete Tab", "Удалить вкладку"), (s, e) => {
                     if (records.Tabs.Count > 1) {
-                        var res = MessageBox.Show(Loc.S("Are you sure you want to delete this tab?", "Вы уверены, что хотите удалить эту вкладку?"),
-                            Loc.S("Delete Tab", "Удалить вкладку"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                        if (res == DialogResult.Yes) {
+                        bool confirmed = ConfirmDialog.ShowConfirm(this,
+                            Loc.S("Delete Tab", "Удалить вкладку"),
+                            Loc.S("Are you sure you want to delete this tab?", "Вы уверены, что хотите удалить эту вкладку?"),
+                            null, Loc.S("Delete", "Удалить"));
+                        if (confirmed) {
                             records.Tabs.Remove(tabData);
                             tabNavigations.Remove(tabData);
                             records.Save(recordsPath);
                             LoadTabs();
                         }
                     } else {
-                        MessageBox.Show(Loc.S("Cannot remove the last tab.", "Нельзя удалить последнюю вкладку."));
+                        ConfirmDialog.ShowInfo(this, Loc.S("Cannot remove the last tab.", "Нельзя удалить последнюю вкладку."));
                     }
                 });
                 tabMenu.MenuItems.Add(Loc.S("Rename Tab", "Переименовать вкладку"), (s, e) => {
@@ -4832,7 +4834,7 @@ namespace WinPanel
                     string text = doomed.Count == 1
                         ? Loc.S("Remove", "Удалить") + " \"" + first + "\"?"
                         : Loc.S("Remove ", "Удалить ") + doomed.Count + Loc.S(" items?", " эл.") + "\n" + first + Loc.S(" and more...", " и др...");
-                    if (MessageBox.Show(text, caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                    if (!ConfirmDialog.ShowConfirm(this, caption, text)) return;
                     var currentList = GetCurrentItems(tabData);
                     foreach (var it in doomed) currentList.Remove(it);
                     ClearMultiSelection();
@@ -4931,20 +4933,13 @@ namespace WinPanel
             this.onMoveOutOfFolder = onMoveOutOfFolder;
             this.onChanged = onChanged;
 
-            if (settings.IsLightTheme)
-            {
-                bgColor = Color.FromArgb(228, 228, 230);
-                panelColor = Color.FromArgb(210, 210, 214);
-                hoverColor = Color.FromArgb(190, 190, 195);
-                textColor = Color.Black;
-            }
-            else
-            {
-                bgColor = Color.FromArgb(22, 22, 26);
-                panelColor = Color.FromArgb(45, 45, 48);
-                hoverColor = Color.FromArgb(62, 62, 66);
-                textColor = Color.White;
-            }
+            // UiPalette: follows the active skin, falls back to the classic
+            // light/dark colors without one (used to branch on IsLightTheme,
+            // which ignored skins).
+            bgColor = UiPalette.Bg;
+            panelColor = UiPalette.Panel;
+            hoverColor = UiPalette.Hover;
+            textColor = UiPalette.Text;
 
             this.FormBorderStyle = FormBorderStyle.None;
             this.ShowInTaskbar = false;
@@ -5998,7 +5993,10 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
 
-        private ConfirmDialog(string title, string message, string danger)
+        // okText = caption of the confirm button (null → "Удалить", red button).
+        // cancelVisible=false turns the dialog into an info box with a single
+        // neutral OK button.
+        private ConfirmDialog(string title, string message, string danger, string okText, bool cancelVisible)
         {
             Settings st = MainForm.CurrentSettings;
             Color bg = UiPalette.Bg;
@@ -6057,21 +6055,29 @@ namespace WinPanel
                 contentBottom = dangerLbl.Bottom;
             }
 
+            string okCaption = okText ?? Loc.S("Remove", "Удалить");
             int btnH = fh + 12;
-            int okW = Math.Max(95, System.Windows.Forms.TextRenderer.MeasureText(Loc.S("Remove", "Удалить"), this.Font).Width + 26);
+            int okW = Math.Max(95, System.Windows.Forms.TextRenderer.MeasureText(okCaption, this.Font).Width + 26);
             int cancelW = Math.Max(95, System.Windows.Forms.TextRenderer.MeasureText(Loc.S("Cancel", "Отмена"), this.Font).Width + 26);
             int btnTop = contentBottom + 14;
             this.ClientSize = new Size(430, btnTop + btnH + 16);
 
-            var cancelBtn = new Button { Text = Loc.S("Cancel", "Отмена"), Left = this.ClientSize.Width - 20 - okW - 10 - cancelW, Top = btnTop, Width = cancelW, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
-            cancelBtn.FlatAppearance.BorderSize = 0;
-            var okBtn = new Button { Text = Loc.S("Remove", "Удалить"), Left = this.ClientSize.Width - 20 - okW, Top = btnTop, Width = okW, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(170, 48, 48), ForeColor = Color.White };
+            // Destructive confirm = red button; info box = neutral panel button.
+            Color okBg = cancelVisible ? Color.FromArgb(170, 48, 48) : panel;
+            var okBtn = new Button { Text = okCaption, Left = this.ClientSize.Width - 20 - okW, Top = btnTop, Width = okW, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = okBg, ForeColor = cancelVisible ? Color.White : txt };
             okBtn.FlatAppearance.BorderSize = 0;
-
-            this.Controls.Add(cancelBtn);
             this.Controls.Add(okBtn);
-            this.AcceptButton = cancelBtn;
-            this.CancelButton = cancelBtn;
+            this.AcceptButton = okBtn;
+
+            Button cancelBtn = null;
+            if (cancelVisible)
+            {
+                cancelBtn = new Button { Text = Loc.S("Cancel", "Отмена"), Left = this.ClientSize.Width - 20 - okW - 10 - cancelW, Top = btnTop, Width = cancelW, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+                cancelBtn.FlatAppearance.BorderSize = 0;
+                this.Controls.Add(cancelBtn);
+                this.AcceptButton = cancelBtn;
+            }
+            this.CancelButton = cancelBtn ?? okBtn;
 
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
         }
@@ -6104,9 +6110,25 @@ namespace WinPanel
                 message = "Remove \"" + item.Name + "\" from the panel?";
             }
 
-            using (var dlg = new ConfirmDialog(title, message, danger))
+            return ShowConfirm(owner, title, message, danger);
+        }
+
+        // Themed Yes/No replacement: red confirm button (default caption
+        // "Удалить"), optional danger line, themed cancel. True = confirmed.
+        public static bool ShowConfirm(IWin32Window owner, string title, string message, string danger = null, string okText = null)
+        {
+            using (var dlg = new ConfirmDialog(title, message, danger, okText, true))
             {
-                return dlg.ShowDialog(owner) == DialogResult.OK;
+                return (owner != null ? dlg.ShowDialog(owner) : dlg.ShowDialog()) == DialogResult.OK;
+            }
+        }
+
+        // Themed MessageBox replacement: single neutral OK button.
+        public static void ShowInfo(IWin32Window owner, string message, string title = null)
+        {
+            using (var dlg = new ConfirmDialog(title ?? Loc.S("Tilettes", "Плиточки"), message, null, Loc.S("OK", "ОК"), false))
+            {
+                if (owner != null) dlg.ShowDialog(owner); else dlg.ShowDialog();
             }
         }
 

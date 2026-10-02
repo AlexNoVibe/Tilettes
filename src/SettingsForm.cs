@@ -149,7 +149,7 @@ namespace WinPanel
             var verLbl = new Label
             {
                 Text = "v" + AppInfo.AppVersion,
-                ForeColor = settings.IsLightTheme ? Color.FromArgb(110, 110, 115) : Color.FromArgb(150, 150, 158),
+                ForeColor = UiPalette.Dim,
                 AutoSize = true
             };
             titleBar.Controls.Add(verLbl);
@@ -358,7 +358,7 @@ namespace WinPanel
                 ForeColor = textColor
             };
             btnClearHistory.FlatAppearance.BorderSize = 0;
-            btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); MessageBox.Show(Loc.S("Search history cleared.", "История поиска очищена."), Loc.S("Tilettes", "Плиточки")); };
+            btnClearHistory.Click += (s, e) => { SearchHistoryStore.Clear(); ConfirmDialog.ShowInfo(this, Loc.S("Search history cleared.", "История поиска очищена.")); };
             Tip(chkSaveHistory, "Remember queries and clicks into the past-search section", "Помнить запросы и клики для раздела «Прошлый поиск»");
             Tip(btnClearHistory, "Erase all saved search history", "Стереть всю сохранённую историю поиска");
             scrollPanel.Controls.Add(chkSaveHistory);
@@ -848,11 +848,10 @@ namespace WinPanel
             if (hotkey.Length == 0) hotkey = "None";
             if (!hotkey.Equals("None", StringComparison.OrdinalIgnoreCase) && !MainForm.TryParseHotkey(hotkey))
             {
-                MessageBox.Show(this,
+                ConfirmDialog.ShowInfo(this,
                     Loc.S("Cannot parse the hotkey \"", "Не удалось разобрать комбинацию \"") + hotkey +
                     Loc.S("\". Use Ctrl/Alt/Shift/Win + a letter or digit, e.g. Ctrl+Alt+P (or None).",
-                          "\". Формат: Ctrl/Alt/Shift/Win + буква или цифра, например Ctrl+Alt+P (или None)."),
-                    Loc.S("Tilettes", "Плиточки"));
+                          "\". Формат: Ctrl/Alt/Shift/Win + буква или цифра, например Ctrl+Alt+P (или None)."));
                 return;
             }
             settings.HotkeyShow = hotkey;
@@ -934,7 +933,7 @@ namespace WinPanel
             string created = BackupManager.RunBackup(null, settings, false);
             if (created == null)
             {
-                MessageBox.Show(this, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"), Loc.S("Tilettes", "Плиточки"));
+                ConfirmDialog.ShowInfo(this, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));
                 return;
             }
             using (var sfd = new SaveFileDialog())
@@ -947,11 +946,11 @@ namespace WinPanel
                     try
                     {
                         File.Copy(created, sfd.FileName, true);
-                        MessageBox.Show(this, Loc.S("Backup saved: ", "Бэкап сохранён: ") + sfd.FileName, Loc.S("Tilettes", "Плиточки"));
+                        ConfirmDialog.ShowInfo(this, Loc.S("Backup saved: ", "Бэкап сохранён: ") + sfd.FileName);
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(this, Loc.S("Save failed: ", "Сохранить не удалось: ") + ex.Message, Loc.S("Tilettes", "Плиточки"));
+                        ConfirmDialog.ShowInfo(this, Loc.S("Save failed: ", "Сохранить не удалось: ") + ex.Message);
                     }
                 }
             }
@@ -978,7 +977,7 @@ namespace WinPanel
                     string reject = BackupManager.ValidateBackupZip(ofd.FileName);
                     if (reject != null)
                     {
-                        MessageBox.Show(this, reject, Loc.S("Tilettes", "Плиточки"));
+                        ConfirmDialog.ShowInfo(this, reject);
                         return;
                     }
                     RestoreZipPath = ofd.FileName;

@@ -1920,7 +1920,7 @@ namespace WinPanel
             string msg = (b.Kind == "group" && kids > 0)
                 ? "Remove group \"" + b.Name + "\" with " + kids + " entries?"
                 : "Remove \"" + b.Name + "\"?";
-            if (MessageBox.Show(this, msg, Loc.S("Bookmarks", "Закладки"), MessageBoxButtons.YesNo) != DialogResult.Yes) return;
+            if (!ConfirmDialog.ShowConfirm(this, Loc.S("Bookmarks", "Закладки"), msg)) return;
             RemoveFromList(bookmarks, b);
             SaveBookmarks();
             RebuildBookmarks();

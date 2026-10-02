@@ -79,9 +79,8 @@ namespace WinPanel
                 try { AppLog.Write("Update check", ex); } catch { }
                 if (manual)
                 {
-                    try { owner.BeginInvoke((Action)(() => MessageBox.Show(owner,
-                        Loc.S("Could not reach GitHub Releases - check the internet connection.", "Не удалось связаться с GitHub Releases — проверьте интернет."),
-                        Loc.S("Tilettes", "Плиточки")))); } catch { }
+                    try { owner.BeginInvoke((Action)(() => ConfirmDialog.ShowInfo(owner,
+                        Loc.S("Could not reach GitHub Releases - check the internet connection.", "Не удалось связаться с GitHub Releases — проверьте интернет.")))); } catch { }
                     return;
                 }
             }
@@ -101,12 +100,11 @@ namespace WinPanel
                 if (newer) owner.ShowUpdatePlate(latest);
                 if (manual)
                 {
-                    MessageBox.Show(owner,
+                    ConfirmDialog.ShowInfo(owner,
                         newer
                             ? Loc.S("New version available: v", "Доступна новая версия: v") + latest +
                               Loc.S("\nThe green Update plate has appeared in the corner.", "\nЗелёная плашка «Обновить» появилась в углу.")
-                            : Loc.S("You are on the latest version: v", "У вас последняя версия: v") + AppInfo.AppVersion,
-                        Loc.S("Tilettes", "Плиточки"));
+                            : Loc.S("You are on the latest version: v", "У вас последняя версия: v") + AppInfo.AppVersion);
                 }
             }
             catch (Exception ex)

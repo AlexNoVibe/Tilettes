@@ -38,12 +38,13 @@ namespace WinPanel
             this.work = FileTypes.CloneRules();
 
             Settings settings = MainForm.CurrentSettings;
-            bool light = settings != null && settings.IsLightTheme;
-            bgColor = light ? Color.FromArgb(232, 232, 234) : Color.FromArgb(24, 24, 28);
-            panelColor = light ? Color.FromArgb(212, 212, 216) : Color.FromArgb(45, 45, 48);
-            hoverColor = light ? Color.FromArgb(196, 196, 202) : Color.FromArgb(62, 62, 66);
-            textColor = light ? Color.Black : Color.White;
-            dimColor = light ? Color.FromArgb(110, 110, 115) : Color.FromArgb(165, 165, 170);
+            // UiPalette: follows the active skin, falls back to the classic
+            // light/dark colors without one (used to be hard-coded classic).
+            bgColor = UiPalette.Bg;
+            panelColor = UiPalette.Panel;
+            hoverColor = UiPalette.Hover;
+            textColor = UiPalette.Text;
+            dimColor = UiPalette.Dim;
             if (settings != null) this.Font = Settings.MakeFont(settings.FontUiName, settings.FontUiSize);
 
             this.FormBorderStyle = FormBorderStyle.None;
@@ -256,7 +257,7 @@ namespace WinPanel
             if (norm == null)
             {
                 if (!string.IsNullOrWhiteSpace(ext) && ext.Trim() != ".")
-                    MessageBox.Show(this, "Invalid pattern. Examples: .txt, readme.*, .jpg / .png", "Add file type");
+                    ConfirmDialog.ShowInfo(this, "Invalid pattern. Examples: .txt, readme.*, .jpg / .png", "Add file type");
                 return;
             }
             var rule = FindInWork(norm);
@@ -324,7 +325,7 @@ namespace WinPanel
                 var imported = FileTypes.ImportFrom(ofd.FileName);
                 if (imported == null)
                 {
-                    MessageBox.Show(this, "Could not read the rules file.", "Import");
+                    ConfirmDialog.ShowInfo(this, "Could not read the rules file.", "Import");
                     return;
                 }
                 foreach (var r in imported) MergeIntoWork(r);
