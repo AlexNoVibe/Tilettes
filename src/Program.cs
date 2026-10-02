@@ -2938,6 +2938,36 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError("Error opening: " + path); }
         }
 
+        // The folder-opening program from the settings: a path to a .exe that
+        // opens directories instead of the system default. Null (= keep the
+        // system default) when the setting is empty, names Explorer itself
+        // ("если проводник — то по умолчанию") or the file does not exist.
+        internal static string FolderOpenExe()
+        {
+            try
+            {
+                string p = CurrentSettings != null ? CurrentSettings.FolderOpenProgram : null;
+                if (string.IsNullOrEmpty(p)) return null;
+                p = p.Trim().Trim('"');
+                if (p.Length == 0) return null;
+                string name = Path.GetFileName(p).ToLowerInvariant();
+                if (name == "explorer" || name == "explorer.exe") return null;
+                if (!File.Exists(p))
+                {
+                    AppLog.Write("FolderOpenProgram not found, using the system default: " + p);
+                    return null;
+                }
+                return p;
+            }
+            catch { return null; }
+        }
+
+        private static bool IsDirectoryPath(string path)
+        {
+            try { return !string.IsNullOrEmpty(path) && Directory.Exists(path); }
+            catch { return false; }
+        }
+
         // Launches on its own STA thread so the panel stays responsive even when the system
         // takes seconds to hand the launch over (cold start, antivirus inspection, UAC).
         private static void StartDetached(string fileName, string arguments)
@@ -2947,7 +2977,18 @@ namespace WinPanel
                 try
                 {
                     if (arguments == null)
+                    {
+                        // Folder tiles: redirect directories to the file manager
+                        // chosen in the settings. The directory probe runs here on
+                        // the worker thread - a network folder must not stall the UI.
+                        string fm = FolderOpenExe();
+                        if (fm != null && IsDirectoryPath(fileName))
+                        {
+                            System.Diagnostics.Process.Start(fm, "\"" + fileName + "\"");
+                            return;
+                        }
                         System.Diagnostics.Process.Start(fileName);
+                    }
                     else
                         System.Diagnostics.Process.Start(fileName, arguments);
                 }
@@ -4450,12 +4491,24 @@ namespace WinPanel
         }
 
         // Opens Explorer with `path` selected in its folder (a plain Explorer
-        // window when the parent cannot be determined).
+        // window when the parent cannot be determined). With the folder-opening
+        // program set (settings), the parent folder opens in it instead — most
+        // file managers have no "/select", so the folder itself is opened.
         internal static void RevealInExplorer(string path)
         {
             string dir = null;
             try { dir = Path.GetDirectoryName(path); }
             catch (Exception ex) { AppLog.Write("RevealInExplorer: GetDirectoryName", ex); }
+            string fm = FolderOpenExe();
+            if (fm != null)
+            {
+                string openDir = !string.IsNullOrEmpty(dir) ? dir : path;
+                if (IsDirectoryPath(openDir))
+                {
+                    StartDetached(fm, "\"" + openDir + "\"");
+                    return;
+                }
+            }
             if (!string.IsNullOrEmpty(dir))
             {
                 bool dirExists = false;

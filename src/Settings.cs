@@ -42,6 +42,12 @@ namespace WinPanel
         // after this many seconds without any mouse/keyboard activity (0 = off)
         public int FolderAutoExitSeconds { get; set; }
 
+        // Program that opens directories instead of the system default (Explorer):
+        // a path to a .exe (Total Commander etc.). Empty, "explorer.exe" or a
+        // missing file keeps the system default. The folder is passed as the one
+        // quoted argument.
+        public string FolderOpenProgram { get; set; }
+
         // UI language: "ru" or "en"
         public string Language { get; set; }
 
@@ -140,6 +146,7 @@ namespace WinPanel
             MiniExplorerConsole = 40;
             ConsoleFontSizeX10 = 140;
             FolderAutoExitSeconds = 15;
+            FolderOpenProgram = "";
             Language = "ru";
             AutoStart = false;
             AutoStartMinimized = false;
@@ -343,6 +350,8 @@ namespace WinPanel
 
                 int faеx;
                 if (int.TryParse(ini.Read("FolderAutoExitSeconds"), out faеx)) s.FolderAutoExitSeconds = faеx;
+                string fop = ini.Read("FolderOpenProgram");
+                if (fop != null) s.FolderOpenProgram = fop;
                 string lang = ini.Read("Language");
                 if (Loc.IsSupported(lang)) s.Language = lang.ToLowerInvariant();
                 bool astr, astrm, tray, ktab;
@@ -454,6 +463,7 @@ namespace WinPanel
                 ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
                 ini.Write("ConsoleFontSizeX10", ConsoleFontSizeX10.ToString());
                 ini.Write("FolderAutoExitSeconds", FolderAutoExitSeconds.ToString());
+                ini.Write("FolderOpenProgram", FolderOpenProgram ?? "");
                 ini.Write("Language", string.IsNullOrEmpty(Language) ? "ru" : Language);
                 ini.Write("AutoStart", AutoStart.ToString());
                 ini.Write("AutoStartMinimized", AutoStartMinimized.ToString());

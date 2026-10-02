@@ -39,6 +39,7 @@ namespace WinPanel
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
         private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc, chkSearchStart;
         private NumericUpDown numFolderExit;
+    private TextBox txtFolderOpenProgram;
         private ComboBox cmbLang;
         private CheckBox chkAutoStart, chkAutoStartMin, chkTrayAlways, chkKeepTab;
 
@@ -278,6 +279,35 @@ namespace WinPanel
             Tip(cmbFolders, "Where folder tiles open their contents", "Где открывать содержимое папок");
             var exitTip = new ToolTip();
             exitTip.SetToolTip(numFolderExit, Loc.S("Return from a folder after this many seconds without activity (0 = off)", "Выходить из папки после стольких секунд без активности (0 = выкл)"));
+            y += 30;
+
+            // Program that opens directories instead of Explorer (empty = system
+            // default). Editable: type a path or pick one with "...".
+            var lblOpenWith = new Label { Text = Loc.S("Open folders with:", "Папки открывать через:"), Left = 20, Top = y, Width = 130 };
+            txtFolderOpenProgram = new TextBox { Left = 150, Top = y - 2, Width = 380, Text = settings.FolderOpenProgram ?? "", BorderStyle = BorderStyle.FixedSingle, BackColor = panelColor, ForeColor = textColor };
+            var btnPickFm = new Button { Text = "...", Left = 536, Top = y - 3, Width = 32, Height = txtFolderOpenProgram.Height + 2, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor, Cursor = Cursors.Hand };
+            btnPickFm.FlatAppearance.BorderSize = 0;
+            btnPickFm.Click += (s, e) =>
+            {
+                using (var ofd = new OpenFileDialog())
+                {
+                    ofd.Title = Loc.S("Program that opens folders", "Программа для открытия папок");
+                    ofd.Filter = Loc.S("Programs (*.exe)|*.exe|All files (*.*)|*.*", "Программы (*.exe)|*.exe|Все файлы (*.*)|*.*");
+                    try
+                    {
+                        string cur = (txtFolderOpenProgram.Text ?? "").Trim();
+                        if (cur.Length > 0 && File.Exists(cur)) ofd.InitialDirectory = Path.GetDirectoryName(cur);
+                        else if (Directory.Exists(@"C:\Program Files")) ofd.InitialDirectory = @"C:\Program Files";
+                    }
+                    catch { }
+                    if (ofd.ShowDialog(this) == DialogResult.OK) txtFolderOpenProgram.Text = ofd.FileName;
+                }
+            };
+            Tip(txtFolderOpenProgram, "Total Commander etc.: the .exe that opens directory tiles and \"open containing folder\". Empty or explorer.exe = the system default. The folder is passed as the quoted argument",
+                "Total Commander и т.п.: .exe, которым открываются папки и «открыть содержащую папку». Пусто или explorer.exe — системный проводник. Путь папки передаётся аргументом в кавычках");
+            scrollPanel.Controls.Add(lblOpenWith);
+            scrollPanel.Controls.Add(txtFolderOpenProgram);
+            scrollPanel.Controls.Add(btnPickFm);
             y += 30;
 
             chkEditMode = new CheckBox { Text = Loc.S("Allow adding icons", "Разрешать добавлять значки"), Left = 20, Top = y, Width = 280, Checked = settings.EditMode, ForeColor = textColor };
@@ -841,6 +871,7 @@ namespace WinPanel
             settings.WindowY = (int)numY.Value;
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
             settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
+            settings.FolderOpenProgram = (txtFolderOpenProgram.Text ?? "").Trim();
             settings.MiniExplorerCtrlClick = chkMiniExplorer.Checked;
             // Any Mod+Key combination typed into the editable dropdown; invalid
             // input keeps the dialog open with an explanation.
