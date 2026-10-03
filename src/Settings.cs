@@ -48,6 +48,10 @@ namespace WinPanel
         // quoted argument.
         public string FolderOpenProgram { get; set; }
 
+        // A left click on the taskbar Start button (screen corner) opens the
+        // panel instead of the Start menu. Independent of HotkeyWin (the key).
+        public bool HotkeyStartClick { get; set; }
+
         // UI language: "ru" or "en"
         public string Language { get; set; }
 
@@ -194,6 +198,7 @@ namespace WinPanel
             // the panel enable it in Settings; existing settings.ini values are
             // untouched by this default.
             HotkeyWin = false;
+            HotkeyStartClick = false;
             SkinName = "mint";
             FirstRunDone = false;
             UpdateCheckEnabled = true;
@@ -403,6 +408,15 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("SearchSaveHistory"), out ssh)) s.SearchSaveHistory = ssh;
                 bool hkw;
                 if (bool.TryParse(ini.Read("HotkeyWin"), out hkw)) s.HotkeyWin = hkw;
+                // v0.6.5 shipped the Start button click capture bundled with the
+                // Win key; v0.6.6 split it into its own setting. An ini without
+                // the new key keeps the old behavior: the click capture follows
+                // HotkeyWin. From the first save on, the key exists and wins.
+                // (IniFile.Read returns "" for a missing key, never null.)
+                string hksRaw = ini.Read("HotkeyStartClick");
+                bool hks;
+                if (bool.TryParse(hksRaw, out hks)) s.HotkeyStartClick = hks;
+                else if (hksRaw.Length == 0 && s.HotkeyWin) s.HotkeyStartClick = true;
                 val = ini.Read("SkinName"); if (val != null) s.SkinName = val;
                 bool frd, uce, uai;
                 if (bool.TryParse(ini.Read("FirstRunDone"), out frd)) s.FirstRunDone = frd;
@@ -504,6 +518,7 @@ namespace WinPanel
                 ini.Write("LastSyncDate", LastSyncDate == null ? "" : LastSyncDate);
                 ini.Write("SearchSaveHistory", SearchSaveHistory.ToString());
                 ini.Write("HotkeyWin", HotkeyWin.ToString());
+                ini.Write("HotkeyStartClick", HotkeyStartClick.ToString());
                 ini.Write("SkinName", SkinName == null ? "" : SkinName);
                 ini.Write("FirstRunDone", FirstRunDone.ToString());
                 ini.Write("UpdateCheckEnabled", UpdateCheckEnabled.ToString());

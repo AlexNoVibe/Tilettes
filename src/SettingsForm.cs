@@ -40,6 +40,17 @@ namespace WinPanel
         private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc, chkSearchStart;
         private NumericUpDown numFolderExit;
     private TextBox txtFolderOpenProgram;
+    private CheckBox chkWinClick;
+
+    // A bold section subtitle: the settings are split into blocks. Returns the
+    // y for the first row of the section. UseMnemonic=false keeps the "&" of
+    // e.g. "Panel & hotkeys" visible instead of hiding it as a shortcut prefix.
+    private int AddSection(string en, string ru, int y)
+    {
+        var lbl = new Label { Text = Loc.S(en, ru), Left = 20, Top = y, Width = 480, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold), UseMnemonic = false };
+        scrollPanel.Controls.Add(lbl);
+        return y + 26;
+    }
         private ComboBox cmbLang;
         private CheckBox chkAutoStart, chkAutoStartMin, chkTrayAlways, chkKeepTab;
 
@@ -191,6 +202,8 @@ namespace WinPanel
 
             int y = 42;
 
+            y = AddSection("Window", "Окно", y);
+
             // Startup size on one row, fields labelled x/y: [900] x [800] y
             var lblSize = new Label { Text = Loc.S("Startup Size:", "Размер при запуске:"), Left = 20, Top = y, Width = 130 };
             numWidth = new NumericUpDown { Left = 155, Top = y - 2, Width = 70, Maximum = 4000, Minimum = 200, Value = settings.StartupWidth, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
@@ -238,6 +251,7 @@ namespace WinPanel
             y += 30;
 
             // ---- Tile labels: two rows + alignment, display-only trimming ----
+            y = AddSection("Tile labels", "Подписи плиток", y);
             chkTwoRows = new CheckBox { Text = Loc.S("Tile label: two rows", "Подпись плитки: две строки"), Left = 20, Top = y, Width = 260, Checked = settings.LabelTwoRows, ForeColor = textColor };
             Tip(chkTwoRows, "Tall tiles wrap the label onto two rows (the icon shrinks a bit); untick for one row",
                 "Высокие плитки переносят подпись на две строки (значок чуть уменьшается); снимите галочку для одной строки");
@@ -269,6 +283,7 @@ namespace WinPanel
             scrollPanel.Controls.Add(chkCtrlNames);
             y += 30;
 
+            y = AddSection("Folders", "Папки", y);
             var lblFolders = new Label { Text = "Open folders in:", Left = 20, Top = y, Width = 120 };
             cmbFolders = new ComboBox { Left = 150, Top = y - 2, Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             cmbFolders.Items.Add(Loc.S("Same window"));
@@ -310,6 +325,7 @@ namespace WinPanel
             scrollPanel.Controls.Add(btnPickFm);
             y += 30;
 
+            y = AddSection("Panel & hotkeys", "Панель и клавиши", y);
             chkEditMode = new CheckBox { Text = Loc.S("Allow adding icons", "Разрешать добавлять значки"), Left = 20, Top = y, Width = 280, Checked = settings.EditMode, ForeColor = textColor };
             Tip(chkEditMode, "New tiles can be added by dropping files onto the panel", "Новые плитки можно добавлять перетаскиванием файлов на панель");
             y += 30;
@@ -326,7 +342,7 @@ namespace WinPanel
                 "Глобальная горячая клавиша показа панели; выберите пресет или впишите свою: Ctrl/Alt/Shift/Win + буква или цифра");
             chkWinKey = new CheckBox
             {
-                Text = Loc.S("Capture Start button (Win)", "Захват кнопки Пуск (Win)"),
+                Text = Loc.S("Capture the Win key", "Захват клавиши Win"),
                 Left = 345,
                 Top = y,
                 Width = 235,
@@ -334,11 +350,28 @@ namespace WinPanel
                 ForeColor = textColor
             };
             var winKeyTip = new ToolTip();
-            winKeyTip.SetToolTip(chkWinKey, Loc.S("The Win key and a left click on the Start button open the panel instead of the Start menu; the real Start menu stays reachable via the \"Start menu\" tile on the Start tab",
-                "Клавиша Win и левый клик по кнопке Пуск в углу открывают панель вместо меню Пуск; настоящий Пуск остаётся доступным плиткой «Меню «Пуск»» на вкладке Пуск"));
+            winKeyTip.SetToolTip(chkWinKey, Loc.S("Pressing the Win key opens the panel instead of the Start menu",
+                "Клавиша Win открывает панель вместо меню Пуск"));
             scrollPanel.Controls.Add(chkWinKey);
             y += 30;
+            // The Start button CLICK capture is a separate setting: some users
+            // want only the key, others only the corner click.
+            chkWinClick = new CheckBox
+            {
+                Text = Loc.S("Capture Start button click", "Захват клика по кнопке Пуск"),
+                Left = 345,
+                Top = y,
+                Width = 235,
+                Checked = settings.HotkeyStartClick,
+                ForeColor = textColor
+            };
+            var winClickTip = new ToolTip();
+            winClickTip.SetToolTip(chkWinClick, Loc.S("A left click on the Start button (screen corner) opens the panel instead of the Start menu",
+                "Левый клик по кнопке Пуск в углу экрана открывает панель вместо меню Пуск"));
+            scrollPanel.Controls.Add(chkWinClick);
+            y += 30;
 
+            y = AddSection("Fonts", "Шрифты", y);
             // Font rows: [size] [color] [family] — one row per group
             AddFontRow("Tiles Font:", y, settings.FontItemsSize, settings.FontItemsColor, settings.FontItemsName,
                 out numFontItemsSize, out btnFontItemsColor, out cmbFontItems);
@@ -350,8 +383,7 @@ namespace WinPanel
                 out numFontUiSize, out btnFontUiColor, out cmbFontUi);
             y += 34;
             // ---- Search section ----
-            var lblSearchSection = new Label { Text = "Search", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
-            y += 24;
+            y = AddSection("Search", "Поиск", y);
             var lblFuzzy = new Label { Text = "Fuzzy accuracy (0-3):", Left = 20, Top = y, Width = 150 };
             numFuzzy = new NumericUpDown { Left = 175, Top = y - 2, Width = 45, Minimum = 0, Maximum = 3, Value = Math.Max(0, Math.Min(3, settings.SearchFuzzyLevel)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             Tip(numFuzzy, "0 = exact matches only, 1-3 = increasingly loose fuzzy matching", "0 = только точные совпадения, 1-3 = всё более свободный поиск");
@@ -401,7 +433,6 @@ namespace WinPanel
             Tip(numSearchBoxFont, "Font size of the search box", "Размер шрифта строки поиска");
             Tip(numSearchResultsFont, "Font size of the search results list", "Размер шрифта списка результатов");
             var lblSearchResultsFont = new Label { Text = Loc.S("results", "результаты"), Left = 410, Top = y, Width = 150 };
-            scrollPanel.Controls.Add(lblSearchSection);
             scrollPanel.Controls.Add(lblFuzzy);
             scrollPanel.Controls.Add(numFuzzy);
             scrollPanel.Controls.Add(chkSearchMeta);
@@ -416,6 +447,7 @@ namespace WinPanel
 
             y += 30; // the search fonts row must not overlap the file type buttons below
 
+            y = AddSection("File types & explorer", "Типы файлов и проводник", y);
             var lblTypes = new Label { Text = "File types:", Left = 20, Top = y, Width = 92 };
             var btnTypeIcons = new Button { Text = "Icons by type...", Left = 115, Top = y - 3, Width = 140, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnTypeIcons.FlatAppearance.BorderSize = 0;
@@ -431,8 +463,7 @@ namespace WinPanel
             Tip(chkMiniExplorer, "Ctrl+Click on a folder tile opens the mini explorer (file window with console)", "Ctrl+клик по папке открывает мини-проводник (окно файлов с консолью)");
             y += 30;
 
-            var lblSection = new Label { Text = "Autostart & window", Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
-            y += 24;
+            y = AddSection("Autostart & tray", "Автозапуск и трей", y);
             chkAutoStart = new CheckBox { Text = "Autostart with Windows", Left = 20, Top = y, Width = 205, Checked = settings.AutoStart, ForeColor = textColor };
             Tip(chkAutoStart, "Start Tilettes automatically when Windows starts", "Запускать Плиточки автоматически при старте Windows");
             chkAutoStartMin = new CheckBox { Text = "After autostart - go to tray", Left = 240, Top = y, Width = 225, Checked = settings.AutoStartMinimized, ForeColor = textColor };
@@ -457,13 +488,12 @@ namespace WinPanel
             y += 30;
 
             // ---- Maintenance: skin, scheduled backup, Start Menu sync ----
-            var lblMaint = new Label { Text = Loc.S("Maintenance & Start Menu", "Обслуживание и Пуск"), Left = 20, Top = y, Width = 350, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
-            y += 24;
+            y = AddSection("Maintenance & Start Menu", "Обслуживание и Пуск", y);
 
             // One control for both theme and skin: the first two items are the
             // classic looks without a decorative skin (dark / light), the rest
             // are the real skins. This replaces the removed Light Theme checkbox.
-            var lblSkin = new Label { Text = Loc.S("Skin & theme:", "Шкурка и тема:"), Left = 20, Top = y, Width = 130 };
+            var lblSkin = new Label { Text = Loc.S("Skin & theme:", "Шкурка и тема:"), Left = 20, Top = y, Width = 130, UseMnemonic = false };
             cmbSkin = new ComboBox { Left = 155, Top = y - 2, Width = 200, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             cmbSkin.Items.Add(Loc.S("None (dark)", "Отключено (тёмная)"));
             cmbSkin.Items.Add(Loc.S("Light", "Светлая"));
@@ -526,6 +556,7 @@ namespace WinPanel
             var btnRebuildIcons = new Button
             {
                 Text = Loc.S("Rebuild icons & paths", "Пересобрать иконки и пути"),
+                UseMnemonic = false,
                 Left = 365,
                 Top = y - 3,
                 Width = 185,
@@ -537,7 +568,6 @@ namespace WinPanel
             btnRebuildIcons.Click += (s, e) => { RebuildIconsNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
             Tip(btnRebuildIcons, "Re-check every tile's path, drop the icon cache and re-extract all icons",
                 "Перепроверить пути всех плиток, сбросить кеш иконок и извлечь все значки заново");
-            scrollPanel.Controls.Add(lblMaint);
             scrollPanel.Controls.Add(lblSkin);
             scrollPanel.Controls.Add(cmbSkin);
             scrollPanel.Controls.Add(lblBackupDays);
@@ -565,8 +595,7 @@ namespace WinPanel
             y += 44;
 
             // ---- Updates: check = live (GitHub Releases), install = TODO stub ----
-            var lblUpdateSection = new Label { Text = Loc.S("Updates", "Обновления"), Left = 20, Top = y, Width = 250, ForeColor = textColor, Font = new Font(this.Font, FontStyle.Bold) };
-            y += 24;
+            y = AddSection("Updates", "Обновления", y);
             chkUpdateCheck = new CheckBox { Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически"), Left = 20, Top = y, Width = 260, Checked = settings.UpdateCheckEnabled, ForeColor = textColor };
             Tip(chkUpdateCheck, "Ask GitHub Releases for a newer version once every N days (never runs when unchecked)", "Спрашивать GitHub Releases о новой версии раз в N дней (при выключенной галочке не запускается никогда)");
             scrollPanel.Controls.Add(chkUpdateCheck);
@@ -673,7 +702,6 @@ namespace WinPanel
             scrollPanel.Controls.Add(chkMiniExplorer);
             scrollPanel.Controls.Add(numFolderExit);
             scrollPanel.Controls.Add(lblExit);
-            scrollPanel.Controls.Add(lblSection);
             scrollPanel.Controls.Add(chkAutoStart);
             scrollPanel.Controls.Add(chkAutoStartMin);
             scrollPanel.Controls.Add(chkTrayAlways);

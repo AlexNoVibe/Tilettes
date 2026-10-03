@@ -154,7 +154,7 @@ namespace WinPanel
             { "Icons by type...", "Иконки по типам..." },
             { "Open with by type...", "Открытие по типам..." },
             { "Ctrl+Click a folder opens Mini Explorer", "Ctrl+ЛКМ по папке — мини-проводник" },
-            { "Autostart & window", "Автозагрузка и окно" },
+            { "Autostart & tray", "Автозапуск и трей" },
             { "Autostart with Windows", "Автозапуск с Windows" },
             { "After autostart - go to tray", "После автозапуска — сразу в трей" },
             { "Always keep tray icon", "Держать значок в трее" },

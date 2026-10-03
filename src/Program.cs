@@ -972,6 +972,7 @@ namespace WinPanel
                     this.Font = mainFont;
                     ApplyHotkey();
                     Loc.Lang = string.IsNullOrEmpty(settings.Language) ? "ru" : settings.Language;
+                    EnsureRealStartTile(); // re-label the built-in tile for the new language
                     try { AutoStart.Apply(settings.AutoStart, settings.AutoStartMinimized); } catch { }
                     try { trayIcon.Visible = settings.TrayIconAlways; } catch { }
                     Loc.Walk(this);
@@ -2475,6 +2476,92 @@ namespace WinPanel
         // protocol, see LaunchItem).
         private const string StartMenuPath = "startmenu:";
 
+        private static Image startMenuIcon;
+
+        // The Start glyph: four rounded squares in the Windows accent blue, drawn
+        // once and shared (crisp at any tile size, no shell resource to hunt for).
+        internal static Image GetStartMenuIcon()
+        {
+            if (startMenuIcon == null)
+            {
+                try
+                {
+                    int s = 128;
+                    var bmp = new Bitmap(s, s);
+                    using (var g = Graphics.FromImage(bmp))
+                    {
+                        g.SmoothingMode = SmoothingMode.AntiAlias;
+                        int q = s * 40 / 100;        // quadrant size
+                        int gap = (s - 2 * q) / 3;   // gap between and around
+                        using (var br = new SolidBrush(Color.FromArgb(0, 120, 215)))
+                        {
+                            g.FillRectangle(br, gap, gap, q, q);
+                            g.FillRectangle(br, s - gap - q, gap, q, q);
+                            g.FillRectangle(br, gap, s - gap - q, q, q);
+                            g.FillRectangle(br, s - gap - q, s - gap - q, q, q);
+                        }
+                    }
+                    startMenuIcon = bmp;
+                }
+                catch { }
+                if (startMenuIcon == null)
+                {
+                    try { startMenuIcon = SystemIcons.WinLogo.ToBitmap(); } catch { }
+                }
+            }
+            try { return (Image)startMenuIcon.Clone(); }
+            catch { return SystemIcons.Application.ToBitmap(); }
+        }
+
+        // Adds the "Open Start menu" tile to the mirrored Start tab once (the
+        // sync keeps foreign items — their Src is not a sync key). Only when a
+        // capture is on: without it the real menu is still reachable normally.
+        // Also re-labels a tile created by an older build / another language.
+        private void EnsureRealStartTile()
+        {
+            try
+            {
+                TabData startTab = null;
+                foreach (var t in records.Tabs)
+                    if (t.Kind == "startmenu") { startTab = t; break; }
+                if (startTab == null) return;
+                string name = Loc.S("Open Start menu", "Открыть меню Пуск");
+                foreach (var it in startTab.Items)
+                {
+                    if (!string.Equals(it.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.Equals(it.Name, name, StringComparison.Ordinal))
+                    {
+                        it.Name = name;
+                        records.Save(recordsPath);
+                        if (activeTabData == startTab && activeLayoutPanel != null)
+                            RenderCurrentFolder(activeLayoutPanel, startTab);
+                    }
+                    return;
+                }
+                // Creating the tile makes sense only when a capture is on (the Win
+                // key or the corner click): otherwise the real Start menu is still
+                // reachable the normal way. The re-label above runs regardless —
+                // a tile left behind by an older build stays correctly named.
+                if (!settings.HotkeyWin && !settings.HotkeyStartClick) return;
+                var item = new ShortcutItem
+                {
+                    Name = name,
+                    Path = StartMenuPath,
+                    Src = "builtin:startmenu",
+                    Size = ClampItemSize(settings.DefaultItemSize)
+                };
+                MainForm.PlaceIntoGridStatic(startTab.Items, item,
+                    Math.Max(1, settings.GridColumns), Math.Max(1, settings.GridRows));
+                startTab.Items.Add(item);
+                records.Save(recordsPath);
+                if (activeTabData == startTab && activeLayoutPanel != null)
+                    RenderCurrentFolder(activeLayoutPanel, startTab);
+                else
+                    renderedTabs.Remove(startTab); // re-render lazily on next activation
+            }
+            catch (Exception ex) { AppLog.Write("EnsureRealStartTile", ex); }
+        }
+
         // The real Start menu: the Win capture swallows the Win key, so the tile
         // inside the panel opens it with Ctrl+Esc — the system shortcut the hook
         // never touches. The panel hides first (the tile lives inside it).
@@ -2503,54 +2590,20 @@ namespace WinPanel
             catch { }
         }
 
-        // Adds the "Start menu" tile to the mirrored Start tab once (the sync
-        // keeps foreign items — their Src is not a sync key). Only when the
-        // capture is on: without it the real menu is still reachable normally.
-        private void EnsureRealStartTile()
-        {
-            try
-            {
-                TabData startTab = null;
-                foreach (var t in records.Tabs)
-                    if (t.Kind == "startmenu") { startTab = t; break; }
-                if (startTab == null) return;
-                foreach (var it in startTab.Items)
-                    if (string.Equals(it.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase)) return;
-                var item = new ShortcutItem
-                {
-                    Name = Loc.S("Start menu", "Меню «Пуск»"),
-                    Path = StartMenuPath,
-                    Src = "builtin:startmenu",
-                    Size = ClampItemSize(settings.DefaultItemSize)
-                };
-                MainForm.PlaceIntoGridStatic(startTab.Items, item,
-                    Math.Max(1, settings.GridColumns), Math.Max(1, settings.GridRows));
-                startTab.Items.Add(item);
-                records.Save(recordsPath);
-                if (activeTabData == startTab && activeLayoutPanel != null)
-                    RenderCurrentFolder(activeLayoutPanel, startTab);
-                else
-                    renderedTabs.Remove(startTab); // re-render lazily on next activation
-            }
-            catch (Exception ex) { AppLog.Write("EnsureRealStartTile", ex); }
-        }
-
         private void ApplyWinKeyHotkey()
         {
             try
             {
-                bool want = settings != null && settings.HotkeyWin;
-                if (!want)
+                bool wantKey = settings != null && settings.HotkeyWin;
+                bool wantClick = settings != null && settings.HotkeyStartClick;
+                // The Win KEY (keyboard hook, hotkey fallback) is independent of
+                // the Start button CLICK (mouse hook).
+                if (!wantKey)
                 {
                     if (winKeyHook != IntPtr.Zero)
                     {
                         try { UnhookWindowsHookEx(winKeyHook); } catch { }
                         winKeyHook = IntPtr.Zero;
-                    }
-                    if (startMouseHook != IntPtr.Zero)
-                    {
-                        try { UnhookWindowsHookEx(startMouseHook); } catch { }
-                        startMouseHook = IntPtr.Zero;
                     }
                     if (hotkeyWinRegistered)
                     {
@@ -2558,32 +2611,42 @@ namespace WinPanel
                         try { UnregisterHotKey(this.Handle, HotkeyIdWinR); } catch { }
                         hotkeyWinRegistered = false;
                     }
-                    return;
                 }
-                if (winKeyHook != IntPtr.Zero || hotkeyWinRegistered) return;
-
-                hookProcRef = new LowLevelHookProc(WinKeyHookProc); // keep alive for the hook lifetime
-                winKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, hookProcRef, GetModuleHandle(null), 0);
-                if (winKeyHook == IntPtr.Zero)
+                else if (winKeyHook == IntPtr.Zero && !hotkeyWinRegistered)
                 {
-                    // Fallback: hotkey capture (the Start menu may still open).
-                    AppLog.Write("Win key hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ", falling back to hotkey");
-                    const uint MOD_WIN = 0x8, MOD_NOREPEAT = 0x4000;
-                    bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, 0x5B);
-                    bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, 0x5C);
-                    hotkeyWinRegistered = left || right;
-                    return;
+                    hookProcRef = new LowLevelHookProc(WinKeyHookProc); // keep alive for the hook lifetime
+                    winKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, hookProcRef, GetModuleHandle(null), 0);
+                    if (winKeyHook == IntPtr.Zero)
+                    {
+                        // Fallback: hotkey capture (the Start menu may still open).
+                        AppLog.Write("Win key hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ", falling back to hotkey");
+                        const uint MOD_WIN = 0x8, MOD_NOREPEAT = 0x4000;
+                        bool left = RegisterHotKey(this.Handle, HotkeyIdWinL, MOD_WIN | MOD_NOREPEAT, 0x5B);
+                        bool right = RegisterHotKey(this.Handle, HotkeyIdWinR, MOD_WIN | MOD_NOREPEAT, 0x5C);
+                        hotkeyWinRegistered = left || right;
+                    }
                 }
-                // The keyboard hook works: also route plain left clicks on the
-                // physical Start button (screen corner) to the panel, and make
-                // sure the real Start menu stays reachable via the tile.
-                mouseHookRef = new LowLevelHookProc(StartMouseHookProc);
-                startMouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseHookRef, GetModuleHandle(null), 0);
-                if (startMouseHook == IntPtr.Zero)
-                    AppLog.Write("Start button mouse hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
-                else
-                    AppLog.Write("Start button click capture on, rect=" + StartButtonRect().ToString());
-                EnsureRealStartTile();
+                if (!wantClick)
+                {
+                    if (startMouseHook != IntPtr.Zero)
+                    {
+                        try { UnhookWindowsHookEx(startMouseHook); } catch { }
+                        startMouseHook = IntPtr.Zero;
+                    }
+                }
+                else if (startMouseHook == IntPtr.Zero)
+                {
+                    // Route plain left clicks on the physical Start button (screen
+                    // corner) to the panel, and make sure the real Start menu
+                    // stays reachable via the tile.
+                    mouseHookRef = new LowLevelHookProc(StartMouseHookProc);
+                    startMouseHook = SetWindowsHookEx(WH_MOUSE_LL, mouseHookRef, GetModuleHandle(null), 0);
+                    if (startMouseHook == IntPtr.Zero)
+                        AppLog.Write("Start button mouse hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+                    else
+                        AppLog.Write("Start button click capture on, rect=" + StartButtonRect().ToString());
+                }
+                if (wantKey || wantClick) EnsureRealStartTile();
             }
             catch (Exception ex) { AppLog.Write("Win key hook", ex); }
         }
@@ -2817,10 +2880,11 @@ namespace WinPanel
                 // 1) direct icon of the item (Change Icon)
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.LoadAny(item.CustomIconPath);
-                // The built-in "Start menu" tile: its path is a virtual protocol,
-                // extraction would fail — draw the Windows flag instead.
+                // The built-in "Open Start menu" tile: its path is a virtual
+                // protocol — draw the Start glyph instead of an extraction that
+                // would only fail.
                 if (string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase))
-                    return SystemIcons.WinLogo.ToBitmap();
+                    return GetStartMenuIcon();
                 // 2) icon assigned to the file type
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
@@ -2859,8 +2923,10 @@ namespace WinPanel
                 // forever. Media and folder items always go through
                 // LoadIconForItem (shell thumbnail pipeline). (Network paths are
                 // not probed here - their slow-source routing never uses this
-                // synchronous path anyway.)
-                if (IsMediaFile(item.Path) || item.IsFolder || IsFolderPathCached(item.Path)) return false;
+                // synchronous path anyway.) The built-in startmenu: tile too —
+                // an older build may have cached a failed-extraction icon for it.
+                if (IsMediaFile(item.Path) || item.IsFolder || IsFolderPathCached(item.Path) ||
+                    string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase)) return false;
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
