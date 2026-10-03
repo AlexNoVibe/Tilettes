@@ -52,6 +52,10 @@ namespace WinPanel
         private static bool useMeta = true, usePaths = true, useDesc = true;
         private static int descIndex = -1;
         private readonly List<ShortcutItem> panelSearchResults = new List<ShortcutItem>();
+        // Top block of the search overlay: remembered query -> item pairs whose
+        // QUERY matches what is being typed ("поиск среди прошлых поисков").
+        private readonly List<SearchHistoryEntry> panelSearchPast = new List<SearchHistoryEntry>();
+        private const int PastSearchBlockMax = 8;
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
         // Fully measured row layouts (see PreparePanelSearchRow): rebuilt per query
@@ -340,19 +344,36 @@ namespace WinPanel
             };
             panelSearchList.RowMenuRequested = (p, i) =>
             {
-                // Valid row → the result menu; empty area below the rows → no
-                // menu at all (never the form's "Settings" menu underneath).
-                if (i < 0 || i >= panelSearchResults.Count) return;
+                // Valid result row → the result menu; the past-search block and
+                // the empty area below the rows → no menu at all (never the
+                // form's "Settings" menu underneath).
+                if (i < 0 || IsPastHeaderRow(i) || IsPastRow(i)) return;
+                int ri = i - PastBlockOffset();
+                if (ri < 0 || ri >= panelSearchResults.Count) return;
                 panelSearchList.SelectedIndex = i;
-                ShowPanelSearchContextMenu(i, p);
+                ShowPanelSearchContextMenu(ri, p);
             };
             panelSearchList.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter)
                 {
                     int i = panelSearchList.SelectedIndex;
-                    if (i < 0 && panelSearchList.Items.Count > 0) i = 0;
+                    if (i < 0) i = FirstSelectableSearchRow();
+                    if (IsPastHeaderRow(i)) i = 1; // Enter on the header: first past row
                     OpenPanelSearchResult(i);
+                    e.SuppressKeyPress = true;
+                }
+                else if (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down)
+                {
+                    // Arrow keys move the selection but never land on the
+                    // past-search section header.
+                    int n = panelSearchList.Items.Count;
+                    if (n > 0)
+                    {
+                        int j = panelSearchList.SelectedIndex + (e.KeyCode == Keys.Down ? 1 : -1);
+                        while (j >= 0 && j < n && IsPastHeaderRow(j)) j += e.KeyCode == Keys.Down ? 1 : -1;
+                        if (j >= 0 && j < n) panelSearchList.SelectedIndex = j;
+                    }
                     e.SuppressKeyPress = true;
                 }
                 else if (e.KeyCode == Keys.Escape) { ClearPanelSearch(); e.SuppressKeyPress = true; }
@@ -1396,7 +1417,9 @@ namespace WinPanel
                 // re-pick the caption shrink tier.
                 StyleSearchToggles();
                 string q = panelSearchBox.Text.Trim();
-                if (q.Length == 0) { ShowPastSearch(); return; }
+                // Empty box: no overlay at all — the normal window shows. The
+                // past-search block appears only above real results, while typing.
+                if (q.Length == 0) { HidePanelSearch(); return; }
                 if (activeTabData == null || activeLayoutPanel == null) return;
                 var variants = SearchCore.Variants(q);
                 if (variants.Count == 0) { HidePanelSearch(); return; }
@@ -1427,6 +1450,10 @@ namespace WinPanel
                 var vv = variants;
                 panelSearchVariants = vv;
                 string qLower = q.ToLowerInvariant();
+                // The "past search" block fills in immediately, the regular
+                // results replace the old ones when the worker comes back.
+                FillPastSearchBlock(qLower);
+                RebuildPanelSearchList();
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
                     List<KeyValuePair<int, ShortcutItem>> found;
@@ -1461,62 +1488,47 @@ namespace WinPanel
             catch { }
         }
 
-        // Empty search box: show what the user searched and opened before
-        // ("Прошлый поиск"), best pairs first. Respects the history setting.
-        private void ShowPastSearch()
+        // Fills the top block of the search overlay: remembered query -> item
+        // pairs whose QUERY matches what is being typed, best pairs first.
+        // Respects the history setting; the panel's own folder groups are not
+        // searchable anymore, so entries recorded for them are skipped.
+        private void FillPastSearchBlock(string qLower)
         {
+            panelSearchPast.Clear();
             try
             {
-                if (!settings.SearchSaveHistory || activeTabData == null) { HidePanelSearch(); return; }
-                var top = SearchHistoryStore.Top(15);
-                // The panel's own folder groups are not searchable anymore: skip
-                // history entries recorded before that rule (and any that slipped
-                // in through Enter), otherwise they would still show up here.
-                var usable = new List<SearchHistoryEntry>();
-                foreach (var e in top) if (!e.IsFolder) usable.Add(e);
-                if (usable.Count == 0) { HidePanelSearch(); return; }
-                panelSearchGen++;
-                panelSearchResults.Clear();
-                foreach (var e in usable)
-                {
-                    var it = new ShortcutItem();
-                    it.Name = (string.IsNullOrEmpty(e.Query) ? "" : e.Query + "  →  ") + e.Name;
-                    it.Path = e.Path ?? "";
-                    it.IsFolder = e.IsFolder;
-                    panelSearchResults.Add(it);
-                }
-                panelSearchList.BeginUpdate();
-                panelSearchList.Items.Clear();
-                foreach (var it in panelSearchResults) panelSearchList.Items.Add(it.Name);
-                panelSearchList.EndUpdate();
-                panelSearchList.ClearSelected();
-                panelSearchList.Invalidate();
-                panelSearchVariants = new List<string>();
-                InvalidatePreparedSearchRows();
-                // Resolve .lnk targets on a worker thread ahead of time: otherwise
-                // the first paint of each row builds the COM target on the UI thread.
-                var warm = new List<ShortcutItem>(panelSearchResults);
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
-                {
-                    foreach (var w in warm)
-                    {
-                        try
-                        {
-                            string wp = w.Path ?? "";
-                            if (wp.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) PanelSearch.GetTarget(w);
-                        }
-                        catch { }
-                    }
-                });
-                panelSearchStatus.Text = Loc.IsRu
-                    ? "Прошлый поиск · " + panelSearchResults.Count + " · Enter — открыть, Esc — закрыть"
-                    : "Past search · " + panelSearchResults.Count + " · Enter to open, Esc to close";
-                panelSearchOverlay.Bounds = contentPanel.Bounds;
-                panelSearchOverlay.Visible = true;
-                panelSearchOverlay.BringToFront();
-                panelSearchActive = true;
+                if (!settings.SearchSaveHistory || string.IsNullOrEmpty(qLower)) return;
+                var top = SearchHistoryStore.Top(60);
+                panelSearchPast.AddRange(MatchPastQueries(top, qLower, PastSearchBlockMax));
             }
-            catch (Exception ex) { AppLog.Write("Past search", ex); }
+            catch { }
+        }
+
+        // Pure matching/ranking core (unit-tested): an entry survives when the
+        // typed text occurs in the remembered query; prefix matches rank above
+        // later occurrences, otherwise the store's score order is preserved.
+        // qLower is lowercased defensively (callers normally pass it already).
+        internal static List<SearchHistoryEntry> MatchPastQueries(List<SearchHistoryEntry> top, string qLower, int max)
+        {
+            var res = new List<SearchHistoryEntry>();
+            if (top == null || string.IsNullOrEmpty(qLower) || max <= 0) return res;
+            string needle = qLower.ToLowerInvariant();
+            var scored = new List<KeyValuePair<int, SearchHistoryEntry>>();
+            for (int i = 0; i < top.Count; i++)
+            {
+                var e = top[i];
+                if (e == null || e.IsFolder) continue;
+                string qq = (e.Query ?? "").ToLowerInvariant();
+                int at = qq.IndexOf(needle, StringComparison.Ordinal);
+                if (at < 0) continue;
+                scored.Add(new KeyValuePair<int, SearchHistoryEntry>(at * 1000 + i, e));
+            }
+            scored.Sort(delegate(KeyValuePair<int, SearchHistoryEntry> a, KeyValuePair<int, SearchHistoryEntry> b)
+            {
+                return a.Key - b.Key;
+            });
+            for (int i = 0; i < scored.Count && i < max; i++) res.Add(scored[i].Value);
+            return res;
         }
 
         // Search pool collector: descends into the panel's own folder groups so
@@ -1819,19 +1831,91 @@ namespace WinPanel
             try
             {
                 panelSearchResults.Clear();
-                int n = Math.Min(200, found.Count);
-                for (int i = 0; i < n; i++) panelSearchResults.Add(found[i].Value);
-                InvalidatePreparedSearchRows();
-                panelSearchList.BeginUpdate();
-                panelSearchList.Items.Clear();
-                foreach (var it in panelSearchResults) panelSearchList.Items.Add(it.Name);
-                panelSearchList.EndUpdate();
-                panelSearchList.ClearSelected();
-                panelSearchList.Invalidate();
+                // Best-ranked first, so the survivor of a duplicate pair is the
+                // one the ranking preferred.
+                var flat = new List<ShortcutItem>();
+                for (int i = 0; i < found.Count && flat.Count < 400; i++) flat.Add(found[i].Value);
+                foreach (var it in DedupeSearchResults(flat, 200))
+                    panelSearchResults.Add(it);
+                RebuildPanelSearchList();
                 panelSearchStatus.Text = (Loc.IsRu ? "Найдено: " : "Found: ") + panelSearchResults.Count +
                     (Loc.IsRu ? "   ·   Enter — открыть, Esc — закрыть" : "   ·   Enter to open, Esc to close");
             }
             catch { }
+        }
+
+        // Full duplicates are collapsed: two results that resolve to the SAME
+        // final target AND carry the SAME display name are the same tile twice
+        // (added on two tabs, mirrored twice, ...). The same file under
+        // DIFFERENT names stays — a rename-for-search shortcut pair (an admin
+        // launcher next to the normal one) is deliberate, not a duplicate.
+        internal static List<ShortcutItem> DedupeSearchResults(List<ShortcutItem> sorted, int max)
+        {
+            var res = new List<ShortcutItem>();
+            if (sorted == null) return res;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < sorted.Count && res.Count < max; i++)
+            {
+                var it = sorted[i];
+                if (it == null) continue;
+                string target = "";
+                try { target = PanelSearch.GetTarget(it); } catch { }
+                if (string.IsNullOrEmpty(target)) target = it.Path ?? "";
+                try { target = Path.GetFullPath(target); } catch { }
+                string key = target.ToLowerInvariant() + "\n" + (it.Name ?? "").ToLowerInvariant();
+                if (!seen.Add(key)) continue;
+                res.Add(it);
+            }
+            return res;
+        }
+
+        // ---------- search overlay rows: [past-search block][results] ----------
+        // Row layout in the listbox: index 0 is the "Прошлый поиск" section
+        // header (only when the block is non-empty), then the past rows, then
+        // the regular results.
+
+        private int PastBlockOffset()
+        {
+            return panelSearchPast.Count > 0 ? panelSearchPast.Count + 1 : 0;
+        }
+
+        private bool IsPastHeaderRow(int rowIndex)
+        {
+            return panelSearchPast.Count > 0 && rowIndex == 0;
+        }
+
+        private bool IsPastRow(int rowIndex)
+        {
+            return panelSearchPast.Count > 0 && rowIndex > 0 && rowIndex <= panelSearchPast.Count;
+        }
+
+        private int FirstSelectableSearchRow()
+        {
+            return panelSearchPast.Count > 0 ? 1 : 0;
+        }
+
+        // One rebuild for every content change (past block and/or results):
+        // refills the items, drops the stale measured layouts, clears selection.
+        private void RebuildPanelSearchList()
+        {
+            int off = PastBlockOffset();
+            panelSearchList.BeginUpdate();
+            panelSearchList.Items.Clear();
+            if (panelSearchPast.Count > 0)
+            {
+                panelSearchList.Items.Add(Loc.S("Past search", "Прошлый поиск")); // header row
+                for (int i = 0; i < panelSearchPast.Count; i++)
+                {
+                    var he = panelSearchPast[i];
+                    panelSearchList.Items.Add((he.Query ?? "") + "  →  " + (he.Name ?? ""));
+                }
+            }
+            for (int i = 0; i < panelSearchResults.Count; i++)
+                panelSearchList.Items.Add(panelSearchResults[i].Name);
+            panelSearchList.EndUpdate();
+            panelSearchList.ClearSelected();
+            panelSearchList.Invalidate();
+            InvalidatePreparedSearchRows();
         }
 
         private void HidePanelSearch()
@@ -1840,6 +1924,7 @@ namespace WinPanel
             if (panelSearchOverlay != null) panelSearchOverlay.Visible = false;
             panelSearchActive = false;
             if (panelSearchResults != null) panelSearchResults.Clear();
+            panelSearchPast.Clear();
             panelSearchVariants = new List<string>();
             InvalidatePreparedSearchRows();
             lastSearchTip = null;
@@ -1859,15 +1944,59 @@ namespace WinPanel
             catch { }
         }
 
-        private void OpenPanelSearchResult(int i)
+        // Dispatches by LIST ROW: past-search header (inert), a past-search row
+        // (opens the remembered item) or a regular result row.
+        private void OpenPanelSearchResult(int row)
         {
-            if (i < 0 || i >= panelSearchResults.Count) return;
-            var it = panelSearchResults[i];
+            if (IsPastHeaderRow(row)) return;
+            if (IsPastRow(row))
+            {
+                OpenPastSearchEntry(panelSearchPast[row - 1]);
+                return;
+            }
+            OpenResultIndex(row - PastBlockOffset());
+        }
+
+        // Clicking a "Прошлый поиск" row re-opens the item that query led to
+        // last time; the pair is re-recorded under its own query so its rank
+        // keeps growing (the currently typed text is NOT recorded for it).
+        private void OpenPastSearchEntry(SearchHistoryEntry he)
+        {
+            if (he == null || string.IsNullOrEmpty(he.Path)) return;
+            ClearPanelSearch();
+            try
+            {
+                if (settings.SearchSaveHistory)
+                {
+                    SearchHistoryStore.Record(he.Query, he.Name, he.Path, he.IsFolder);
+                    SearchHistoryStore.Save();
+                }
+            }
+            catch { }
+            if (he.IsFolder)
+            {
+                var it = new ShortcutItem();
+                it.Name = he.Name;
+                it.Path = he.Path;
+                it.IsFolder = true;
+                var nav = tabNavigations[activeTabData];
+                nav.Push(it);
+                RenderCurrentFolder(activeLayoutPanel, activeTabData);
+            }
+            else
+            {
+                LaunchItem(he.Path);
+            }
+        }
+
+        private void OpenResultIndex(int ri)
+        {
+            if (ri < 0 || ri >= panelSearchResults.Count) return;
+            var it = panelSearchResults[ri];
             string q = panelSearchBox != null && panelSearchBox.Text != null ? panelSearchBox.Text.Trim() : "";
-            bool fromPast = q.Length == 0; // clicked inside "Прошлый поиск"
             ClearPanelSearch();
             // Remember "query -> opened item" so the same pair ranks higher next time.
-            if (settings.SearchSaveHistory && !fromPast && !string.IsNullOrEmpty(it.Path))
+            if (settings.SearchSaveHistory && !string.IsNullOrEmpty(it.Path))
             {
                 SearchHistoryStore.Record(q, it.Name, it.Path, it.IsFolder);
                 SearchHistoryStore.Save();
@@ -1884,15 +2013,16 @@ namespace WinPanel
             }
         }
 
-        // Right-click menu of a panel-search row: besides opening the result it
-        // can jump into the mini explorer at the file's original folder, or
-        // reveal that folder in Explorer.
+        // Right-click menu of a panel-search result row (index into
+        // panelSearchResults): besides opening the result it can jump into the
+        // mini explorer at the file's original folder, or reveal that folder in
+        // Explorer.
         private void ShowPanelSearchContextMenu(int i, Point location)
         {
             if (i < 0 || i >= panelSearchResults.Count) return;
             var it = panelSearchResults[i];
             var m = new ContextMenu();
-            m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenPanelSearchResult(i));
+            m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenResultIndex(i));
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenSearchResultInMiniExplorer(it));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(SearchResultRevealPath(it)));
             m.Show(panelSearchList, location);
@@ -1974,7 +2104,9 @@ namespace WinPanel
                 try
                 {
                     panelSearchList.Focus();
-                    if (panelSearchList.Items.Count > 0 && panelSearchList.SelectedIndex < 0) panelSearchList.SelectedIndex = 0;
+                    int first = FirstSelectableSearchRow();
+                    if (panelSearchList.Items.Count > first && panelSearchList.SelectedIndex < first)
+                        panelSearchList.SelectedIndex = first;
                 }
                 catch { }
                 e.SuppressKeyPress = true;
@@ -2075,8 +2207,12 @@ namespace WinPanel
 
         private void PanelSearchList_DrawItem(object sender, DrawItemEventArgs e)
         {
-            if (e.Index < 0 || e.Index >= panelSearchResults.Count) return;
-            var it = panelSearchResults[e.Index];
+            if (e.Index < 0) return;
+            if (IsPastHeaderRow(e.Index)) { DrawPastSearchHeader(e); return; }
+            if (IsPastRow(e.Index)) { DrawPastSearchRow(e, panelSearchPast[e.Index - 1]); return; }
+            int ri = e.Index - PastBlockOffset();
+            if (ri < 0 || ri >= panelSearchResults.Count) return;
+            var it = panelSearchResults[ri];
             var g = e.Graphics;
             bool sel = (e.State & DrawItemState.Selected) != 0;
             using (var back = new SolidBrush(sel ? hoverColor : bgColor))
@@ -2168,7 +2304,7 @@ namespace WinPanel
             Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
             bool light = settings.IsLightTheme;
             Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
-            var r = PreparePanelSearchRow(e.Index, e.Bounds.Width, e.Bounds.Left);
+            var r = PreparePanelSearchRow(ri, e.Bounds.Width, e.Bounds.Left);
             int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - r.TextH) / 2);
             int left = e.Bounds.Left + 32;
             int pathX = e.Bounds.Right - 8 - r.PathW;
@@ -2187,6 +2323,63 @@ namespace WinPanel
             }
         }
 
+        // Section header of the past-search block: dim caption, never drawn as
+        // selected even if the selection mechanically lands on it.
+        private void DrawPastSearchHeader(DrawItemEventArgs e)
+        {
+            using (var back = new SolidBrush(bgColor))
+                e.Graphics.FillRectangle(back, e.Bounds);
+            Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
+            TextRenderer.DrawText(e.Graphics, Loc.S("Past search", "Прошлый поиск"), this.Font,
+                new Point(e.Bounds.Left + 8, e.Bounds.Top + 4), subColor);
+        }
+
+        // A past-search row: history glyph, the remembered query (highlighted
+        // with the typed text) and the item it last opened.
+        private void DrawPastSearchRow(DrawItemEventArgs e, SearchHistoryEntry he)
+        {
+            if (he == null) return;
+            var g = e.Graphics;
+            bool sel = (e.State & DrawItemState.Selected) != 0;
+            using (var back = new SolidBrush(sel ? hoverColor : bgColor))
+                g.FillRectangle(back, e.Bounds);
+            Font f = this.Font;
+            Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
+            bool light = settings.IsLightTheme;
+            Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
+            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - TextRenderer.MeasureText("Ag", f).Height) / 2);
+            TextRenderer.DrawText(g, "↺", f, new Point(e.Bounds.Left + 8, ty), acc);
+
+            int maxW = e.Bounds.Width - 32 - 8;
+            string query = he.Query ?? "";
+            string qPart = query;
+            bool hl; int hs, hlen;
+            hl = UiText.FindHighlight(query.ToLowerInvariant(), panelSearchVariants, out hs, out hlen);
+            if (TextRenderer.MeasureText(qPart, f).Width > maxW && maxW > 30)
+            {
+                qPart = UiText.FitTail(qPart, f, maxW);
+                UiText.ClampHighlight(qPart, ref hl, ref hs, ref hlen);
+            }
+            UiText.DrawHighlighted(g, qPart, hl ? hs : -1, hl ? hlen : 0, f,
+                new Point(e.Bounds.Left + 32, ty), textColor, acc, light);
+
+            string name = he.Name ?? "";
+            if (name.Length > 0)
+            {
+                int qw = TextRenderer.MeasureText(qPart, f).Width;
+                string arrow = "  →  ";
+                int aw = TextRenderer.MeasureText(arrow, f).Width;
+                int nameW = e.Bounds.Width - 32 - qw - aw - 8;
+                if (nameW > 20)
+                {
+                    string nPart = name;
+                    if (TextRenderer.MeasureText(nPart, f).Width > nameW)
+                        nPart = UiText.FitTail(nPart, f, nameW);
+                    TextRenderer.DrawText(g, arrow + nPart, f, new Point(e.Bounds.Left + 32 + qw, ty), subColor);
+                }
+            }
+        }
+
         // Applies the "search results" font from the settings and syncs the row height.
         private void ApplySearchListFont()
         {
@@ -2198,7 +2391,8 @@ namespace WinPanel
             }
             catch { }
         }
-        // Hovering a result row shows a tooltip with the full path and description.
+        // Hovering a result row shows a tooltip with the full path and description;
+        // past-search rows show their query and remembered path.
         private void PanelSearchList_MouseMove(object sender, MouseEventArgs e)
         {
             try
@@ -2206,21 +2400,35 @@ namespace WinPanel
                 if (itemTip == null) return;
                 int i = panelSearchList.IndexFromPoint(e.Location);
                 string t = "";
-                if (i >= 0 && i < panelSearchResults.Count)
+                if (IsPastHeaderRow(i))
                 {
-                    var it = panelSearchResults[i];
-                    t = it.Path ?? "";
-                    try
+                    t = "";
+                }
+                else if (IsPastRow(i))
+                {
+                    var he = panelSearchPast[i - 1];
+                    if (he != null)
+                        t = (he.Query ?? "") + "\n" + (he.Path ?? "");
+                }
+                else
+                {
+                    int ri = i - PastBlockOffset();
+                    if (ri >= 0 && ri < panelSearchResults.Count)
                     {
-                        if (t.ToLowerInvariant().EndsWith(".lnk"))
+                        var it = panelSearchResults[ri];
+                        t = it.Path ?? "";
+                        try
                         {
-                            string tgt = PanelSearch.GetTarget(it);
-                            if (!string.IsNullOrEmpty(tgt)) t = t + "  →  " + tgt;
+                            if (t.ToLowerInvariant().EndsWith(".lnk"))
+                            {
+                                string tgt = PanelSearch.GetTarget(it);
+                                if (!string.IsNullOrEmpty(tgt)) t = t + "  →  " + tgt;
+                            }
                         }
+                        catch { }
+                        string d = PanelSearch.GetDescription(it);
+                        if (!string.IsNullOrEmpty(d)) t = (t.Length > 0 ? t + "\n" : "") + d;
                     }
-                    catch { }
-                    string d = PanelSearch.GetDescription(it);
-                    if (!string.IsNullOrEmpty(d)) t = (t.Length > 0 ? t + "\n" : "") + d;
                 }
                 if (!string.Equals(t, lastSearchTip, StringComparison.Ordinal))
                 {
@@ -3862,9 +4070,9 @@ namespace WinPanel
                 if (panelSearchTimer == null) return;
                 panelSearchTimer.Stop();
                 if (hasText) { panelSearchTimer.Start(); return; }
-                // Empty box: show "Прошлый поиск" as before — unless the box was
-                // just cleared programmatically (tab click / Esc), which must close
-                // the search for good instead of re-opening the overlay.
+                // Empty box: the overlay closes (RunPanelSearch hides it) — the
+                // normal window shows. Unless the box was just cleared
+                // programmatically (tab click / Esc), which has already closed it.
                 if (suppressSearchOnEmpty) { suppressSearchOnEmpty = false; return; }
                 panelSearchTimer.Start();
             };

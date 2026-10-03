@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace WinPanel
@@ -270,7 +270,10 @@ namespace WinPanel
             { "Hide file extension (.mp4)", "Ocultar extensión de archivo (.mp4)" },
             { "Extra rows below:", "Filas extra debajo:" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
-              "Filas de mosaicos extra bajo la cuadrícula visible, del mismo tamaño; se accede desplazándose hacia abajo (0 = desactivado)" }
+              "Filas de mosaicos extra bajo la cuadrícula visible, del mismo tamaño; se accede desplazándose hacia abajo (0 = desactivado)" },
+            { "Past search", "Búsquedas anteriores" },
+            { "Command (%1 = current folder):", "Comando (%1 = carpeta actual):" },
+            { "in bookmarks %1 = current folder", "en marcadores %1 = carpeta actual" }
         };
     }
 }

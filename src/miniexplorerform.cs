@@ -408,7 +408,8 @@ namespace WinPanel
 
             hintLbl = new EdgeHintLabel(this)
             {
-                Text = "Ctrl+L or Edit - edit path · F5 - refresh · Backspace - up · Enter - open · double-click - open",
+                Text = "Ctrl+L or Edit - edit path · F5 - refresh · Backspace - up · Enter - open · double-click - open · "
+                     + Loc.S("in bookmarks %1 = current folder", "в закладках %1 — текущая папка"),
                 Left = 8,
                 Top = 618,
                 Width = 924,
@@ -697,7 +698,7 @@ namespace WinPanel
         {
             if (b.Kind == "group") { ShowGroupMenu(b, chip); return; }
             if (b.Kind == "folder") { Navigate(b.Value); return; }
-            RunInConsole(b.Value);
+            RunInConsole(ExpandBookmarkCommand(b.Value));
         }
 
         private void ShowGroupMenu(ExplorerBookmark g, Control anchor)
@@ -717,7 +718,7 @@ namespace WinPanel
                     : (c.Kind == "group" ? c.Name + " \u203A" : c.Name);
                 m.MenuItems.Add(label, (s2, e2) =>
                 {
-                    if (cap.Kind == "cmd") RunInConsole(cap.Value);
+                    if (cap.Kind == "cmd") RunInConsole(ExpandBookmarkCommand(cap.Value));
                     else if (cap.Kind == "folder") Navigate(cap.Value);
                     else if (cap.Kind == "group") ShowGroupMenu(cap, anchor);
                 });
@@ -1780,8 +1781,24 @@ namespace WinPanel
             }
             else
             {
-                RunInConsole(b.Value);
+                RunInConsole(ExpandBookmarkCommand(b.Value));
             }
+        }
+
+        // %1 in a command bookmark stands for the folder currently open in the
+        // mini explorer, so one bookmark (e.g. `wt -d "%1"`) opens any program
+        // "here". Without the token the command still starts in the folder: the
+        // console has already cd-ed into currentPath before running it.
+        internal static string ExpandBookmarkCommand(string cmd, string currentPath)
+        {
+            if (string.IsNullOrEmpty(cmd) || cmd.IndexOf("%1", StringComparison.Ordinal) < 0) return cmd;
+            string dir = string.IsNullOrEmpty(currentPath) ? "." : currentPath;
+            return cmd.Replace("%1", dir);
+        }
+
+        private string ExpandBookmarkCommand(string cmd)
+        {
+            return ExpandBookmarkCommand(cmd, currentPath);
         }
 
         private void BookmarksList_MouseMove(object sender, MouseEventArgs e)
@@ -1877,7 +1894,7 @@ namespace WinPanel
         // Edits the command itself of a "cmd" bookmark (Rename only changes the label).
         private void EditBookmarkCommand(ExplorerBookmark b)
         {
-            string cmd = Prompt.ShowDialog(Loc.S("Command:", "Команда:"), Loc.S("Edit command", "Изменить команду"), b.Value);
+            string cmd = Prompt.ShowDialog(Loc.S("Command (%1 = current folder):", "Команда (%1 — текущая папка):"), Loc.S("Edit command", "Изменить команду"), b.Value);
             if (string.IsNullOrWhiteSpace(cmd)) return;
             string old = b.Value;
             b.Value = cmd.Trim();
@@ -1944,7 +1961,7 @@ namespace WinPanel
             cmd = cmd == null ? "" : cmd.Trim();
             if (cmd.Length == 0)
             {
-                cmd = Prompt.ShowDialog(Loc.S("Command:", "Команда:"), Loc.S("Add command", "Добавить команду"), "");
+                cmd = Prompt.ShowDialog(Loc.S("Command (%1 = current folder):", "Команда (%1 — текущая папка):"), Loc.S("Add command", "Добавить команду"), "");
                 if (string.IsNullOrWhiteSpace(cmd)) return;
                 cmd = cmd.Trim();
             }

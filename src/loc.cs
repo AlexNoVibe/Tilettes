@@ -233,6 +233,9 @@ namespace WinPanel
             { "Hide file extension (.mp4)", "Скрывать расширение файла (.mp4)" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "Дополнительные ряды плиток под видимой сеткой, того же размера; добраться до них можно прокруткой вниз (0 = выкл)" },
+            { "Past search", "Прошлый поиск" },
+            { "Command (%1 = current folder):", "Команда (%1 — текущая папка):" },
+            { "in bookmarks %1 = current folder", "в закладках %1 — текущая папка" },
         };
 
         // Applies dictionary translation to every static text in the control tree

@@ -139,6 +139,10 @@ namespace WinPanel
             cmd.Children.Add(Command("systeminfo", "systeminfo"));
             cmd.Children.Add(Command("ping 8.8.8.8 -n 5", "ping 8.8.8.8 -n 5"));
             cmd.Children.Add(Command("dir /a", "dir /a"));
+            // %1 is substituted with the folder open in the mini explorer, so
+            // Windows Terminal starts right there (wt ignores the caller's cwd
+            // when the profile has its own starting directory).
+            cmd.Children.Add(Command("Windows Terminal here", "wt -d \"%1\""));
 
             var ps = new ExplorerBookmark();
             ps.Kind = "group";
