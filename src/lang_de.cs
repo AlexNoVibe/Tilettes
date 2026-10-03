@@ -273,7 +273,11 @@ namespace WinPanel
               "Zusätzliche Kachelzeilen unter dem sichtbaren Raster, gleiche Zellengröße; durch Scrollen erreichbar (0 = aus)" },
             { "Past search", "Letzte Suchanfragen" },
             { "Command (%1 = current folder):", "Befehl (%1 = aktueller Ordner):" },
-            { "in bookmarks %1 = current folder", "in Lesezeichen %1 = aktueller Ordner" }
+            { "in bookmarks %1 = current folder", "in Lesezeichen %1 = aktueller Ordner" },
+            { "Regular search", "Normale Suche" },
+            { "New version v", "Neue Version v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " ist veröffentlicht, aber weniger als einen Tag alt. Sie wird nach 24 Stunden angeboten - bei frischen Builds klingen Antivirus-Fehlalarme meist innerhalb dieser Zeit ab." }
         };
     }
 }

@@ -273,7 +273,11 @@ namespace WinPanel
               "Rangées de tuiles supplémentaires sous la grille visible, même taille ; atteignables en défilant vers le bas (0 = off)" },
             { "Past search", "Recherches récentes" },
             { "Command (%1 = current folder):", "Commande (%1 = dossier actuel) :" },
-            { "in bookmarks %1 = current folder", "dans les favoris %1 = dossier actuel" }
+            { "in bookmarks %1 = current folder", "dans les favoris %1 = dossier actuel" },
+            { "Regular search", "Recherche normale" },
+            { "New version v", "Nouvelle version v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " est publiée, mais elle a moins d'un jour. Elle sera proposée après 24 heures - les faux positifs antivirus sur les versions récentes disparaissent généralement dans ce délai." }
         };
     }
 }

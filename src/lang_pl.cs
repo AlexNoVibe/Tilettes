@@ -273,7 +273,11 @@ namespace WinPanel
               "Dodatkowe rzędy kafelków pod widoczną siatką, ten sam rozmiar; dostępne po przewinięciu w dół (0 = wył.)" },
             { "Past search", "Poprzednie wyszukiwania" },
             { "Command (%1 = current folder):", "Polecenie (%1 = bieżący folder):" },
-            { "in bookmarks %1 = current folder", "w zakładkach %1 = bieżący folder" }
+            { "in bookmarks %1 = current folder", "w zakładkach %1 = bieżący folder" },
+            { "Regular search", "Zwykłe wyszukiwanie" },
+            { "New version v", "Nowa wersja v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " jest opublikowana, ale ma mniej niż dobę. Zostanie zaproponowana po 24 godzinach - fałszywe alarmy antywirusów dla świeżych buildów zwykle znikają w tym czasie." }
         };
     }
 }

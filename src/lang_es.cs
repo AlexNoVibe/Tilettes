@@ -273,7 +273,11 @@ namespace WinPanel
               "Filas de mosaicos extra bajo la cuadrícula visible, del mismo tamaño; se accede desplazándose hacia abajo (0 = desactivado)" },
             { "Past search", "Búsquedas anteriores" },
             { "Command (%1 = current folder):", "Comando (%1 = carpeta actual):" },
-            { "in bookmarks %1 = current folder", "en marcadores %1 = carpeta actual" }
+            { "in bookmarks %1 = current folder", "en marcadores %1 = carpeta actual" },
+            { "Regular search", "Búsqueda normal" },
+            { "New version v", "Nueva versión v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " está publicada, pero tiene menos de un día. Se ofrecerá después de 24 horas: los falsos positivos del antivirus en builds recientes suelen desaparecer en ese plazo." }
         };
     }
 }

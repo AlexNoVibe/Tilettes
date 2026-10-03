@@ -344,10 +344,10 @@ namespace WinPanel
             };
             panelSearchList.RowMenuRequested = (p, i) =>
             {
-                // Valid result row → the result menu; the past-search block and
-                // the empty area below the rows → no menu at all (never the
-                // form's "Settings" menu underneath).
-                if (i < 0 || IsPastHeaderRow(i) || IsPastRow(i)) return;
+                // Valid result row → the result menu; the past-search block,
+                // the headers and the empty area below the rows → no menu at
+                // all (never the form's "Settings" menu underneath).
+                if (i < 0 || IsHeaderRow(i) || IsPastRow(i)) return;
                 int ri = i - PastBlockOffset();
                 if (ri < 0 || ri >= panelSearchResults.Count) return;
                 panelSearchList.SelectedIndex = i;
@@ -359,19 +359,21 @@ namespace WinPanel
                 {
                     int i = panelSearchList.SelectedIndex;
                     if (i < 0) i = FirstSelectableSearchRow();
-                    if (IsPastHeaderRow(i)) i = 1; // Enter on the header: first past row
+                    if (IsPastHeaderRow(i)) i = 1;             // Enter on "Прошлый поиск": first past row
+                    else if (IsResultsHeaderRow(i)) i = PastBlockOffset(); // Enter on "Обычный поиск": first result
                     OpenPanelSearchResult(i);
                     e.SuppressKeyPress = true;
                 }
                 else if (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down)
                 {
-                    // Arrow keys move the selection but never land on the
-                    // past-search section header.
+                    // Arrow keys move the selection but never land on a
+                    // section header.
                     int n = panelSearchList.Items.Count;
                     if (n > 0)
                     {
-                        int j = panelSearchList.SelectedIndex + (e.KeyCode == Keys.Down ? 1 : -1);
-                        while (j >= 0 && j < n && IsPastHeaderRow(j)) j += e.KeyCode == Keys.Down ? 1 : -1;
+                        int step = e.KeyCode == Keys.Down ? 1 : -1;
+                        int j = panelSearchList.SelectedIndex + step;
+                        while (j >= 0 && j < n && IsHeaderRow(j)) j += step;
                         if (j >= 0 && j < n) panelSearchList.SelectedIndex = j;
                     }
                     e.SuppressKeyPress = true;
@@ -1870,18 +1872,30 @@ namespace WinPanel
         }
 
         // ---------- search overlay rows: [past-search block][results] ----------
-        // Row layout in the listbox: index 0 is the "Прошлый поиск" section
-        // header (only when the block is non-empty), then the past rows, then
-        // the regular results.
+        // Row layout in the listbox with a past block present: index 0 is the
+        // "Прошлый поиск" section header, then the past rows, then the
+        // "Обычный поиск" section header (with a divider line), then the
+        // regular results. Without a past block the results start at 0 and
+        // carry no header (as before).
 
         private int PastBlockOffset()
         {
-            return panelSearchPast.Count > 0 ? panelSearchPast.Count + 1 : 0;
+            return panelSearchPast.Count > 0 ? panelSearchPast.Count + 2 : 0;
         }
 
         private bool IsPastHeaderRow(int rowIndex)
         {
             return panelSearchPast.Count > 0 && rowIndex == 0;
+        }
+
+        private bool IsResultsHeaderRow(int rowIndex)
+        {
+            return panelSearchPast.Count > 0 && rowIndex == panelSearchPast.Count + 1;
+        }
+
+        private bool IsHeaderRow(int rowIndex)
+        {
+            return IsPastHeaderRow(rowIndex) || IsResultsHeaderRow(rowIndex);
         }
 
         private bool IsPastRow(int rowIndex)
@@ -1898,17 +1912,17 @@ namespace WinPanel
         // refills the items, drops the stale measured layouts, clears selection.
         private void RebuildPanelSearchList()
         {
-            int off = PastBlockOffset();
             panelSearchList.BeginUpdate();
             panelSearchList.Items.Clear();
             if (panelSearchPast.Count > 0)
             {
-                panelSearchList.Items.Add(Loc.S("Past search", "Прошлый поиск")); // header row
+                panelSearchList.Items.Add(Loc.S("Past search", "Прошлый поиск")); // section header
                 for (int i = 0; i < panelSearchPast.Count; i++)
                 {
                     var he = panelSearchPast[i];
                     panelSearchList.Items.Add((he.Query ?? "") + "  →  " + (he.Name ?? ""));
                 }
+                panelSearchList.Items.Add(Loc.S("Regular search", "Обычный поиск")); // section header
             }
             for (int i = 0; i < panelSearchResults.Count; i++)
                 panelSearchList.Items.Add(panelSearchResults[i].Name);
@@ -1944,11 +1958,11 @@ namespace WinPanel
             catch { }
         }
 
-        // Dispatches by LIST ROW: past-search header (inert), a past-search row
+        // Dispatches by LIST ROW: a section header (inert), a past-search row
         // (opens the remembered item) or a regular result row.
         private void OpenPanelSearchResult(int row)
         {
-            if (IsPastHeaderRow(row)) return;
+            if (IsHeaderRow(row)) return;
             if (IsPastRow(row))
             {
                 OpenPastSearchEntry(panelSearchPast[row - 1]);
@@ -2208,7 +2222,8 @@ namespace WinPanel
         private void PanelSearchList_DrawItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0) return;
-            if (IsPastHeaderRow(e.Index)) { DrawPastSearchHeader(e); return; }
+            if (IsPastHeaderRow(e.Index)) { DrawSectionHeader(e, Loc.S("Past search", "Прошлый поиск"), false); return; }
+            if (IsResultsHeaderRow(e.Index)) { DrawSectionHeader(e, Loc.S("Regular search", "Обычный поиск"), true); return; }
             if (IsPastRow(e.Index)) { DrawPastSearchRow(e, panelSearchPast[e.Index - 1]); return; }
             int ri = e.Index - PastBlockOffset();
             if (ri < 0 || ri >= panelSearchResults.Count) return;
@@ -2217,9 +2232,42 @@ namespace WinPanel
             bool sel = (e.State & DrawItemState.Selected) != 0;
             using (var back = new SolidBrush(sel ? hoverColor : bgColor))
                 g.FillRectangle(back, e.Bounds);
+            Bitmap ic = SearchRowIcon(it.IsFolder, it.Path);
+            int iconY = e.Bounds.Top + Math.Max(3, (panelSearchList.ItemHeight - 16) / 2);
+            if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, iconY, 16, 16));
+
+            Font f = this.Font;
+            Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
+            bool light = settings.IsLightTheme;
+            Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
+            var r = PreparePanelSearchRow(ri, e.Bounds.Width, e.Bounds.Left);
+            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - r.TextH) / 2);
+            int left = e.Bounds.Left + 32;
+            int pathX = e.Bounds.Right - 8 - r.PathW;
+
+            UiText.DrawHighlighted(g, r.NameDisplay, r.NameHlStart, r.NameHlLen, f, new Point(left, ty), textColor, acc, light);
+
+            if (r.HasDesc && r.DescDisplay != null)
+                UiText.DrawHighlighted(g, r.DescDisplay, r.DescHlStart, r.DescHlLen, f, new Point(r.DescX, ty), subColor, acc, light);
+
+            if (r.PathDisplay.Length > 0)
+            {
+                if (r.PathTailHl)
+                    UiText.DrawHighlighted(g, r.PathDisplay, r.PathHlStart, r.PathHlLen, f, new Point(pathX, ty), subColor, acc, light);
+                else
+                    TextRenderer.DrawText(g, r.PathDisplay, f, new Point(pathX, ty), subColor);
+            }
+        }
+
+        // Icon for a search row (regular results AND past-search rows): cached
+        // by folder/file + path. Slow (network) sources are fetched on a worker
+        // thread, cached by path and the list repaints when the icon arrives.
+        private Bitmap SearchRowIcon(bool isFolder, string path)
+        {
+            Bitmap ic = null;
             try
             {
-                string key = ((it.IsFolder ? "d:" : "f:") + (it.Path ?? "")).ToLowerInvariant();
+                string key = ((isFolder ? "d:" : "f:") + (path ?? "")).ToLowerInvariant();
                 // The icon cache is session-long and small rows add up: start over
                 // instead of growing without bound.
                 if (panelSearchIcons.Count > 600)
@@ -2227,15 +2275,11 @@ namespace WinPanel
                     foreach (var b in panelSearchIcons.Values) { try { b.Dispose(); } catch { } }
                     panelSearchIcons.Clear();
                 }
-                Bitmap ic;
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
-                    if (IsSlowIconPath(it.Path))
+                    if (IsSlowIconPath(path))
                     {
-                        // Network source: never extract on the UI thread. The icon is
-                        // fetched on a worker thread, cached by path and the list
-                        // repaints when it arrives.
-                        string gkey = key, gpath = it.Path;
+                        string gkey = key, gpath = path;
                         int gen = panelSearchGen;
                         System.Threading.ThreadPool.QueueUserWorkItem(delegate
                         {
@@ -2279,7 +2323,7 @@ namespace WinPanel
                     else
                     {
                         Image big = null;
-                        try { if (!string.IsNullOrEmpty(it.Path)) big = IconExtractor.GetIconAuto(it.Path, false); }
+                        try { if (!string.IsNullOrEmpty(path)) big = IconExtractor.GetIconAuto(path, false); }
                         catch { }
                         ic = null;
                         if (big != null)
@@ -2295,47 +2339,36 @@ namespace WinPanel
                         panelSearchIcons[key] = ic;
                     }
                 }
-                int iconY = e.Bounds.Top + Math.Max(3, (panelSearchList.ItemHeight - 16) / 2);
-                if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, iconY, 16, 16));
             }
             catch { }
-
-            Font f = this.Font;
-            Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
-            bool light = settings.IsLightTheme;
-            Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
-            var r = PreparePanelSearchRow(ri, e.Bounds.Width, e.Bounds.Left);
-            int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - r.TextH) / 2);
-            int left = e.Bounds.Left + 32;
-            int pathX = e.Bounds.Right - 8 - r.PathW;
-
-            UiText.DrawHighlighted(g, r.NameDisplay, r.NameHlStart, r.NameHlLen, f, new Point(left, ty), textColor, acc, light);
-
-            if (r.HasDesc && r.DescDisplay != null)
-                UiText.DrawHighlighted(g, r.DescDisplay, r.DescHlStart, r.DescHlLen, f, new Point(r.DescX, ty), subColor, acc, light);
-
-            if (r.PathDisplay.Length > 0)
-            {
-                if (r.PathTailHl)
-                    UiText.DrawHighlighted(g, r.PathDisplay, r.PathHlStart, r.PathHlLen, f, new Point(pathX, ty), subColor, acc, light);
-                else
-                    TextRenderer.DrawText(g, r.PathDisplay, f, new Point(pathX, ty), subColor);
-            }
+            return ic;
         }
 
-        // Section header of the past-search block: dim caption, never drawn as
-        // selected even if the selection mechanically lands on it.
-        private void DrawPastSearchHeader(DrawItemEventArgs e)
+        // Section header of the two search blocks: dim caption, never drawn as
+        // selected even if the selection mechanically lands on it. The divider
+        // variant carries the thin separating line between the blocks.
+        private void DrawSectionHeader(DrawItemEventArgs e, string caption, bool divider)
         {
             using (var back = new SolidBrush(bgColor))
                 e.Graphics.FillRectangle(back, e.Bounds);
             Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
-            TextRenderer.DrawText(e.Graphics, Loc.S("Past search", "Прошлый поиск"), this.Font,
-                new Point(e.Bounds.Left + 8, e.Bounds.Top + 4), subColor);
+            if (divider)
+            {
+                Color lineColor = settings.IsLightTheme ? Color.FromArgb(208, 208, 212) : Color.FromArgb(58, 58, 62);
+                using (var pen = new Pen(lineColor))
+                    e.Graphics.DrawLine(pen, e.Bounds.Left + 8, e.Bounds.Top + 3, e.Bounds.Right - 8, e.Bounds.Top + 3);
+                TextRenderer.DrawText(e.Graphics, caption, this.Font,
+                    new Point(e.Bounds.Left + 8, e.Bounds.Top + 5), subColor);
+            }
+            else
+            {
+                TextRenderer.DrawText(e.Graphics, caption, this.Font,
+                    new Point(e.Bounds.Left + 8, e.Bounds.Top + 4), subColor);
+            }
         }
 
-        // A past-search row: history glyph, the remembered query (highlighted
-        // with the typed text) and the item it last opened.
+        // A past-search row: the remembered item's regular app icon, the query
+        // (highlighted with the typed text) and the item name it last opened.
         private void DrawPastSearchRow(DrawItemEventArgs e, SearchHistoryEntry he)
         {
             if (he == null) return;
@@ -2343,12 +2376,15 @@ namespace WinPanel
             bool sel = (e.State & DrawItemState.Selected) != 0;
             using (var back = new SolidBrush(sel ? hoverColor : bgColor))
                 g.FillRectangle(back, e.Bounds);
+            Bitmap ic = SearchRowIcon(he.IsFolder, he.Path);
+            int iconY = e.Bounds.Top + Math.Max(3, (panelSearchList.ItemHeight - 16) / 2);
+            if (ic != null) g.DrawImage(ic, new Rectangle(e.Bounds.Left + 8, iconY, 16, 16));
+
             Font f = this.Font;
             Color acc = settings.IsLightTheme ? Color.FromArgb(0, 102, 204) : Color.FromArgb(96, 180, 255);
             bool light = settings.IsLightTheme;
             Color subColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 125) : Color.FromArgb(150, 150, 155);
             int ty = e.Bounds.Top + Math.Max(4, (panelSearchList.ItemHeight - TextRenderer.MeasureText("Ag", f).Height) / 2);
-            TextRenderer.DrawText(g, "↺", f, new Point(e.Bounds.Left + 8, ty), acc);
 
             int maxW = e.Bounds.Width - 32 - 8;
             string query = he.Query ?? "";
@@ -2400,7 +2436,7 @@ namespace WinPanel
                 if (itemTip == null) return;
                 int i = panelSearchList.IndexFromPoint(e.Location);
                 string t = "";
-                if (IsPastHeaderRow(i))
+                if (IsHeaderRow(i))
                 {
                     t = "";
                 }

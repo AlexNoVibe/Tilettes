@@ -273,7 +273,11 @@ namespace WinPanel
               "Righe di piastrelle extra sotto la griglia visibile, stessa dimensione; raggiungibili scorrendo in basso (0 = off)" },
             { "Past search", "Ricerche recenti" },
             { "Command (%1 = current folder):", "Comando (%1 = cartella corrente):" },
-            { "in bookmarks %1 = current folder", "nei segnalibri %1 = cartella corrente" }
+            { "in bookmarks %1 = current folder", "nei segnalibri %1 = cartella corrente" },
+            { "Regular search", "Ricerca normale" },
+            { "New version v", "Nuova versione v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " è pubblicata, ma ha meno di un giorno. Verrà proposta dopo 24 ore - i falsi positivi antivirus sulle build recenti di solito si sistemano in quel tempo." }
         };
     }
 }

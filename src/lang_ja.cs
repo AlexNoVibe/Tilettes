@@ -273,7 +273,11 @@ namespace WinPanel
               "表示グリッドの下に追加するタイル行（同じサイズ）。下にスクロールして到達 (0 = オフ)" },
             { "Past search", "過去の検索" },
             { "Command (%1 = current folder):", "コマンド (%1 = 現在のフォルダー):" },
-            { "in bookmarks %1 = current folder", "ブックマークの %1 は現在のフォルダー" }
+            { "in bookmarks %1 = current folder", "ブックマークの %1 は現在のフォルダー" },
+            { "Regular search", "通常の検索" },
+            { "New version v", "新しいバージョン v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " が公開されましたが、公開からまだ1日経っていません。24時間後に案内されます - 新しいビルドのウイルス対策ソフトの誤検知はこの時間内に解消されることが多いです。" }
         };
     }
 }

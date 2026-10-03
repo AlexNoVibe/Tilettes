@@ -234,8 +234,12 @@ namespace WinPanel
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "Дополнительные ряды плиток под видимой сеткой, того же размера; добраться до них можно прокруткой вниз (0 = выкл)" },
             { "Past search", "Прошлый поиск" },
+            { "Regular search", "Обычный поиск" },
             { "Command (%1 = current folder):", "Команда (%1 — текущая папка):" },
             { "in bookmarks %1 = current folder", "в закладках %1 — текущая папка" },
+            { "New version v", "Новая версия v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " уже опубликована, но ей меньше суток. Будет предложена через 24 часа — за это время обычно уходят ложные срабатывания антивирусов на свежих сборках." },
         };
 
         // Applies dictionary translation to every static text in the control tree

@@ -273,7 +273,11 @@ namespace WinPanel
               "Linhas de blocos extras abaixo da grade visível, do mesmo tamanho; acessíveis rolando para baixo (0 = desativado)" },
             { "Past search", "Pesquisas anteriores" },
             { "Command (%1 = current folder):", "Comando (%1 = pasta atual):" },
-            { "in bookmarks %1 = current folder", "nos favoritos %1 = pasta atual" }
+            { "in bookmarks %1 = current folder", "nos favoritos %1 = pasta atual" },
+            { "Regular search", "Pesquisa normal" },
+            { "New version v", "Nova versão v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " está publicada, mas tem menos de um dia. Será oferecida após 24 horas - falsos positivos de antivírus em builds recentes costumam se resolver nesse prazo." }
         };
     }
 }

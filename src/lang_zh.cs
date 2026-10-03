@@ -273,7 +273,11 @@ namespace WinPanel
               "可见网格下方的额外图块行，大小相同；向下滚动即可到达（0 = 关）" },
             { "Past search", "历史搜索" },
             { "Command (%1 = current folder):", "命令 (%1 = 当前文件夹)：" },
-            { "in bookmarks %1 = current folder", "书签中 %1 表示当前文件夹" }
+            { "in bookmarks %1 = current folder", "书签中 %1 表示当前文件夹" },
+            { "Regular search", "普通搜索" },
+            { "New version v", "新版本 v" },
+            { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
+              " 已发布，但发布还不到一天。将在 24 小时后再提供 — 新构建的杀毒软件误报通常会在期间消除。" }
         };
     }
 }
