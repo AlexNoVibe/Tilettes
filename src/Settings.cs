@@ -52,6 +52,13 @@ namespace WinPanel
         // panel instead of the Start menu. Independent of HotkeyWin (the key).
         public bool HotkeyStartClick { get; set; }
 
+        // Tiles open by double click (false = single click, the classic behavior).
+        public bool TilesOpenByDoubleClick { get; set; }
+
+        // Search results open by double click (true = the classic behavior;
+        // false = a single click opens the result).
+        public bool SearchOpenByDoubleClick { get; set; }
+
         // UI language: "ru" or "en"
         public string Language { get; set; }
 
@@ -199,6 +206,8 @@ namespace WinPanel
             // untouched by this default.
             HotkeyWin = false;
             HotkeyStartClick = false;
+            TilesOpenByDoubleClick = false;
+            SearchOpenByDoubleClick = true;
             SkinName = "mint";
             FirstRunDone = false;
             UpdateCheckEnabled = true;
@@ -417,6 +426,9 @@ namespace WinPanel
                 bool hks;
                 if (bool.TryParse(hksRaw, out hks)) s.HotkeyStartClick = hks;
                 else if (hksRaw.Length == 0 && s.HotkeyWin) s.HotkeyStartClick = true;
+                bool todc, sobdc;
+                if (bool.TryParse(ini.Read("TilesOpenByDoubleClick"), out todc)) s.TilesOpenByDoubleClick = todc;
+                if (bool.TryParse(ini.Read("SearchOpenByDoubleClick"), out sobdc)) s.SearchOpenByDoubleClick = sobdc;
                 val = ini.Read("SkinName"); if (val != null) s.SkinName = val;
                 bool frd, uce, uai;
                 if (bool.TryParse(ini.Read("FirstRunDone"), out frd)) s.FirstRunDone = frd;
@@ -519,6 +531,8 @@ namespace WinPanel
                 ini.Write("SearchSaveHistory", SearchSaveHistory.ToString());
                 ini.Write("HotkeyWin", HotkeyWin.ToString());
                 ini.Write("HotkeyStartClick", HotkeyStartClick.ToString());
+                ini.Write("TilesOpenByDoubleClick", TilesOpenByDoubleClick.ToString());
+                ini.Write("SearchOpenByDoubleClick", SearchOpenByDoubleClick.ToString());
                 ini.Write("SkinName", SkinName == null ? "" : SkinName);
                 ini.Write("FirstRunDone", FirstRunDone.ToString());
                 ini.Write("UpdateCheckEnabled", UpdateCheckEnabled.ToString());

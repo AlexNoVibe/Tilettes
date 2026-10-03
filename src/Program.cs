@@ -328,7 +328,16 @@ namespace WinPanel
             };
             panelSearchList.DrawItem += PanelSearchList_DrawItem;
             panelSearchList.MouseMove += PanelSearchList_MouseMove;
-            panelSearchList.DoubleClick += (s, e) => OpenPanelSearchResult(panelSearchList.SelectedIndex);
+            // Open mode (settings): double click (classic) or single click.
+            panelSearchList.DoubleClick += (s, e) =>
+            {
+                if (settings.SearchOpenByDoubleClick) OpenPanelSearchResult(panelSearchList.SelectedIndex);
+            };
+            panelSearchList.MouseClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left && !settings.SearchOpenByDoubleClick)
+                    OpenPanelSearchResult(panelSearchList.IndexFromPoint(e.Location));
+            };
             panelSearchList.RowMenuRequested = (p, i) =>
             {
                 // Valid row → the result menu; empty area below the rows → no
@@ -4792,26 +4801,24 @@ namespace WinPanel
                         {
                             OpenMiniExplorer(item);
                         }
-                        else if (item.IsFolder)
+                        else if (!settings.TilesOpenByDoubleClick)
                         {
-                            if (settings.OpenFoldersInPopup)
-                            {
-                                OpenFolderPopup(item, tile, panel, tabData);
-                            }
-                            else
-                            {
-                                tabNavigations[tabData].Push(item);
-                                RenderCurrentFolder(panel, tabData);
-                            }
-                        }
-                        else
-                        {
-                            LaunchItem(item.Path);
+                            // Single-click open (the classic behavior). In the
+                            // double-click mode the MouseDoubleClick handler opens.
+                            OpenTileItem(panel, tabData, tile, item);
                         }
                     }
                     draggingTile = null;
                     draggingItem = null;
                 }
+            };
+
+            // Double-click open mode (settings): a double click navigates into a
+            // folder or launches the item; the plain click above stays free.
+            tile.MouseDoubleClick += (sender, e) =>
+            {
+                if (e.Button == MouseButtons.Left && settings.TilesOpenByDoubleClick && editState != 2)
+                    OpenTileItem(panel, tabData, tile, item);
             };
 
             panel.Controls.Add(tile);
@@ -4821,6 +4828,36 @@ namespace WinPanel
         {
             var navStack = tabNavigations[tabData];
             return navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
+        }
+
+        // Opens a tile's item: navigate into folders (same window or popup) or
+        // launch the path. Shared by the single-click MouseUp path and the
+        // double-click handler used when TilesOpenByDoubleClick is on.
+        private void OpenTileItem(Panel panel, TabData tabData, TileControl tile, ShortcutItem item)
+        {
+            if (item.IsFolder)
+            {
+                if (settings.OpenFoldersInPopup)
+                {
+                    OpenFolderPopup(item, tile, panel, tabData);
+                }
+                else
+                {
+                    tabNavigations[tabData].Push(item);
+                    RenderCurrentFolder(panel, tabData);
+                }
+            }
+            else
+            {
+                LaunchItem(item.Path);
+            }
+        }
+
+        // The tile-open setting as a static read (PopupTile holds no settings
+        // reference of its own; CurrentSettings carries the live values).
+        internal static bool TilesOpenByDoubleClick
+        {
+            get { Settings s = CurrentSettings; return s != null && s.TilesOpenByDoubleClick; }
         }
 
         internal static void OpenContainingFolder(ShortcutItem item)
@@ -5592,7 +5629,15 @@ namespace WinPanel
 
             tile.Click += (s, e) =>
             {
-                if (child.IsFolder) NavigateInto(child);
+                if (child.IsFolder && !MainForm.TilesOpenByDoubleClick) NavigateInto(child);
+            };
+
+            // Double-click open mode: nested folders navigate on a double click
+            // (files are launched by PopupTile.OnMouseDoubleClick).
+            tile.MouseDoubleClick += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left && child.IsFolder && MainForm.TilesOpenByDoubleClick)
+                    NavigateInto(child);
             };
 
             tile.MouseDown += (s, e) =>
@@ -5828,8 +5873,22 @@ namespace WinPanel
             if (e.Button == MouseButtons.Left)
             {
                 if (item.IsFolder) return; // nested folders: open inside the panel for now
+                if (MainForm.TilesOpenByDoubleClick) return; // double-click mode: opened below
                 MainForm.LaunchItem(item.Path);
             }
+        }
+
+        // Double-click open mode (settings): a double click launches the file.
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+            if (SuppressClick)
+            {
+                SuppressClick = false;
+                return;
+            }
+            if (e.Button == MouseButtons.Left && MainForm.TilesOpenByDoubleClick && !item.IsFolder)
+                MainForm.LaunchItem(item.Path);
         }
 
         protected override void OnPaint(PaintEventArgs e)

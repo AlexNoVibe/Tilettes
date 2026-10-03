@@ -38,6 +38,7 @@ namespace WinPanel
         private NumericUpDown numIconScale;
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
         private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc, chkSearchStart;
+        private ComboBox cmbTileOpen, cmbSearchOpen;
         private NumericUpDown numFolderExit;
     private TextBox txtFolderOpenProgram;
     private CheckBox chkWinClick;
@@ -342,6 +343,18 @@ namespace WinPanel
             Tip(chkEditMode, "New tiles can be added by dropping files onto the panel", "Новые плитки можно добавлять перетаскиванием файлов на панель");
             y += 30;
 
+            // Tile open mode (settings): single click (classic) or double click.
+            var lblTileOpen = new Label { Text = Loc.S("Open tiles:", "Открытие плиток:"), Left = 20, Top = y, Width = 130 };
+            cmbTileOpen = new ComboBox { Left = 150, Top = y - 2, Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbTileOpen.Items.Add(Loc.S("Single click", "Одиночный клик"));
+            cmbTileOpen.Items.Add(Loc.S("Double click", "Двойной клик"));
+            cmbTileOpen.SelectedIndex = settings.TilesOpenByDoubleClick ? 1 : 0;
+            Tip(cmbTileOpen, "How tiles open: a single click launches right away, a double click needs two clicks",
+                "Как открывать плитки: одиночный клик запускает сразу, двойной — по двум кликам");
+            scrollPanel.Controls.Add(lblTileOpen);
+            scrollPanel.Controls.Add(cmbTileOpen);
+            y += 30;
+
             var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
             // Editable dropdown: pick a preset or type any Mod+Key combination
             // (Ctrl/Alt/Shift/Win + a letter or digit), e.g. "Ctrl+Alt+P".
@@ -458,6 +471,18 @@ namespace WinPanel
             scrollPanel.Controls.Add(lblSearchResultsFont);
 
             y += 30; // the search fonts row must not overlap the file type buttons below
+
+            // Search result open mode (settings): double click (classic) or single click.
+            var lblSearchOpen = new Label { Text = Loc.S("Open results:", "Открытие результатов:"), Left = 20, Top = y, Width = 150 };
+            cmbSearchOpen = new ComboBox { Left = 175, Top = y - 2, Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
+            cmbSearchOpen.Items.Add(Loc.S("Single click", "Одиночный клик"));
+            cmbSearchOpen.Items.Add(Loc.S("Double click", "Двойной клик"));
+            cmbSearchOpen.SelectedIndex = settings.SearchOpenByDoubleClick ? 1 : 0;
+            Tip(cmbSearchOpen, "How search results open: by a single click or a double click",
+                "Как открывать результаты поиска: одиночным или двойным кликом");
+            scrollPanel.Controls.Add(lblSearchOpen);
+            scrollPanel.Controls.Add(cmbSearchOpen);
+            y += 30;
 
             y = AddSection("File types & explorer", "Типы файлов и проводник", y);
             var lblTypes = new Label { Text = "File types:", Left = 20, Top = y, Width = 92 };
@@ -971,6 +996,8 @@ namespace WinPanel
 
             settings.HotkeyWin = chkWinKey.Checked;
             settings.HotkeyStartClick = chkWinClick.Checked;
+            settings.TilesOpenByDoubleClick = cmbTileOpen.SelectedIndex == 1;
+            settings.SearchOpenByDoubleClick = cmbSearchOpen.SelectedIndex == 1;
             settings.SearchSaveHistory = chkSaveHistory.Checked;
             settings.BackupDays = (int)numBackupDays.Value;
             settings.StartMenuSyncHours = (int)numSyncHours.Value;
