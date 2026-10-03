@@ -116,7 +116,7 @@ namespace WinPanel
     // Central app identity: bump AppVersion on every release tag (v0.5 = "0.5").
     public static class AppInfo
     {
-        public const string AppVersion = "0.6.17";
+        public const string AppVersion = "0.6.18";
         public const string RepoUrl = "https://github.com/AlexNoVibe/Tilettes";
         public const string IssuesUrl = RepoUrl + "/issues";
         public const string ReleasesUrl = RepoUrl + "/releases";

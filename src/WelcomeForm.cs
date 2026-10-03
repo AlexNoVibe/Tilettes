@@ -22,7 +22,7 @@ namespace WinPanel
         private readonly Font mainFont, titleFont, smallFont;
         private readonly ToolTip tips = new ToolTip();
 
-        private Label lblGreet, lblBeta, lblIssuePrompt, lblHow, lblLang, lblSupport;
+        private Label lblGreet, lblNote, lblIssuePrompt, lblHow, lblEditHint, lblLang, lblSupport;
         private LinkLabel linkIssues, linkDonate;
         private CheckBox chkUpdates;
         private Button btnClose, btnExamples;
@@ -123,7 +123,7 @@ namespace WinPanel
             int y = 44 + 12;
 
             lblGreet = AddLabel(x, ref y, cw, th + 4, titleFont);
-            lblBeta = AddLabel(x, ref y, cw, lh + 4, mainFont);
+            lblNote = AddLabel(x, ref y, cw, lh + 4, mainFont);
             y += 4;
             lblIssuePrompt = AddLabel(x, ref y, cw, lh + 2, mainFont);
             linkIssues = AddLink(x, ref y, cw, lh + 4, "github.com/AlexNoVibe/Tilettes/issues", AppInfo.IssuesUrl);
@@ -136,6 +136,10 @@ namespace WinPanel
             y += 106;
 
             lblHow = AddLabel(x, ref y, cw, lh + 2, mainFont);
+            // The corner checkmark is the single most asked "how do I add tiles"
+            // question - spell out what it toggles right under the how-to line.
+            lblEditHint = AddLabel(x, ref y, cw, mainFont.Height + 2, mainFont);
+            lblEditHint.ForeColor = dimColor;
             y += 10;
 
             // ---- Language: painted flags (one per supported language, 5 x 2) ----
@@ -294,11 +298,12 @@ namespace WinPanel
         private void ApplyLanguage()
         {
             lblGreet.Text = Loc.S("Thanks for trying Tilettes!", "Спасибо, что решили попробовать Плиточки!");
-            lblBeta.Text = Loc.S("This is a beta version - bugs and rough edges are possible.",
-                "Это бета-версия — возможны баги и недоделки.");
+            lblNote.Text = Loc.S("Bugs and rough edges are possible.", "Возможны баги и недоделки.");
             lblIssuePrompt.Text = Loc.S("Found a bug or have an idea? Create an issue on GitHub:", "Нашли баг или есть идея? Создайте issue на GitHub:");
             lblHow.Text = Loc.S("Just drag a shortcut or a file onto the panel - it becomes a tile.",
                 "Просто перетащите ярлык или файл на панель — появится плитка.");
+            lblEditHint.Text = Loc.S("✅ - the corner checkmark enables adding and editing tiles",
+                "✅ — галочка в углу панели включает добавление и редактирование плиток");
             lblLang.Text = Loc.S("Language / Язык:", "Язык / Language:");
             chkUpdates.Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически");
             lblSupport.Text = Loc.S("Support the author", "Поддержать автора");
@@ -329,34 +334,56 @@ namespace WinPanel
             }
         }
 
-        // Mini-diagram: a .lnk card -> arrow -> grid with three tiles + a ghost
-        // cell where the new tile lands (small cursor included).
+        // Mini-diagram: three source cards (a folder - amber, an .exe - green,
+        // a .lnk - neutral) -> arrow -> grid with three tiles + a ghost cell
+        // where the new tile lands (small cursor included). Anything you can
+        // drag becomes a tile, not just shortcuts.
         private void DrawIllustration(Graphics g, Rectangle r)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             int cy = r.Y + r.Height / 2;
 
-            var card = new Rectangle(r.Left + 14, cy - 26, 52, 52);
-            using (var path = RoundRectPath(card, 8))
-            using (var b = new SolidBrush(panelColor))
-            using (var pen = new Pen(dimColor, 1f))
+            int cardW = 56, cardH = 26, cardGap = 7;
+            int cardsH = cardH * 3 + cardGap * 2;
+            int top = cy - cardsH / 2;
+            var folder = new Rectangle(r.Left + 10, top, cardW, cardH);
+            var exe = new Rectangle(r.Left + 10, top + cardH + cardGap, cardW, cardH);
+            var lnk = new Rectangle(r.Left + 10, top + (cardH + cardGap) * 2, cardW, cardH);
+
+            using (var amber = new SolidBrush(Color.FromArgb(241, 196, 15)))
+            using (var path = RoundRectPath(folder, 6))
+                g.FillPath(amber, path);
+            DrawFolderGlyph(g, folder);
+
+            using (var green = new SolidBrush(Color.FromArgb(46, 204, 113)))
+            using (var path = RoundRectPath(exe, 6))
+                g.FillPath(green, path);
+            using (var f = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            using (var white = new SolidBrush(Color.White))
             {
-                g.FillPath(b, path);
+                var sz = TextRenderer.MeasureText(".exe", f);
+                g.DrawString(".exe", f, white, exe.Left + (exe.Width - sz.Width) / 2f, exe.Top + (exe.Height - sz.Height) / 2f);
+            }
+
+            using (var back = new SolidBrush(panelColor))
+            using (var pen = new Pen(dimColor, 1f))
+            using (var path = RoundRectPath(lnk, 6))
+            {
+                g.FillPath(back, path);
                 g.DrawPath(pen, path);
             }
-            using (var f = new Font("Segoe UI", 8f))
+            using (var f = new Font("Segoe UI", 8.5f))
             using (var tb = new SolidBrush(textColor))
             {
                 var sz = TextRenderer.MeasureText(".lnk", f);
-                g.DrawString(".lnk", f, tb, card.Left + (card.Width - sz.Width) / 2f, card.Top + (card.Height - sz.Height) / 2f);
+                g.DrawString(".lnk", f, tb, lnk.Left + (lnk.Width - sz.Width) / 2f, lnk.Top + (lnk.Height - sz.Height) / 2f);
             }
-
-            int ax1 = card.Right + 10, ax2 = card.Right + (r.Width / 2) - 30;
-            using (var pen = new Pen(dimColor, 2f) { CustomEndCap = new AdjustableArrowCap(6, 7) })
-                g.DrawLine(pen, ax1, cy, ax2, cy);
 
             int cell = 38, gap = 4;
             int gx = r.Right - 14 - (cell * 2 + gap), gy = cy - (cell * 2 + gap) / 2;
+            using (var pen = new Pen(dimColor, 2f) { CustomEndCap = new AdjustableArrowCap(6, 7) })
+                g.DrawLine(pen, r.Left + 10 + cardW + 10, cy, gx - 10, cy);
+
             for (int i = 0; i < 3; i++)
             {
                 var c = new Rectangle(gx + (i % 2) * (cell + gap), gy + (i / 2) * (cell + gap), cell, cell);
@@ -375,6 +402,19 @@ namespace WinPanel
                 g.DrawString("+", pf, tb, ghost.Left + (ghost.Width - sz.Width) / 2f, ghost.Top + (ghost.Height - sz.Height) / 2f);
             }
             DrawCursor(g, ghost.Left - 5, ghost.Top - 4);
+        }
+
+        // Folder pictogram on the amber source card: tab + body silhouette.
+        private static void DrawFolderGlyph(Graphics g, Rectangle card)
+        {
+            int w = 17, h = 11;
+            var body = new Rectangle(card.Left + (card.Width - w) / 2, card.Top + (card.Height - h) / 2 + 2, w, h);
+            var tab = new Rectangle(body.X, body.Y - 3, 7, 4);
+            using (var b = new SolidBrush(Color.FromArgb(93, 64, 55)))
+            {
+                g.FillRectangle(b, tab);
+                using (var path = RoundRectPath(body, 2)) g.FillPath(b, path);
+            }
         }
 
         private static void DrawCursor(Graphics g, int x, int y)

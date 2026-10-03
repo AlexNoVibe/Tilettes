@@ -242,6 +242,8 @@ namespace WinPanel
               " уже опубликована, но ей меньше суток. Будет предложена через 24 часа — за это время обычно уходят ложные срабатывания антивирусов на свежих сборках." },
             { "Like Tilettes? Support the author:", "Понравились Плиточки? Поддержите автора:" },
             { "Opens the donate section on GitHub", "Открывает раздел доната на GitHub" },
+            { "Bugs and rough edges are possible.", "Возможны баги и недоделки." },
+            { "✅ - the corner checkmark enables adding and editing tiles", "✅ — галочка в углу панели включает добавление и редактирование плиток" },
         };
 
         // Applies dictionary translation to every static text in the control tree
