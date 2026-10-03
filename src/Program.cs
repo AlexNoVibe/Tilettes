@@ -545,12 +545,16 @@ namespace WinPanel
 
         // WS_EX_COMPOSITED: the window (with all children) paints double-buffered,
         // which removes the blink/re-render flash while the window is moved or resized.
+        // WS_MINIMIZEBOX: a borderless window without it never gets SC_MINIMIZE from
+        // the taskbar, so clicking the panel's taskbar button did nothing — the
+        // standard toggle (active -> minimize, click again -> restore) was dead.
         protected override CreateParams CreateParams
         {
             get
             {
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= 0x02000000;
+                cp.Style |= 0x00020000;
                 return cp;
             }
         }
