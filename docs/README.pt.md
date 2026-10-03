@@ -6,22 +6,46 @@ title: Tilettes
 
 [English](https://github.com/AlexNoVibe/Tilettes/blob/master/README.md) · [Русский](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md) · [Español](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md) · **Português** · [Deutsch](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md) · [Français](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md) · [Italiano](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md) · [Polski](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md) · [中文 (简体)](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md) · [日本語](https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md)
 
+<!-- Para adicionar um idioma: crie docs/README.<código>.md (traduza), adicione
+     lang_xx.cs (tabela de UI indexada pelas strings em inglês, veja loc.cs) e, em
+     seguida, estenda a linha de idiomas acima, a mesma no topo de todos os outros
+     arquivos README e o array Loc.Languages. O GitHub exibe o README.md (inglês) na
+     página inicial do repositório; todos os outros idiomas ficam em docs/ como um
+     arquivo mais um link. -->
+
 Um painel de inicialização rápida para Windows: uma grade de mosaicos com atalhos, pastas e abas, pesquisa aproximada (fuzzy) integrada e um mini explorador de arquivos com console embutido. Um único EXE portátil, sem instalador, .NET Framework 4.8 (WinForms).
 
-Versão atual: **v0.6.0-beta** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
+![Tilettes — a janela principal](screenshot_main.png)
+
+Versão atual: **v1.0** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
+
+## Destaques
+
+**Mosaicos e abas** — mosaicos de 1×1…6×6; skins (Mint, Night, Android) além de temas claro/escuro; fontes e cores personalizadas; abas ilimitadas (arrastáveis, em várias linhas), layout livre/grade; pastas dentro da aba ou em janelas pop-up; linhas extras roláveis abaixo da grade; modo de edição com seleção múltipla e arrastar e soltar; nome, descrição (pesquisável) e ícone personalizados por mosaico; pré-visualizações de foto/vídeo nos mosaicos.
+
+**Pesquisa** — pesquisa aproximada (fuzzy) instantânea sobre nomes, metadados de programas (descrição / produto / empresa), caminhos completos e descrições do usuário; roda sobre os metadados em cache (sem varreduras de disco); layout de teclado errado corrigido (`знерщи` → `python`); resultados em dois blocos — consultas passadas (com ícones reais, lembradas entre sessões, com impulso de histórico) em cima, resultados regulares embaixo; cada fonte pode ser ativada ou desativada.
+
+**Leve** — um único exe portátil de ~0,5 MB (517 KB), todos os dados ao lado dele; nenhuma dependência além do .NET Framework integrado ao Windows; ~30 MB de RAM; os ícones são extraídos do shell exatamente uma única vez durante a vida do mosaico, para um `iconcache\` autolimpante; as execuções nunca bloqueiam o painel (processos desanexados, caminhos de rede em segundo plano); a inicialização renderiza apenas a aba ativa.
+
+**Mini explorador** — navegação por trilha (breadcrumbs), favoritos de pastas/comandos/grupos, um console `cmd.exe` embutido (histórico, zoom da fonte com Ctrl+roda do mouse); comandos favoritos executados com um clique, com `%1` = a pasta sendo navegada (`wt -d "%1"`); regras de "abrir com" por extensão/máscara com importação/exportação.
+
+**Sistema** — uma aba espelhada do Menu Iniciar (incluindo aplicativos UWP/Store) sincronizada de forma agendada; tecla de atalho global, captura opcional da tecla Win, bandeja, inicialização automática; menus de contexto nativos do Explorador de Arquivos; backups agendados e manuais com restauração em um clique; interface em 10 idiomas.
+
+**Código aberto** — código-fonte totalmente aberto; releases compilados pelo GitHub Actions a partir da tag + SHA256SUMS.txt; exatamente uma chamada de rede em todo o aplicativo (a verificação de atualizações, que é opt-in); sem telemetria.
 
 ## Recursos
 
 - **Painel** — mosaicos de 1×1…6×6, abas ilimitadas (arrastáveis, em várias linhas), pastas abertas dentro da própria aba ou em janelas pop-up, arrastar e soltar do Explorador de Arquivos, grade personalizada (colunas/linhas/transparência), escala de ícones.
-- **Pesquisa** — pesquisa nomes, nomes de arquivos, metadados de programas (FileDescription / ProductName / CompanyName), caminhos completos e descrições do usuário; correspondência aproximada (fuzzy) com precisão ajustável e correção de layout de teclado errado (`руддщ` → `hello`); os resultados são classificados pela qualidade da correspondência e os caracteres correspondentes são destacados.
-- **Mini Explorer** — navegação por trilha (breadcrumbs), favoritos de pastas/comandos/grupos, pesquisa de arquivos (pasta atual ou todos os discos fixos) com índice em segundo plano e um console `cmd.exe` embutido com histórico de comandos, comandos salvos e zoom da fonte com Ctrl+roda do mouse.
+- **Pesquisa** — pesquisa nomes, nomes de arquivos, metadados de programas (FileDescription / ProductName / CompanyName), caminhos completos e descrições do usuário; opcionalmente inclui a aba espelhada do Menu Iniciar; correspondência aproximada (fuzzy) com precisão ajustável e correção de layout de teclado errado (`руддщ` → `hello`); os resultados são classificados pela qualidade da correspondência e os caracteres correspondentes são destacados; consultas repetidas ganham um impulso do histórico; uma consulta digitada divide os resultados em dois blocos — consultas passadas lembradas em cima, resultados regulares embaixo (duplicatas completas são recolhidas); as linhas de pesquisas anteriores mostram os ícones reais dos itens lembrados.
+- **Mini Explorer** — navegação por trilha (breadcrumbs), favoritos de pastas/comandos/grupos (um comando pode conter `%1`, que é expandido para a pasta sendo navegada — por exemplo, `wt -d "%1"` abre o Windows Terminal bem ali) e um console `cmd.exe` embutido com histórico de comandos, comandos salvos e zoom da fonte com Ctrl+roda do mouse. (O módulo de pesquisa de arquivos está desativado desde a v0.6.0-beta — um stub é mantido para uma futura reativação.)
 - **Regras de tipos de arquivo** — ícones e associações de "abrir com" por extensão/máscara, importação/exportação.
-- **Integração com o desktop** — ícone na bandeja, inicialização automática com o Windows, tecla de atalho global, menus de contexto nativos do Explorador de Arquivos, janela sem bordas com redimensionamento pelas bordas.
-- **Primeira execução e atualizações** — uma janela de boas-vindas exibida uma única vez (aviso de beta, escolha de idioma, permissão de verificação de atualizações, mosaicos de exemplo) e uma verificação de atualizações no GitHub Releases com uma placa no canto quando existe uma versão mais nova.
+- **Integração com o desktop** — ícone na bandeja, inicialização automática com o Windows, tecla de atalho global, captura opcional da tecla Win, menus de contexto nativos do Explorador de Arquivos, janela sem bordas com redimensionamento pelas bordas.
+- **Skins e extras** — skins decorativas (paleta de cores própria + borda de janela arredondada), uma aba espelhada do Menu Iniciar reconstruída de forma agendada, backups completos em `autoBackup\`, histórico de pesquisa do painel.
+- **Primeira execução e atualizações** — uma janela de boas-vindas exibida uma única vez (um diagrama desenhado de "três fontes → grade de mosaicos", escolha de idioma, permissão de verificação de atualizações, um link de apoio, mosaicos de exemplo) e uma verificação de atualizações no GitHub Releases com uma placa no canto quando existe uma versão mais nova.
 
 ## Primeira execução e atualizações
 
-- **Janela de boas-vindas** (somente na primeira execução de todas): uma mensagem de agradecimento, um aviso de beta com link para [Issues](https://github.com/AlexNoVibe/Tilettes/issues), um mini-diagrama desenhado de "arraste um atalho → vira um mosaico", escolha de idioma (bandeiras RU/EN), permissão de verificação de atualizações, endereços de doação (clique para copiar) — e dois botões de saída: simplesmente **Fechar**, ou **Fechar e criar mosaicos de exemplo** (Bloco de Notas, Calculadora, Explorador de Arquivos e Paint como mosaicos prontos). Pode ser exibida novamente a qualquer momento pelo item "Mostrar a janela de boas-vindas novamente" nas configurações.
+- **Janela de boas-vindas** (somente na primeira execução de todas): uma mensagem de agradecimento, um aviso de que bugs e arestas podem existir com um link para [Issues](https://github.com/AlexNoVibe/Tilettes/issues), um mini-diagrama desenhado (um cartão de pasta, um .exe e um .lnk → seta → a grade de mosaicos com uma célula fantasma "+"), escolha de idioma (10 botões de bandeira), a permissão de verificação de atualizações, um link **Apoie o autor** para a [seção de doação](https://github.com/AlexNoVibe/Tilettes#donate) — e dois botões de saída: simplesmente **Fechar**, ou **Fechar e criar mosaicos de exemplo** (Bloco de Notas, Calculadora, Explorador de Arquivos e Paint como mosaicos prontos). Pode ser exibida novamente a qualquer momento pelo item "Mostrar a janela de boas-vindas novamente" nas configurações.
 - **Verificação de atualizações** — o aplicativo consulta a API pública do GitHub Releases uma vez a cada N dias (padrão: 3; a primeira verificação também acontece N dias após a primeira execução, não imediatamente). Nada é enviado a lugar algum e, com a verificação desativada nas configurações, nenhuma requisição de rede é feita. Quando existe uma tag mais nova, uma placa verde **⟳ Atualizar** aparece ao lado do botão de configurações e abre a página de [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest). "Verificar agora" nas configurações faz uma verificação manual independentemente do intervalo (o resultado é informado em uma caixa de mensagem). A instalação automática ainda é um stub (TODO).
 - **Gancho de teste** — inicie o aplicativo com `WINPANEL_MOCK_UPDATE=0.6` para exibir a placa de Atualizar como se existisse um release mais novo (sem envolver a rede).
 
@@ -36,7 +60,7 @@ Todas as configurações ficam em uma única janela (botão ⚙ / menu da bandej
 | Tamanho na inicialização (W × H) | 200–4000 | 900 × 800 | Tamanho do painel a cada inicialização. O redimensionamento durante uma sessão não é persistido — apenas a posição é. |
 | Posição da janela (X, Y) | −4000…4000 | 100, 100 | Posição na tela ao iniciar. Atualizada automaticamente quando a janela é movida. |
 | Tecla de atalho para mostrar a janela | predefinições + personalizada | Ctrl+Q | Tecla de atalho global que mostra/ativa o painel. Escolha uma predefinição (None, Ctrl+Q, Ctrl+Shift+Q, Alt+Q, Ctrl+J, …) ou digite qualquer combinação `Mod+Tecla` (Ctrl/Alt/Shift/Win + uma letra ou dígito) diretamente no campo editável; uma entrada não reconhecida é rejeitada com uma explicação. |
-| Idioma | ru / en | ru | Idioma da interface, aplicado imediatamente. |
+| Idioma | en, ru, es, pt, de, fr, it, pl, zh, ja | ru | Idioma da interface (10 idiomas), aplicado imediatamente. |
 
 ### Grade e mosaicos
 
@@ -48,7 +72,10 @@ Todas as configurações ficam em uma única janela (botão ⚙ / menu da bandej
 | Tamanho padrão do item | 1–6 | 2 | Tamanho dos mosaicos recém-adicionados (1×1 … 6×6 células). |
 | Escala dos ícones (%) | 25–400 | 100 | Tamanho do ícone dentro de um mosaico, em porcentagem do padrão. |
 | Permitir adicionar ícones | ativado/desativado | ativado | Modo de edição: arrastar mosaicos, criar pastas, receber arquivos. Quando desativado, os mosaicos simplesmente são executados ao clicar. |
-| Skin e tema | Nenhum (escuro) / Claro / skins | Nenhum (escuro) | Tema clássico escuro ou claro, ou uma skin decorativa (cores próprias + borda da janela). |
+| Rótulo do mosaico: duas linhas | ativado/desativado | ativado | Mosaicos altos quebram o rótulo em duas linhas (o alinhamento das duas linhas — esquerda/centro/direita — é definido ao lado). |
+| Ocultar sufixo de atalho | ativado/desativado | ativado | Apenas exibição: " - Shortcut" / " — ярлык" (variantes de travessão, vários idiomas) é ocultado no rótulo; o nome armazenado e a pesquisa permanecem intactos — desmarque para trazê-lo de volta. |
+| Ocultar extensão de arquivo | ativado/desativado | ativado | Apenas exibição: a extensão real do caminho do item (.mp4 …) é ocultada no rótulo; desmarque para trazê-la de volta. |
+| Skin e tema | Nenhum (escuro) / Claro / skins | Mint | Tema clássico escuro ou claro, ou uma skin decorativa com paleta própria e borda de janela: Android, Night, Mint (o padrão de fábrica). |
 
 ### Pastas
 
@@ -63,7 +90,7 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 
 | Configuração | Intervalo | Padrão | Descrição |
 |---|---|---|---|
-| tamanho | 6–24 | 9 | Tamanho da fonte do grupo. |
+| tamanho | 6–24 | 14 | Tamanho da fonte do grupo. |
 | amostra de cor | qualquer cor | vazia | Cor de texto personalizada; vazia = padrão do tema. Aplica-se aos rótulos dos mosaicos, aos títulos das abas ou a todo o texto da interface. |
 | família | qualquer fonte instalada | Segoe UI | Família de fontes do grupo. |
 
@@ -75,8 +102,9 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Pesquisar nos metadados | ativado/desativado | ativado | Nome do arquivo, destino do atalho, informações de versão (descrição, produto, empresa). |
 | Pesquisar nos caminhos completos | ativado/desativado | ativado | O texto do caminho completo, incluindo as pastas pai. |
 | Pesquisar nas descrições | ativado/desativado | ativado | Descrições do usuário (clique direito → Descrição…). |
-| Fonte da pesquisa: campo | 7–30 | 9 | Tamanho da fonte do campo de pesquisa. |
-| Fonte da pesquisa: resultados | 7–30 | 9 | Tamanho da fonte das linhas de resultados (a altura da linha acompanha a fonte). |
+| Pesquisar na aba Iniciar | ativado/desativado | ativado | Inclui a aba espelhada do Menu Iniciar na pesquisa do painel. |
+| Fonte da pesquisa: campo | 7–30 | 14 | Tamanho da fonte do campo de pesquisa. |
+| Fonte da pesquisa: resultados | 7–30 | 14 | Tamanho da fonte das linhas de resultados (a altura da linha acompanha a fonte). |
 
 ### Atualizações
 
@@ -86,7 +114,7 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Verificar a cada N dias | 1–365 | 3 | Com que frequência verificar. A primeira verificação acontece N dias após a primeira execução. |
 | Verificar agora | botão | — | Consulta o GitHub Releases imediatamente (a verificação manual funciona mesmo com a automática desativada). |
 | Instalar atualizações automaticamente | ativado/desativado | desativado | **Stub (TODO)** — ainda não implementado. |
-| ♥ Doar | botão | — | Lista pop-up de carteiras (um clique copia o endereço) mais a seção de doação no GitHub. |
+| ♥ Doar | botão | — | Abre a seção de doação do GitHub ([README → Doar](https://github.com/AlexNoVibe/Tilettes#donate)) no navegador. |
 | Mostrar a janela de boas-vindas novamente | botão | — | Reproduz a janela de boas-vindas da primeira execução. |
 
 ### Mini Explorer (chaves INI)
@@ -98,7 +126,7 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | `MiniExplorerBookmarks` | ativado/desativado | ativado | Visibilidade do painel lateral de favoritos. |
 | `MiniExplorerTopBar` | ativado/desativado | ativado | Visibilidade da barra horizontal de favoritos. |
 | `MiniExplorerConsole` | 15–85 | 40 | Altura do console como porcentagem da janela. |
-| `ConsoleFontSizeX10` | 60–280 | 85 | Tamanho da fonte do console ×10 (85 = 8,5 pt), alterado com Ctrl+roda do mouse. |
+| `ConsoleFontSizeX10` | 60–280 | 140 | Tamanho da fonte do console ×10 (140 = 14 pt), alterado com Ctrl+roda do mouse. |
 
 ### Inicialização automática e bandeja
 
@@ -109,13 +137,14 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Minimizar em vez de fechar | ativado/desativado | ativado | ✕ / Alt+F4 oculta para a bandeja (ou minimiza) em vez de encerrar. Sair está no menu da bandeja. |
 | Manter sempre o ícone na bandeja | ativado/desativado | ativado | Ícone da bandeja visível o tempo todo. |
 | Lembrar a aba ativa | ativado/desativado | ativado | Restaura a última aba ativa ao iniciar. |
+| Capturar o botão Iniciar (Win) | ativado/desativado | desativado | Um toque solo no Win mostra o painel em vez do menu Iniciar (gancho de teclado de baixo nível); combinações Win+tecla passam adiante. Recurso opcional (opt-in) — desativado por padrão. |
 
 ### Backup e sincronização do Menu Iniciar
 
-- **Fazer backup agora** — backup zip completo em `autoBackup\` (configurações, mosaicos, ícones, favoritos, histórico de pesquisa, o exe); agendado por "Fazer backup a cada N dias" (0 = desativado), criado ~3 minutos após a inicialização quando é a hora.
+- **Fazer backup agora** — backup zip completo em `autoBackup\` (configurações, mosaicos, ícones, favoritos, histórico de pesquisa, o exe); agendado por "Fazer backup a cada N dias" (padrão 7, 0 = desativado), criado ~3 minutos após a inicialização quando é a hora.
 - **Salvar backup (zip)** — o mesmo arquivo compactado em um destino escolhido pelo usuário.
 - **Restaurar a partir de arquivo…** — espera um zip criado pelo próprio Tilettes; os arquivos são descompactados na pasta de trabalho, `Tilettes.exe` nunca é substituído.
-- **Sincronizar o Menu Iniciar agora** / a cada N horas (0 = desativado) — reconstrói a aba espelhada do Menu Iniciar.
+- **Sincronizar o Menu Iniciar agora** / a cada N horas (padrão 24, 0 = desativado) — reconstrói a aba espelhada do Menu Iniciar.
 
 ## Teclas de atalho e comandos
 
@@ -124,6 +153,7 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Teclas / ação | Resultado |
 |---|---|
 | Tecla de atalho (padrão Ctrl+Q) | Mostrar / ativar o painel. |
+| Pressionar o Win sozinho (opcional) | Mostrar / ocultar o painel em vez do menu Iniciar — ative "Capturar o botão Iniciar (Win)" nas configurações. |
 | Digite qualquer texto, ou Ctrl+F | Abre a pesquisa do painel. |
 | ↓ | Pular para a lista de resultados. |
 | Enter | Abre o resultado selecionado (pasta → navega, arquivo → executa). |
@@ -132,11 +162,11 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Ctrl+clique em um mosaico de pasta | Abre o Mini Explorer (se ativado). |
 | Arrastar um mosaico (modo de edição) | Move-o; soltar sobre uma pasta o move para dentro. |
 | Soltar arquivos no painel (modo de edição) | Adiciona como mosaicos (soltar sobre uma pasta adiciona para dentro). |
-| Clique direito em um mosaico | Menu nativo do Explorador de Arquivos mais: Descrição…, Tamanho 1×1–6×6, Renomear, Alterar ícone, Remover, Mover para fora da pasta, Abrir no Mini Explorer (pastas). |
+| Clique direito em um mosaico | Menu nativo do Explorador de Arquivos mais: Descrição…, Tamanho 1×1–6×6, Renomear, Alterar ícone, Remover, Mover para fora da pasta, Mover para aba ▸, Abrir no Mini Explorer (pastas). |
 | Clique direito em uma aba | Excluir (a última aba é protegida), Renomear, Alternar layout livre/grade. |
 | Arrastar uma aba | Reordenar dentro de uma linha ou mover para outra linha. |
 | Clique direito em área vazia do painel | Criar pasta, Configurações. |
-| Botões ▦ / ✅ / ⚙ | Visibilidade da grade, modo de edição, configurações. |
+| Botões ▦ / ✅ / ⚙ | Visibilidade da grade, modo de edição, configurações. ✅ tem três estados: desativado / edição / seleção múltipla — na seleção múltipla, clique nos mosaicos para escolher vários e depois remova-os ou mova-os em lote pelo menu de clique direito. |
 
 ### Mini Explorer
 
@@ -147,9 +177,7 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 | Backspace | Subir um nível. |
 | Alt+← / Alt+→ | Voltar / avançar. |
 | Enter / duplo clique | Abrir (pasta navega, arquivo executa). |
-| Esc | Sair da pesquisa → cancelar a edição do caminho → fechar a janela. |
-| Digitar na lista de arquivos | Inicia uma pesquisa no campo de pesquisa. |
-| ↓ / ↑ (na pesquisa) | Move pelos resultados. |
+| Esc | Cancelar a edição do caminho → fechar a janela. |
 | Ctrl+roda do mouse | Tamanho da fonte do console (persistido). |
 | Arrastar o divisor | Altura do console (persistida). |
 | Botões ≡ / ☰ | Alternar painel lateral de favoritos / barra superior de favoritos. |
@@ -160,13 +188,13 @@ Uma linha para cada grupo: **Mosaicos**, **Abas** e **Interface**:
 
 ### Console
 
-Qualquer comando `cmd.exe` de uma única linha pode ser digitado e executado (Enter ou **Executar**). O diretório de trabalho é ressincronizado com a pasta atual antes de cada comando. **+ Salvar** armazena o comando digitado como um favorito (opcionalmente dentro de um grupo); comandos salvos são executados ao clicar. Botões: **Limpar** (apagar a saída), **Reiniciar** (novo cmd.exe), **Nova janela** (uma janela de console real na pasta atual). O histórico de comandos está disponível com ↑ / ↓ durante a sessão.
+Qualquer comando `cmd.exe` de uma única linha pode ser digitado e executado (Enter ou **Executar**). O diretório de trabalho é ressincronizado com a pasta atual antes de cada comando. **+ Salvar** armazena o comando digitado como um favorito (opcionalmente dentro de um grupo); comandos salvos são executados ao clicar, e um comando pode conter `%1` — a pasta sendo navegada (um grupo padrão "CMD" já vem configurado com um favorito `wt -d "%1"` para abrir o Windows Terminal bem ali). Botões: **Limpar** (apagar a saída), **Reiniciar** (novo cmd.exe), **Nova janela** (uma janela de console real na pasta atual). O histórico de comandos está disponível com ↑ / ↓ durante a sessão.
 
 ## Limitações
 
 - **Somente Windows + .NET Framework 4.8** (GDI/WinForms). Sem suporte a DPI por monitor — a interface pode ficar borrada em telas com escala acentuada.
-- **O escopo de pesquisa "Todos"** indexa **somente discos locais fixos** (sem unidades USB/de rede), com limite de **200 000 itens por disco**; a indexação roda em segundo plano, então os resultados crescem enquanto ela trabalha ("indexando: N" na linha de status).
-- **A pesquisa do painel** mostra as **200** melhores correspondências; **a pesquisa do Mini Explorer** retorna até **400**; uma lista de arquivos mostra no máximo **800** entradas por diretório.
+- **A pesquisa de arquivos do Mini Explorer está desativada** desde a v0.6.0-beta: o módulo de indexação de discos (apenas discos locais fixos, com limite de 200 000 itens por disco) é mantido como um stub para uma futura reativação. A pesquisa do painel roda sobre os metadados em cache dos itens salvos apenas — sem indexação de discos.
+- **A pesquisa do painel** mostra as **200** melhores correspondências; uma lista de arquivos mostra no máximo **800** entradas por diretório.
 - **O console é apenas `cmd.exe`**: comandos de uma linha; programas interativos/TUI (editores, paginadores com entrada de teclado) não funcionam corretamente; o buffer de saída é limpo automaticamente após ~150 000 caracteres; a codificação segue a página de código OEM do sistema (por exemplo, CP866).
 - **A tecla de atalho global** é uma letra/dígito mais modificadores; o registro falha com um balão de notificação se outro programa já estiver usando a combinação.
 - **O tamanho do painel volta ao tamanho de inicialização a cada execução** — apenas a posição é lembrada (por design).
@@ -178,22 +206,35 @@ Qualquer comando `cmd.exe` de uma única linha pode ser digitado e executado (En
 - A correção de layout cobre o par EN↔RU QWERTY; outros layouts passam sem alteração.
 - **Instância única**: iniciar uma segunda cópia apenas mostra a janela existente.
 - A saída automática de pastas funciona apenas no modo "Mesma janela" e apenas enquanto estiver dentro de uma pasta.
+- **As pré-visualizações de mosaicos de foto/vídeo** vêm do cache de miniaturas do shell do Windows. Um **vídeo recém-adicionado** pode exibir um ícone genérico até o Explorador gerar sua pré-visualização (abra a pasta que o contém uma vez no Explorador). Depois de exibida, a pré-visualização é mantida no cache próprio do aplicativo e sobrevive à remoção do cache; se a pré-visualização nunca aparecer, significa que o sistema não tem o codec para esse arquivo (por exemplo, HEVC sem a extensão).
 
 ## Compilar
 
 Requer qualquer Windows com .NET Framework 4.x (o compilador acompanha o sistema operacional):
 
 ```
-build.bat
+build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat x86      rem → Tilettes-x86.exe
+build.bat x64      rem → Tilettes-x64.exe
 ```
 
 ou diretamente:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /win32icon:app.ico /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila as variantes do exe com a mesma chamada do csc e anexa arquivos exe simples ao release (AnyCPU universal + x86 + x64 — sem zip); os arquivos de código-fonte automáticos do GitHub também estão no release. Você também pode compilar o exe você mesmo com `build.bat`.
+Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila as variantes do exe com a mesma chamada do csc e anexa arquivos exe simples ao release (AnyCPU universal + x86 + x64 — sem zip), além de um `SHA256SUMS.txt` com os checksums dos três exes (as somas também são anexadas às notas do release); os arquivos automáticos de código-fonte do GitHub também estão no release. Você também pode compilar o exe você mesmo com `build.bat`.
+
+## Falsos positivos de antivírus
+
+Alguns antivírus ocasionalmente sinalizam o `Tilettes.exe` com uma detecção heurística genérica (pequenos utilitários não assinados que instalam um gancho global de teclado, analisam atalhos `.lnk` e extraem ícones do shell se encaixam no padrão de que as heurísticas não gostam). Trate essa detecção como um **falso positivo** até que se prove o contrário — e você não precisa confiar no binário distribuído, porque tudo é verificável:
+
+- O **código-fonte está totalmente aberto** neste repositório — cada linha que acaba no exe está aqui.
+- **Os releases são compilados automaticamente pelo GitHub Actions** a partir do commit marcado com a tag, em runners hospedados pela Microsoft (`.github/workflows/build.yml`). Nada é enviado à mão: o exe anexado a um release é compilado exatamente do código-fonte que você vê naquela tag.
+- Você pode **compilar o exe você mesmo** com `build.bat` (o compilador C# acompanha o Windows) e executar sua própria compilação em vez da baixada.
+- A chave de strong name (`Tilettes.snk`) é gerada apenas para a compilação; um strong name prova a identidade do assembly, não a confiabilidade de um fornecedor — em vez disso, examine o código e o pipeline de compilação.
+- Desde a v0.6.16 o aplicativo também **não oferece releases com menos de 24 horas** (na própria verificação de atualizações dele), de modo que um exe recém-publicado não se espalhe durante seu primeiro dia, enquanto os veredictos na nuvem dos antivírus se consolidam.
 
 ## Arquivos de dados (criados junto ao EXE)
 
@@ -203,22 +244,32 @@ Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o 
 | `records.xml` | Abas, pastas, atalhos, descrições |
 | `bookmarks.xml` | Favoritos do Mini Explorer |
 | `filetypes.xml` | Regras de tipos de arquivo |
+| `searchHistory.xml` | Histórico de pesquisa do painel ("pesquisas anteriores") |
 | `ico\` | Cópias de itens .lnk/.ico e ícones personalizados |
+| `iconcache\` | Cache persistente de ícones (ícones extraídos uma única vez durante a vida do mosaico) |
+| `autoBackup\` | Zips de backup completo agendados |
+| `log.txt` | Log do aplicativo (linhas repetidas são deduplicadas) |
 
 ## Estrutura do projeto (`src/`)
 
 | Arquivo | Finalidade |
 |---|---|
 | `Program.cs` | Janela principal: abas, mosaicos, pesquisa do painel, pop-ups de pastas, instância única |
-| `MiniExplorerForm.cs` | Mini Explorer: navegação, favoritos, console embutido |
-| `SearchCore.cs` | Indexação de discos, pré-filtro por máscara de bits, pontuação da pesquisa aproximada |
-| `PanelSearch.cs` | Metadados pesquisáveis dos itens salvos |
+| `miniexplorerform.cs` | Mini Explorer: navegação, favoritos, console embutido |
+| `searchcore.cs` | Pontuação aproximada (fuzzy), variantes de layout de teclado e pré-filtro por máscara de bits (o motor de pesquisa do painel); sua parte de indexação de discos (pesquisa de arquivos do Mini Explorer) está atualmente desativada |
+| `panelsearch.cs` | Metadados pesquisáveis dos itens salvos |
 | `Settings.cs` / `SettingsForm.cs` | Modelo e janela de configurações |
-| `FileTypes.cs` / `FileTypesForm.cs` | Regras de tipos de arquivo e seus editores |
+| `filetypes.cs` / `filetypesform.cs` | Regras de tipos de arquivo e seus editores |
 | `bookmarks.cs` | Armazenamento de favoritos |
+| `Skins.cs` | Skins decorativas: paletas e a borda da janela |
+| `StartMenuSync.cs` + `ShellItemApi.cs` | Aba espelhada do Menu Iniciar, incluindo aplicativos UWP/Store |
+| `BackupManager.cs` + `ZipWriter.cs` / `ZipReader.cs` | Backups agendados e manuais |
+| `SearchHistory.cs` | Histórico de pesquisa do painel ("pesquisas anteriores", impulso de resultados) |
+| `AppLog.cs` | Gravador do `log.txt` com deduplicação |
 | `loc.cs` + `lang_*.cs` | Localização: EN como fonte, RU em linha, tabelas ES/PT/DE/FR/IT/PL/ZH/JA |
 | `UpdateChecker.cs` / `WelcomeForm.cs` | Verificação de atualizações (GitHub Releases) e janela de boas-vindas da primeira execução |
 | `IconExtractor.cs`, `NativeContextMenu.cs`, `IniFile.cs`, `Records.cs`, `apputil.cs` | Ícones, menus nativos, E/S de INI, E/S de registros, inicialização automática/instância única/carteiras |
+| `AssemblyInfo.cs` | Metadados VERSIONINFO / de assembly |
 
 ## Licença
 
@@ -261,6 +312,14 @@ Outras formas de ajudar: relate bugs e ideias em [Issues](https://github.com/Ale
 
 <a name="changelog"></a>
 ## Histórico de alterações
+
+### v0.6.1 (2026-10-01)
+
+- A versão é exibida no canto superior direito da janela de configurações.
+- Segure **Ctrl** — os mosaicos mostram seus nomes completos, sem truncamento (a fonte do rótulo encolhe para caber); volta ao normal ao soltar. Alternador nas configurações ("Segurar Ctrl — mostrar nomes completos nos mosaicos").
+- Tooltips dos mosaicos redesenhados: descrição (ou o nome completo quando não há descrição) + um separador + os caminhos completos; itens `.lnk` mostram tanto o atalho quanto o seu destino resolvido.
+- Pré-visualizações de mídia: uma pré-visualização, uma vez obtida, é mantida no cache próprio do aplicativo e sobrevive à remoção do cache de miniaturas do Windows; o clique direito em um link morto agora mostra as ações do próprio mosaico em vez de não fazer nada; o extrator de quadros do Media Foundation foi mantido como um fallback tolerante a falhas (veja REPORT.md).
+- O b2.bat fecha o aplicativo em execução antes de compilar.
 
 ### v0.6.0-beta (2026-10-01)
 

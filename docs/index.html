@@ -57,6 +57,10 @@
   a { color: #6cb2f7; }
   footer { margin-top: 56px; color: #9aa0a6; font-size: 13px; }
   .hidden { display: none; }
+  img.hero {
+    display: block; width: 100%; max-width: 720px; margin: 24px auto 0;
+    border-radius: 12px; border: 1px solid #2b2b32;
+  }
 </style>
 </head>
 <body>
@@ -64,13 +68,14 @@
   <header>
     <div class="logo"><i></i><i></i><i></i><i></i></div>
     <h1>Tilettes</h1>
-    <span class="ver">v0.5</span>
+    <span class="ver">v1.0</span>
     <div class="langswitch">
       <button id="btn-en" class="active" onclick="setLang('en')">EN</button>
       <button id="btn-ru" onclick="setLang('ru')">RU</button>
     </div>
   </header>
   <span class="badge">beta</span>
+  <img class="hero" src="screenshot_main.png" alt="Tilettes — the main window: tabs, search, tile grid and an open folder popup" width="969" height="848">
   <p class="langs"><b>Languages / Языки:</b> <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/README.md">English</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md">Русский</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.es.md">Español</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pt.md">Português</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.de.md">Deutsch</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.fr.md">Français</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.it.md">Italiano</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.pl.md">Polski</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.zh.md">中文 (简体)</a> · <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ja.md">日本語</a></p>
 
   <!-- ===================== ENGLISH ===================== -->
@@ -83,11 +88,15 @@
     </div>
     <h2>Highlights</h2>
     <ul>
-      <li>Just drag a shortcut or a file onto the panel — it becomes a tile.</li>
-      <li>Fuzzy search across names, metadata, paths and descriptions (fixes the wrong keyboard layout: <code>руддщ</code> → <code>hello</code>).</li>
-      <li>Folders, tabs, custom grid, icon scaling, dark/light themes and skins.</li>
-      <li>Mini explorer with bookmarks and a working <code>cmd.exe</code> console.</li>
-      <li>First-start welcome window and an update check against GitHub Releases.</li>
+      <li>Tiles 1×1…6×6, unlimited draggable tabs, folders in-tab or as popups, scrollable extra rows, multi-select editing, drag-and-drop — plus skins (Mint, Night, Android), light/dark themes, custom fonts.</li>
+      <li>A custom name, description (searchable) and icon for every tile; photo/video previews right on the tiles.</li>
+      <li>Instant fuzzy search over names, program metadata, full paths and descriptions — runs on cached metadata, no disk scans; wrong layout fixed (<code>руддщ</code> → <code>python</code>); past queries remembered between sessions.</li>
+      <li>One ~0.5 MB portable exe, ~30 MB of RAM, no dependencies beyond the .NET Framework built into Windows; icons cached once per tile lifetime; launches never block the panel.</li>
+      <li>Mini explorer: breadcrumbs, bookmarks and an embedded <code>cmd.exe</code> console; favorite commands in one click, <code>%1</code> = current folder (<code>wt -d "%1"</code>).</li>
+      <li>Per-file-type icons and "open with" rules, import/export.</li>
+      <li>Mirrored Start Menu tab (UWP/Store apps included), synced on a schedule — searchable.</li>
+      <li>Global hotkey, optional Win-key capture, tray, autostart, native Explorer menus, scheduled and manual backups; UI in 10 languages.</li>
+      <li>Open source, built by GitHub Actions with SHA256SUMS; the only network call is the opt-in update check — no telemetry.</li>
     </ul>
     <h2>Donate</h2>
     <p>If Tilettes is useful, you can support the development with crypto (the full list lives in the <a href="https://github.com/AlexNoVibe/Tilettes#donate">README</a>):</p>
@@ -107,11 +116,15 @@
     </div>
     <h2>Коротко</h2>
     <ul>
-      <li>Просто перетащите ярлык или файл на панель — появится плитка.</li>
-      <li>Fuzzy-поиск по именам, метаданным, путям и описаниям (чинит неверную раскладку: <code>руддщ</code> → <code>hello</code>).</li>
-      <li>Папки, вкладки, своя сетка, масштаб иконок, тёмная/светлая темы и шкурки.</li>
-      <li>Мини-проводник с закладками и рабочей консолью <code>cmd.exe</code>.</li>
-      <li>Приветственное окно при первом старте и проверка обновлений через GitHub Releases.</li>
+      <li>Плитки 1×1…6×6, неограниченные перетаскиваемые вкладки, папки внутри вкладки или попапом, прокручиваемые доп. ряды, мультивыделение, drag-and-drop — плюс шкурки (Мята, Ночь, Android), светлые/тёмные темы, свои шрифты.</li>
+      <li>Каждой плитке — своё название, описание (участвует в поиске) и иконка; фото и видео — превью прямо на плитке.</li>
+      <li>Мгновенный fuzzy-поиск по именам, метаданным программ, путям и описаниям — по кэшу метаданных, без обхода дисков; чинит раскладку (<code>руддщ</code> → <code>hello</code>); прошлые запросы помнятся между сессиями.</li>
+      <li>Один портативный exe ~0.5 МБ, ~30 МБ памяти, ноль зависимостей — только встроенный в Windows .NET Framework; иконки кэшируются один раз за жизнь плитки; запуски не блокируют панель.</li>
+      <li>Мини-проводник: хлебные крошки, закладки и встроенная консоль <code>cmd.exe</code>; избранные команды кликом, <code>%1</code> = текущая папка (<code>wt -d "%1"</code>).</li>
+      <li>Правила типов файлов: своя иконка и «открывать через», импорт/экспорт.</li>
+      <li>Зеркальная вкладка Пуска (включая UWP/Store) с синхронизацией по расписанию — работает в поиске.</li>
+      <li>Глобальная горячая клавиша, опциональный захват Win, трей, автозапуск, родные меню Проводника, бэкапы по расписанию и вручную; 10 языков интерфейса.</li>
+      <li>Открытый код, сборка GitHub Actions + SHA256SUMS; единственный сетевой запрос — проверка обновлений по согласию; никакой телеметрии.</li>
     </ul>
     <h2>Поддержать автора</h2>
     <p>Если Плиточки оказались полезными — можно поддержать разработку криптой (полный список — в <a href="https://github.com/AlexNoVibe/Tilettes/blob/master/docs/README.ru.md#donate">README</a>):</p>

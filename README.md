@@ -10,21 +10,37 @@
 
 A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, built-in fuzzy search and a mini explorer with an embedded console. Single portable EXE, no installer, .NET Framework 4.8 (WinForms).
 
-Current version: **v0.6.0-beta** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+![Tilettes — the main window](docs/screenshot_main.png)
+
+Current version: **v1.0** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+
+## Highlights
+
+**Tiles & tabs** — tiles 1×1…6×6; skins (Mint, Night, Android) plus light/dark themes; custom fonts and colors; unlimited draggable multi-row tabs, free/grid layout; folders in-tab or as popups; scrollable extra rows below the grid; multi-select edit mode and drag-and-drop; a custom name, description (searchable) and icon per tile; photo/video previews on tiles.
+
+**Search** — instant fuzzy search over names, program metadata (description / product / company), full paths and your own descriptions; runs over cached metadata (no disk scans); wrong layout fixed (`знерщи` → `python`); results in two blocks — past queries (with real icons, remembered between sessions, boosted) on top, regular results below; every source is toggleable.
+
+**Lightweight** — one ~0.5 MB (517 KB) portable exe, all data next to it; no dependencies beyond the .NET Framework built into Windows; ~30 MB of RAM; icons are extracted from the shell exactly once per tile lifetime into a self-cleaning `iconcache\`; launches never block the panel (detached processes, background network paths); startup renders only the active tab.
+
+**Mini explorer** — breadcrumbs, folder/command/group bookmarks, an embedded `cmd.exe` console (history, Ctrl+wheel font); favorite commands run in one click with `%1` = the browsed folder (`wt -d "%1"`); per-extension/mask "open with" rules with import/export.
+
+**System** — a mirrored Start Menu tab (UWP/Store apps included) synced on a schedule; global hotkey, optional Win-key capture, tray, autostart; native Explorer context menus; scheduled and manual backups with one-click restore; UI in 10 languages.
+
+**Open source** — fully open source; releases built by GitHub Actions from the tag + SHA256SUMS.txt; exactly one network call in the whole app (the opt-in update check); no telemetry.
 
 ## Features
 
 - **Panel** — tiles sized 1×1…6×6, unlimited tabs (draggable, multi-row), folders opened in-place or as popups, drag-and-drop from Explorer, custom grid (columns/rows/transparency), icon scaling.
-- **Search** — searches names, file names, program metadata (FileDescription / ProductName / CompanyName), full paths and user descriptions; optionally includes the mirrored Start Menu tab; fuzzy matching with adjustable accuracy and wrong-keyboard-layout correction (`руддщ` → `hello`); results are ranked by match quality and matched characters are highlighted; repeated queries get a history boost.
-- **Mini explorer** — breadcrumb navigation, folder/command/group bookmarks, and an embedded `cmd.exe` console with command history, saved commands and Ctrl+wheel font zoom. (The file-search module is disabled since v0.6.0-beta — a stub is kept for a future re-enable.)
+- **Search** — searches names, file names, program metadata (FileDescription / ProductName / CompanyName), full paths and user descriptions; optionally includes the mirrored Start Menu tab; fuzzy matching with adjustable accuracy and wrong-keyboard-layout correction (`руддщ` → `hello`); results are ranked by match quality and matched characters are highlighted; repeated queries get a history boost; a typed query splits the results into two blocks — remembered past queries on top, regular results below (full duplicates collapse); past-search rows show the remembered items' real icons.
+- **Mini explorer** — breadcrumb navigation, folder/command/group bookmarks (a command may contain `%1`, which expands to the folder being browsed — e.g. `wt -d "%1"` opens Windows Terminal right there), and an embedded `cmd.exe` console with command history, saved commands and Ctrl+wheel font zoom. (The file-search module is disabled since v0.6.0-beta — a stub is kept for a future re-enable.)
 - **File type rules** — per-extension/per-mask icons and "open with" associations, import/export.
 - **Desktop integration** — tray icon, autostart with Windows, global hotkey, optional Win-key capture, native Explorer context menus, borderless window with edge resizing.
 - **Skins & extras** — decorative skins (own color palette + a rounded window border), a mirrored Start Menu tab rebuilt on a schedule, full backups into `autoBackup\`, panel search history.
-- **First start & updates** — a one-time welcome window (beta note, language choice, update-check permission, example tiles) and an update check against GitHub Releases with a corner plate when a newer version exists.
+- **First start & updates** — a one-time welcome window (a painted "three sources → tile grid" diagram, language choice, update-check permission, a support link, example tiles) and an update check against GitHub Releases with a corner plate when a newer version exists.
 
 ## First start & updates
 
-- **Welcome window** (only on the very first launch): a thank-you note, a beta warning with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted "drag a shortcut → a tile" mini-diagram, language choice (10 flag buttons), the update-check permission, donation addresses (click to copy) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles). It can be replayed anytime via "Show the welcome window again" in the settings.
+- **Welcome window** (only on the very first launch): a thank-you note, a note that bugs and rough edges are possible with a link to [Issues](https://github.com/AlexNoVibe/Tilettes/issues), a painted mini-diagram (a folder, an .exe and a .lnk card → arrow → the tile grid with a "+" ghost cell), language choice (10 flag buttons), the update-check permission, a **Support the author** link to the [donate section](https://github.com/AlexNoVibe/Tilettes#donate) — and two exit buttons: plain **Close**, or **Close & create example tiles** (Notepad, Calculator, Explorer, Paint as ready tiles). It can be replayed anytime via "Show the welcome window again" in the settings.
 - **Update check** — the app asks the public GitHub Releases API once every N days (default 3; the first check also happens N days after the very first start, not immediately). Nothing is sent anywhere, and with the check disabled in settings no network request is made at all. When a newer tag exists, a green **⟳ Update** plate appears next to the settings button and opens the [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) page. "Check now" in the settings runs a manual check regardless of the interval (it reports the result in a message box). Automatic installation is a stub (TODO) for now.
 - **Testing hook** — start the app with `WINPANEL_MOCK_UPDATE=0.6` to render the Update plate as if a newer release existed (no network involved).
 
@@ -93,7 +109,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Check every N days | 1–365 | 3 | How often to check. The first check happens N days after the very first start. |
 | Check now | button | — | Ask GitHub Releases immediately (manual check works even with the automatic one off). |
 | Install updates automatically | on/off | off | **Stub (TODO)** — not implemented yet. |
-| ♥ Donate | button | — | Popup wallet list (a click copies the address) plus the GitHub donate section. |
+| ♥ Donate | button | — | Opens the GitHub donate section ([README → Donate](https://github.com/AlexNoVibe/Tilettes#donate)) in the browser. |
 | Show the welcome window again | button | — | Replay the first-start welcome window. |
 
 ### Mini explorer (INI keys)
@@ -167,7 +183,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 
 ### Console
 
-Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The working directory is re-synced to the current folder before every command. **+ Save** stores the typed command as a bookmark (optionally inside a group); saved commands run on click. Buttons: **Clear** (wipe output), **Restart** (new cmd.exe), **New window** (a real console window at the current folder). Command history is available with ↑ / ↓ during the session.
+Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The working directory is re-synced to the current folder before every command. **+ Save** stores the typed command as a bookmark (optionally inside a group); saved commands run on click, and a command may contain `%1` — the folder being browsed (a seeded "CMD group" default ships a `wt -d "%1"` bookmark for opening Windows Terminal right there). Buttons: **Clear** (wipe output), **Restart** (new cmd.exe), **New window** (a real console window at the current folder). Command history is available with ↑ / ↓ during the session.
 
 ## Limitations
 
@@ -203,7 +219,7 @@ or directly:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
+Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip) plus a `SHA256SUMS.txt` with the checksums of all three exes (the sums are appended to the release notes as well); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
 
 ## Antivirus false positives
 

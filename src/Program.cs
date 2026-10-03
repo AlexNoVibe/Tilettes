@@ -1028,7 +1028,7 @@ namespace WinPanel
                     LoadTabs();
 
                     // "Do it now" requests from the settings dialog.
-                    if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, true);
+                    if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, BackupNotify.Everything);
                     if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
                     if (sf.RunWelcomeAgain) RunFirstStartWelcome();
                     if (sf.RebuildIconsNow) RebuildAllIcons();

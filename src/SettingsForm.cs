@@ -1012,7 +1012,7 @@ namespace WinPanel
         // the same archive the "Restore archive..." button accepts.
         private void BtnBackup_Click(object sender, EventArgs e)
         {
-            string created = BackupManager.RunBackup(null, settings, false);
+            string created = BackupManager.RunBackup(null, settings, BackupNotify.None);
             if (created == null)
             {
                 ConfirmDialog.ShowInfo(this, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));

@@ -27,6 +27,8 @@ namespace WinPanel
         private CheckBox chkUpdates;
         private Button btnClose, btnExamples;
         private readonly List<FlagButton> flags = new List<FlagButton>();
+        private Panel ill, flagRow;
+        private int winW;
 
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
@@ -84,6 +86,7 @@ namespace WinPanel
             int lh = mainFont.Height;          // one line of body text
             int th = titleFont.Height;         // heading line
             int w = Math.Min(580, Screen.PrimaryScreen.WorkingArea.Width - 40);
+            winW = w;
             int x = 22, cw = w - 44;
 
             // ---- Title bar: painted logo, name + version, close button ----
@@ -130,7 +133,7 @@ namespace WinPanel
             y += 6;
 
             // Painted mini-diagram: no binary assets, so the release stays small.
-            var ill = new Panel { Left = x, Top = y, Width = cw, Height = 100, BackColor = bgColor };
+            ill = new Panel { Left = x, Top = y, Width = cw, Height = 100, BackColor = bgColor };
             ill.Paint += (s, e) => DrawIllustration(e.Graphics, ill.ClientRectangle);
             this.Controls.Add(ill);
             y += 106;
@@ -144,7 +147,7 @@ namespace WinPanel
 
             // ---- Language: painted flags (one per supported language, 5 x 2) ----
             lblLang = AddLabel(x, ref y, cw, lh + 2, mainFont);
-            var flagRow = new Panel { Left = x, Top = y, Width = cw, Height = 74, BackColor = bgColor };
+            flagRow = new Panel { Left = x, Top = y, Width = cw, Height = 74, BackColor = bgColor };
             int fi = 0;
             foreach (var code in Loc.Languages)
             {
@@ -214,19 +217,77 @@ namespace WinPanel
             btnExamples.FlatAppearance.MouseOverBackColor = hoverColor;
             btnExamples.Click += (s, e) => { CreateExamples = true; this.Close(); };
 
-            ApplyLanguage(); // sets all captions incl. button texts
+            this.Controls.Add(btnClose);
+            this.Controls.Add(btnExamples);
 
+            ApplyLanguage(); // sets all captions, then flows the whole layout
+            this.MinimumSize = new Size(420, 300);
+            this.MaximumSize = new Size(int.MaxValue, Screen.PrimaryScreen.WorkingArea.Height - 40);
+        }
+
+        // Vertical layout pass. Every text is measured with word wrap because
+        // localizations (and larger UI fonts) often need more than one line -
+        // the fixed one-line heights clipped the ends of the longest strings.
+        // Runs on every language switch (captions change live).
+        private void LayoutContents()
+        {
+            int lh = mainFont.Height;          // one line of body text
+            int w = winW, x = 22, cw = w - 44;
+            int y = 44 + 12;
+
+            y = FlowLabel(lblGreet, x, y, cw, titleFont, 4);
+            y = FlowLabel(lblNote, x, y, cw, mainFont, 4);
+            y += 4;
+            y = FlowLabel(lblIssuePrompt, x, y, cw, mainFont, 2);
+            y = FlowLabel(linkIssues, x, y, cw, mainFont, 4);
+            y += 6;
+
+            ill.Left = x; ill.Top = y;
+            y += ill.Height + 6;
+
+            y = FlowLabel(lblHow, x, y, cw, mainFont, 2);
+            y = FlowLabel(lblEditHint, x, y, cw, mainFont, 2);
+            y += 10;
+
+            y = FlowLabel(lblLang, x, y, cw, mainFont, 2);
+            flagRow.Left = x; flagRow.Top = y;
+            y += flagRow.Height + 6;
+
+            // The text sits next to the box glyph, so measure it narrower.
+            int chkH = Math.Max(lh + 10, WrapHeight(chkUpdates.Text, mainFont, cw - 24) + 8);
+            chkUpdates.SetBounds(x, y, cw, chkH);
+            y += chkH + 10;
+
+            y = FlowLabel(lblSupport, x, y, cw, titleFont, 2);
+            y = FlowLabel(linkDonate, x, y, cw, mainFont, 4);
+            y += 12;
+
+            // Exit buttons: re-measured per language (caption widths differ).
+            int bh = Math.Max(32, lh + 8);
+            btnClose.Height = bh;
+            btnExamples.Height = bh;
             btnClose.Width = TextRenderer.MeasureText(btnClose.Text, mainFont).Width + 30;
             btnExamples.Width = TextRenderer.MeasureText(btnExamples.Text, mainFont).Width + 30;
             btnClose.Location = new Point(w - 22 - btnClose.Width, y);
             btnExamples.Location = new Point(btnClose.Left - 12 - btnExamples.Width, y);
-            this.Controls.Add(btnClose);
-            this.Controls.Add(btnExamples);
             y += bh + 16;
 
             this.ClientSize = new Size(w, y);
-            this.MinimumSize = new Size(420, 300);
-            this.MaximumSize = new Size(int.MaxValue, Screen.PrimaryScreen.WorkingArea.Height - 40);
+        }
+
+        // Positions a flowing control, gives it the measured wrapped height
+        // plus padding, and returns the next y.
+        private static int FlowLabel(Control c, int x, int y, int width, Font font, int pad)
+        {
+            c.Left = x; c.Top = y; c.Width = width;
+            c.Height = WrapHeight(c.Text, font, width) + pad;
+            return y + c.Height;
+        }
+
+        private static int WrapHeight(string text, Font font, int width)
+        {
+            if (string.IsNullOrEmpty(text)) return font.Height;
+            return TextRenderer.MeasureText(text, font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak).Height;
         }
 
         // Adds a themed label; returns it (text is filled by ApplyLanguage).
@@ -309,6 +370,7 @@ namespace WinPanel
             lblSupport.Text = Loc.S("Support the author", "Поддержать автора");
             btnClose.Text = Loc.S("Close", "Закрыть");
             btnExamples.Text = Loc.S("Close & create example tiles", "Закрыть и создать примеры");
+            LayoutContents();
         }
 
         // ---- Painted graphics (logo, flags, diagram) — zero file-size cost ----

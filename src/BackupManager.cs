@@ -5,6 +5,11 @@ using System.Windows.Forms;
 
 namespace WinPanel
 {
+    // What to tell the user about a finished backup: a manual "Backup now"
+    // confirms success and failure, the scheduled backup stays silent on
+    // success (the log.txt line is enough) and only warns when it failed.
+    public enum BackupNotify { None, FailureOnly, Everything }
+
     // Scheduled full backups of everything the panel persists (settings,
     // shortcuts/records, bookmarks, file-type rules, search history and the exe
     // itself), compressed into autoBackup\backup_YYYY-MM-DD_HHMMSS.zip.
@@ -44,7 +49,7 @@ namespace WinPanel
                     {
                         t.Stop();
                         t.Dispose();
-                        System.Threading.ThreadPool.QueueUserWorkItem(delegate { RunBackup(form, s, true); });
+                        System.Threading.ThreadPool.QueueUserWorkItem(delegate { RunBackup(form, s, BackupNotify.FailureOnly); });
                     }
                     catch (Exception ex) { AppLog.Write("Backup timer", ex); }
                 };
@@ -55,7 +60,7 @@ namespace WinPanel
 
         // Synchronous backup, safe to call from a settings button (files are small).
         // Returns the zip path, or null when the backup failed / was not needed.
-        public static string RunBackup(MainForm form, Settings s, bool notify)
+        public static string RunBackup(MainForm form, Settings s, BackupNotify notify)
         {
             try
             {
@@ -84,7 +89,7 @@ namespace WinPanel
                 string zipPath = Path.Combine(dir, "backup_" + stamp + ".zip");
                 if (!ZipWriter.Create(zipPath, files))
                 {
-                    if (notify) Notify(form, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));
+                    if (notify != BackupNotify.None) Notify(form, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));
                     return null;
                 }
 
@@ -99,13 +104,13 @@ namespace WinPanel
 
                 PruneOld(dir, 30);
                 AppLog.Write("Backup created: " + zipPath + " (" + files.Count + " files)");
-                if (notify) Notify(form, Loc.S("Backup created:", "Бэкап создан:") + " " + Path.GetFileName(zipPath));
+                if (notify == BackupNotify.Everything) Notify(form, Loc.S("Backup created:", "Бэкап создан:") + " " + Path.GetFileName(zipPath));
                 return zipPath;
             }
             catch (Exception ex)
             {
                 AppLog.Write("Backup", ex);
-                if (notify) Notify(form, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));
+                if (notify != BackupNotify.None) Notify(form, Loc.S("Backup failed - see log.txt", "Бэкап не удался — подробности в log.txt"));
                 return null;
             }
         }
