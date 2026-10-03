@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace WinPanel
@@ -70,13 +70,10 @@ namespace WinPanel
             { "Clear", "Pulisci" },
             { "Clear history", "Cancella cronologia" },
             { "Clear selection", "Annulla selezione" },
-            { "Click an address to copy it", "Clic su un indirizzo per copiarlo" },
-            { "Click to copy the address", "Clic per copiare l'indirizzo" },
             { "Close", "Chiudi" },
             { "Close & create example tiles", "Chiudi e crea tessere d'esempio" },
             { "Command:", "Comando:" },
             { "Console", "Console" },
-            { "Copied ✓", "Copiato ✓" },
             { "Copy folder path", "Copia percorso cartella" },
             { "Copy path", "Copia percorso" },
             { "Could not reach GitHub Releases - check the internet connection.", "Impossibile raggiungere GitHub Releases - controlla la connessione Internet." },
@@ -124,7 +121,6 @@ namespace WinPanel
             { "Language:", "Lingua:" },
             { "Light", "Chiaro" },
             { "Light Theme", "Tema chiaro" },
-            { "Like Tilettes? Support the author with crypto:", "Ti piace Tilettes? Sostieni l'autore in crypto:" },
             { "M", "M" },
             { "Maintenance & Start Menu", "Manutenzione e Menu Start" },
             { "Match precision: exact or fuzzy (0-3)", "Precisione corrispondenza: esatta o fuzzy (0-3)" },
@@ -154,7 +150,6 @@ namespace WinPanel
             { "Open in Explorer", "Apri in Esplora risorse" },
             { "Open in Mini Explorer", "Apri nel mini esploratore" },
             { "Open standard", "Apri (standard)" },
-            { "Open the donate section on GitHub", "Apri la sezione donazioni su GitHub" },
             { "Open with by type...", "Apri con per tipo..." },
             { "Paths", "Percorsi" },
             { "Popup window", "Finestra popup" },
@@ -233,13 +228,11 @@ namespace WinPanel
             { "Update", "Aggiorna" },
             { "Updates", "Aggiornamenti" },
             { "Version ", "Versione " },
-            { "Wallet addresses and other ways to help live on GitHub:", "Gli indirizzi dei wallet e gli altri modi per aiutare sono su GitHub:" },
             { "Window Position:", "Posizione finestra:" },
             { "Windows calculator", "Calcolatrice di Windows" },
             { "You are on the latest version: v", "Hai l'ultima versione: v" },
             { "[console process exited - press Restart]", "[processo console terminato - premi Riavvia]" },
             { "\nThe green Update plate has appeared in the corner.", "\nLa targhetta verde Aggiorna è apparsa nell'angolo." },
-            { "address copied to clipboard", "indirizzo copiato negli appunti" },
             { "box", "campo" },
             { "columns x", "colonne x" },
             { "results", "risultati" },
@@ -269,6 +262,8 @@ namespace WinPanel
             { "Hide shortcut suffix ( - Shortcut)", "Nascondi suffisso collegamento ( - Collegamento)" },
             { "Hide file extension (.mp4)", "Nascondi estensione file (.mp4)" },
             { "Extra rows below:", "Righe extra sotto:" },
+            { "Like Tilettes? Support the author:", "Ti piace Tilettes? Sostieni l'autore:" },
+            { "Opens the donate section on GitHub", "Apre la sezione donazioni su GitHub" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "Righe di piastrelle extra sotto la griglia visibile, stessa dimensione; raggiungibili scorrendo in basso (0 = off)" },
             { "Past search", "Ricerche recenti" },

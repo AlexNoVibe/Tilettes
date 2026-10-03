@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace WinPanel
@@ -70,13 +70,10 @@ namespace WinPanel
             { "Clear", "清空" },
             { "Clear history", "清除历史" },
             { "Clear selection", "清除选择" },
-            { "Click an address to copy it", "点击地址即可复制" },
-            { "Click to copy the address", "点击复制地址" },
             { "Close", "关闭" },
             { "Close & create example tiles", "关闭并创建示例磁贴" },
             { "Command:", "命令：" },
             { "Console", "控制台" },
-            { "Copied ✓", "已复制 ✓" },
             { "Copy folder path", "复制文件夹路径" },
             { "Copy path", "复制路径" },
             { "Could not reach GitHub Releases - check the internet connection.", "无法连接 GitHub Releases - 请检查网络连接。" },
@@ -124,7 +121,6 @@ namespace WinPanel
             { "Language:", "语言：" },
             { "Light", "浅色" },
             { "Light Theme", "浅色主题" },
-            { "Like Tilettes? Support the author with crypto:", "喜欢 Tilettes？用加密货币支持作者：" },
             { "M", "元" },
             { "Maintenance & Start Menu", "维护与开始菜单" },
             { "Match precision: exact or fuzzy (0-3)", "匹配精度：精确或模糊 (0-3)" },
@@ -154,7 +150,6 @@ namespace WinPanel
             { "Open in Explorer", "在资源管理器中打开" },
             { "Open in Mini Explorer", "在迷你资源管理器中打开" },
             { "Open standard", "默认方式打开" },
-            { "Open the donate section on GitHub", "在 GitHub 打开捐助页面" },
             { "Open with by type...", "按类型设置打开方式..." },
             { "Paths", "路径" },
             { "Popup window", "弹出窗口" },
@@ -233,13 +228,11 @@ namespace WinPanel
             { "Update", "更新" },
             { "Updates", "更新" },
             { "Version ", "版本 " },
-            { "Wallet addresses and other ways to help live on GitHub:", "钱包地址和其他支持方式见 GitHub：" },
             { "Window Position:", "窗口位置：" },
             { "Windows calculator", "Windows 计算器" },
             { "You are on the latest version: v", "已是最新版本：v" },
             { "[console process exited - press Restart]", "[控制台进程已退出 - 请按 重启]" },
             { "\nThe green Update plate has appeared in the corner.", "\n绿色“更新”按钮已出现在角落。" },
-            { "address copied to clipboard", "地址已复制到剪贴板" },
             { "box", "输入框" },
             { "columns x", "列 x" },
             { "results", "结果" },
@@ -269,6 +262,8 @@ namespace WinPanel
             { "Hide shortcut suffix ( - Shortcut)", "隐藏快捷方式后缀" },
             { "Hide file extension (.mp4)", "隐藏文件扩展名 (.mp4)" },
             { "Extra rows below:", "底部额外行数:" },
+            { "Like Tilettes? Support the author:", "喜欢 Tilettes？请支持作者：" },
+            { "Opens the donate section on GitHub", "打开 GitHub 上的捐赠页面" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "可见网格下方的额外图块行，大小相同；向下滚动即可到达（0 = 关）" },
             { "Past search", "历史搜索" },

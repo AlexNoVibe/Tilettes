@@ -664,33 +664,16 @@ namespace WinPanel
             scrollPanel.Controls.Add(chkAutoInstall);
             y += 26;
 
-            // Donate line: the button opens a popup menu with the wallet list
-            // (a click copies the address) and the GitHub donate section.
-            var lblDonate = new Label { Text = Loc.S("Like Tilettes? Support the author with crypto:", "Понравились Плиточки? Поддержать автора криптой:"), Left = 20, Top = y, Width = 420 };
+            // Donate line: the button simply opens the GitHub donate section.
+            var lblDonate = new Label { Text = Loc.S("Like Tilettes? Support the author:", "Понравились Плиточки? Поддержите автора:"), Left = 20, Top = y, Width = 420 };
             scrollPanel.Controls.Add(lblDonate);
             y += 26;
 
             var btnDonate = new Button { Text = Loc.S("♥ Donate", "♥ Донат"), Left = 20, Top = y - 3, Width = 130, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor, Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleCenter };
             btnDonate.FlatAppearance.BorderSize = 0;
             btnDonate.FlatAppearance.MouseOverBackColor = hoverColor;
-            var donateMenu = new ContextMenu();
-            foreach (var wlt in DonateWallets.All)
-            {
-                var w = wlt;
-                donateMenu.MenuItems.Add(DonateWallets.Display(w), (s2, e2) =>
-                {
-                    try { Clipboard.SetText(w.Address); } catch { }
-                    FlashCopied(btnDonate);
-                });
-            }
-            donateMenu.MenuItems.Add("-");
-            donateMenu.MenuItems.Add(Loc.S("Open the donate section on GitHub", "Открыть раздел доната на GitHub"), (s2, e2) =>
-            {
-                try { Process.Start(AppInfo.DonateUrl); } catch { }
-            });
-            btnDonate.Click += (s2, e2) => donateMenu.Show(btnDonate, new Point(0, btnDonate.Height));
-            Tip(btnDonate, "Pick a wallet - its address is copied to the clipboard; the last item opens the GitHub donate section",
-                "Выберите кошелёк — адрес скопируется в буфер; последний пункт открывает раздел доната на GitHub");
+            btnDonate.Click += (s2, e2) => { try { Process.Start(AppInfo.DonateUrl); } catch { } };
+            Tip(btnDonate, "Opens the donate section on GitHub", "Открывает раздел доната на GitHub");
             var lblDonateHint = new Label { Text = "github.com/AlexNoVibe/Tilettes#donate", Left = 160, Top = y + 3, Width = 300, ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155) };
             scrollPanel.Controls.Add(btnDonate);
             scrollPanel.Controls.Add(lblDonateHint);
@@ -789,17 +772,6 @@ namespace WinPanel
         private void Tip(Control c, string en, string ru)
         {
             tips.SetToolTip(c, Loc.S(en, ru));
-        }
-
-        // Brief feedback after a wallet address was copied: the button caption
-        // flashes "Copied" and then returns to normal.
-        private void FlashCopied(Button b)
-        {
-            string orig = b.Text;
-            b.Text = Loc.S("Copied ✓", "Скопировано ✓");
-            var t = new System.Windows.Forms.Timer { Interval = 1200 };
-            t.Tick += (s, e) => { t.Stop(); t.Dispose(); b.Text = orig; };
-            t.Start();
         }
 
         // Shows the actual (current) window numbers at the bottom, but only when at

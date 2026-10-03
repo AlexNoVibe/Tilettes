@@ -213,6 +213,7 @@ Some antivirus products occasionally flag `Tilettes.exe` with a generic heuristi
 - **Releases are built automatically by GitHub Actions** from the tagged commit on Microsoft-hosted runners (`.github/workflows/build.yml`). Nothing is uploaded by hand: the exe attached to a release is compiled from exactly the source you see at that tag.
 - You can **build the exe yourself** with `build.bat` (the C# compiler ships with Windows) and run your own build instead of the downloaded one.
 - The strong name key (`Tilettes.snk`) is generated for the build only; a strong name proves assembly identity, not a vendor's trust — look at the code and the build pipeline instead.
+- Since v0.6.16 the app also **does not offer releases younger than 24 hours** (its own update check), so a freshly published exe does not spread during its first day while antivirus cloud verdicts settle.
 
 ## Data files (created next to the EXE)
 

@@ -10,8 +10,9 @@ namespace WinPanel
     // First-start welcome window: thanks + beta note + issue link, a painted
     // "drag a shortcut -> a tile appears" mini-diagram, language choice via
     // painted flags (SMP emoji glyphs render as tofu in GDI), the update-check
-    // permission, a support/donate block with crypto placeholders, and the two
-    // exit buttons (plain close / close + generate example tiles).
+    // permission, a support-the-author block (one link to the GitHub donate
+    // section), and the two exit buttons (plain close / close + generate
+    // example tiles).
     public class WelcomeForm : Form
     {
         private readonly Settings settings;
@@ -21,13 +22,11 @@ namespace WinPanel
         private readonly Font mainFont, titleFont, smallFont;
         private readonly ToolTip tips = new ToolTip();
 
-        private Label lblGreet, lblBeta, lblIssuePrompt, lblHow, lblLang, lblSupport, lblCopyHint, lblCopied, lblDonatePrompt;
+        private Label lblGreet, lblBeta, lblIssuePrompt, lblHow, lblLang, lblSupport;
         private LinkLabel linkIssues, linkDonate;
         private CheckBox chkUpdates;
         private Button btnClose, btnExamples;
         private readonly List<FlagButton> flags = new List<FlagButton>();
-        private readonly List<Control> walletRows = new List<Control>();
-        private System.Windows.Forms.Timer copyResetTimer;
 
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
@@ -177,44 +176,8 @@ namespace WinPanel
             this.Controls.Add(chkUpdates);
             y += mainFont.Height + 20;
 
-            // ---- Support the author: real wallets, click to copy ----
+            // ---- Support the author: one link to the GitHub donate section ----
             lblSupport = AddLabel(x, ref y, cw, th + 2, titleFont);
-            lblCopyHint = AddLabel(x, ref y, cw, smallFont.Height + 2, smallFont);
-            lblCopyHint.ForeColor = dimColor;
-            foreach (var wlt in DonateWallets.All)
-            {
-                var wallet = wlt;
-                var row = new LinkLabel
-                {
-                    Left = x,
-                    Top = y,
-                    Width = cw,
-                    Height = smallFont.Height + 4,
-                    BackColor = bgColor,
-                    LinkColor = textColor,
-                    ActiveLinkColor = Color.FromArgb(86, 156, 214),
-                    LinkBehavior = LinkBehavior.HoverUnderline,
-                    Font = smallFont,
-                    AutoSize = false
-                };
-                // Short label + the address fitted into the row width (middle
-                // truncation at big fonts) — the address is always at least
-                // partially visible; clicking copies the full one.
-                row.Text = wallet.Short + ": " + FitAddress(wallet.Address,
-                    cw - TextRenderer.MeasureText(wallet.Short + ":  ", smallFont).Width, smallFont);
-                row.Links.Add(0, row.Text.Length, wallet);
-                row.LinkClicked += (s, e) => CopyWallet(wallet);
-                tips.SetToolTip(row, wallet.Label +
-                    (string.IsNullOrEmpty(wallet.Networks) ? "" : " (" + wallet.Networks + ")") +
-                    " — " + wallet.Address + "\n" + Loc.S("Click to copy the address", "Клик — скопировать адрес"));
-                this.Controls.Add(row);
-                walletRows.Add(row);
-                y += smallFont.Height + 5;
-            }
-            lblCopied = AddLabel(x, ref y, cw, smallFont.Height + 2, smallFont);
-            lblCopied.ForeColor = Color.FromArgb(46, 204, 113);
-            y += 4;
-            lblDonatePrompt = AddLabel(x, ref y, cw, lh + 2, mainFont);
             linkDonate = AddLink(x, ref y, cw, lh + 4, Loc.S("Support section on GitHub (README)", "Раздел поддержки на GitHub (README)"), AppInfo.DonateUrl);
             y += 12;
 
@@ -309,36 +272,6 @@ namespace WinPanel
             catch { }
         }
 
-        // Copies the wallet address and flashes a short confirmation line.
-        private void CopyWallet(DonateWallets.Wallet wallet)
-        {
-            try { Clipboard.SetText(wallet.Address); } catch { }
-            lblCopied.Text = wallet.Label + ": " + Loc.S("address copied to clipboard", "адрес скопирован в буфер");
-            if (copyResetTimer == null)
-            {
-                copyResetTimer = new System.Windows.Forms.Timer { Interval = 2500 };
-                copyResetTimer.Tick += (s, e) => { copyResetTimer.Stop(); lblCopied.Text = ""; };
-            }
-            copyResetTimer.Start();
-        }
-
-        // Fits the address into the remaining row width: shows it in full when
-        // possible, otherwise middle-truncates ("0xf848…6C2a") so at least a
-        // recognizable part is always visible.
-        private static string FitAddress(string address, int maxWidth, Font font)
-        {
-            if (maxWidth <= 0 || string.IsNullOrEmpty(address)) return address;
-            if (TextRenderer.MeasureText(address, font).Width <= maxWidth) return address;
-            string best = address.Substring(0, 4) + "…" + address.Substring(address.Length - 4);
-            for (int k = 4; k < address.Length / 2; k++)
-            {
-                string cand = address.Substring(0, k) + "…" + address.Substring(address.Length - k);
-                if (TextRenderer.MeasureText(cand, font).Width > maxWidth) break;
-                best = cand;
-            }
-            return best;
-        }
-
         private void TitleBarDrag(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -357,8 +290,7 @@ namespace WinPanel
         }
 
         // Live (re)translation of every caption — used both on build and when
-        // the user flips a flag in the window. Wallet rows are language-neutral
-        // (coin names and addresses) and are not touched here.
+        // the user flips a flag in the window.
         private void ApplyLanguage()
         {
             lblGreet.Text = Loc.S("Thanks for trying Tilettes!", "Спасибо, что решили попробовать Плиточки!");
@@ -370,8 +302,6 @@ namespace WinPanel
             lblLang.Text = Loc.S("Language / Язык:", "Язык / Language:");
             chkUpdates.Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически");
             lblSupport.Text = Loc.S("Support the author", "Поддержать автора");
-            lblCopyHint.Text = Loc.S("Click an address to copy it", "Клик по адресу — скопирует его");
-            lblDonatePrompt.Text = Loc.S("Wallet addresses and other ways to help live on GitHub:", "Адреса кошельков и другие способы помочь — на GitHub:");
             btnClose.Text = Loc.S("Close", "Закрыть");
             btnExamples.Text = Loc.S("Close & create example tiles", "Закрыть и создать примеры");
         }

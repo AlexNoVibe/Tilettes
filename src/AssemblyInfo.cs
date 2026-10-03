@@ -5,13 +5,15 @@ using System.Runtime.InteropServices;
 // resource inside Tilettes.exe (visible under Properties -> Details), which
 // also helps security heuristics: an unsigned exe with no version info is a
 // common false-positive pattern for Windows Defender.
-// Keep AssemblyVersion in sync with AppInfo.AppVersion (src/apputil.cs).
+// Keep AssemblyVersion, AssemblyFileVersion and AssemblyInformationalVersion
+// in sync with AppInfo.AppVersion (src/apputil.cs) on EVERY release.
 [assembly: AssemblyTitle("Tilettes")]
 [assembly: AssemblyProduct("Tilettes")]
 [assembly: AssemblyDescription("Fast-launch desktop panel: tabs of tiles for apps, folders and files")]
 [assembly: AssemblyCompany("AlexNoVibe")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 AlexNoVibe. MIT license.")]
 [assembly: AssemblyTrademark("")]
-[assembly: AssemblyVersion("0.6.0.0")]
-[assembly: AssemblyFileVersion("0.6.0.0")]
+[assembly: AssemblyVersion("0.6.17.0")]
+[assembly: AssemblyFileVersion("0.6.17.0")]
+[assembly: AssemblyInformationalVersion("0.6.17")]
 [assembly: ComVisible(false)]

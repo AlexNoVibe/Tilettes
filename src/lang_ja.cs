@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace WinPanel
@@ -70,13 +70,10 @@ namespace WinPanel
             { "Clear", "クリア" },
             { "Clear history", "履歴を消去" },
             { "Clear selection", "選択を解除" },
-            { "Click an address to copy it", "アドレスをクリックするとコピーします" },
-            { "Click to copy the address", "クリックでアドレスをコピー" },
             { "Close", "閉じる" },
             { "Close & create example tiles", "閉じてサンプルタイルを作成" },
             { "Command:", "コマンド:" },
             { "Console", "コンソール" },
-            { "Copied ✓", "コピーしました ✓" },
             { "Copy folder path", "フォルダーパスをコピー" },
             { "Copy path", "パスをコピー" },
             { "Could not reach GitHub Releases - check the internet connection.", "GitHub Releases に接続できません - インターネット接続を確認してください。" },
@@ -124,7 +121,6 @@ namespace WinPanel
             { "Language:", "言語:" },
             { "Light", "ライト" },
             { "Light Theme", "ライトテーマ" },
-            { "Like Tilettes? Support the author with crypto:", "Tilettes を気に入りましたか？暗号通貨で作者を支援できます:" },
             { "M", "メ" },
             { "Maintenance & Start Menu", "メンテナンスとスタートメニュー" },
             { "Match precision: exact or fuzzy (0-3)", "一致の精度: 完全またはあいまい (0-3)" },
@@ -154,7 +150,6 @@ namespace WinPanel
             { "Open in Explorer", "エクスプローラーで開く" },
             { "Open in Mini Explorer", "ミニエクスプローラーで開く" },
             { "Open standard", "規定の方法で開く" },
-            { "Open the donate section on GitHub", "GitHub の寄付ページを開く" },
             { "Open with by type...", "種類別の起動方法..." },
             { "Paths", "パス" },
             { "Popup window", "ポップアップウィンドウ" },
@@ -233,13 +228,11 @@ namespace WinPanel
             { "Update", "更新" },
             { "Updates", "更新" },
             { "Version ", "バージョン " },
-            { "Wallet addresses and other ways to help live on GitHub:", "ウォレットアドレスとその他の支援方法は GitHub をご覧ください:" },
             { "Window Position:", "ウィンドウ位置:" },
             { "Windows calculator", "Windows 電卓" },
             { "You are on the latest version: v", "最新バージョンです: v" },
             { "[console process exited - press Restart]", "[コンソールのプロセスが終了 - 再起動を押してください]" },
             { "\nThe green Update plate has appeared in the corner.", "\n緑の「更新」ボタンが隅に表示されました。" },
-            { "address copied to clipboard", "アドレスをクリップボードにコピーしました" },
             { "box", "入力欄" },
             { "columns x", "列 x" },
             { "results", "結果" },
@@ -269,6 +262,8 @@ namespace WinPanel
             { "Hide shortcut suffix ( - Shortcut)", "ショートカット接尾辞を隠す ( - ショートカット)" },
             { "Hide file extension (.mp4)", "ファイル拡張子を隠す (.mp4)" },
             { "Extra rows below:", "下部の追加行:" },
+            { "Like Tilettes? Support the author:", "Tilettes を気に入りましたか？作者を支援してください：" },
+            { "Opens the donate section on GitHub", "GitHub のドナート（寄付）セクションを開きます" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "表示グリッドの下に追加するタイル行（同じサイズ）。下にスクロールして到達 (0 = オフ)" },
             { "Past search", "過去の検索" },

@@ -240,6 +240,8 @@ namespace WinPanel
             { "New version v", "Новая версия v" },
             { " is published, but it is less than a day old. It will be offered after 24 hours - antivirus false positives on fresh builds usually settle within that time.",
               " уже опубликована, но ей меньше суток. Будет предложена через 24 часа — за это время обычно уходят ложные срабатывания антивирусов на свежих сборках." },
+            { "Like Tilettes? Support the author:", "Понравились Плиточки? Поддержите автора:" },
+            { "Opens the donate section on GitHub", "Открывает раздел доната на GitHub" },
         };
 
         // Applies dictionary translation to every static text in the control tree
