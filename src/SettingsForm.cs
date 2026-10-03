@@ -120,6 +120,18 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern bool ReleaseCapture();
 
+        // AutoScroll pulls a newly focused control into view: clicking a
+        // checkbox near the fold used to yank the whole content, the mouse-up
+        // landed elsewhere and the tick was lost. This panel keeps the current
+        // scroll position on focus changes; the scrollbar and wheel still work.
+        private class NoJumpPanel : Panel
+        {
+            protected override Point ScrollToControl(Control activeControl)
+            {
+                return DisplayRectangle.Location;
+            }
+        }
+
         public SettingsForm(Settings settings, string settingsPath, Rectangle liveWindowRect)
         {
             this.settings = settings;
@@ -152,7 +164,7 @@ namespace WinPanel
 
             // All settings rows live in a scrollable panel; Save/Cancel sit on a
             // fixed bottom bar, so they are reachable at any window height.
-            scrollPanel = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = bgColor };
+            scrollPanel = new NoJumpPanel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = bgColor };
             bottomBar = new Panel { Dock = DockStyle.Bottom, Height = 52, BackColor = panelColor };
             var titleBar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = panelColor };
             var titleLbl = new Label { Text = "Settings", ForeColor = textColor, AutoSize = true, Location = new Point(10, 7) };
@@ -958,6 +970,7 @@ namespace WinPanel
             settings.FontUiName = FamilyValue(cmbFontUi, settings.FontUiName);
 
             settings.HotkeyWin = chkWinKey.Checked;
+            settings.HotkeyStartClick = chkWinClick.Checked;
             settings.SearchSaveHistory = chkSaveHistory.Checked;
             settings.BackupDays = (int)numBackupDays.Value;
             settings.StartMenuSyncHours = (int)numSyncHours.Value;
