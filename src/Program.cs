@@ -1469,10 +1469,15 @@ namespace WinPanel
             {
                 if (!settings.SearchSaveHistory || activeTabData == null) { HidePanelSearch(); return; }
                 var top = SearchHistoryStore.Top(15);
-                if (top.Count == 0) { HidePanelSearch(); return; }
+                // The panel's own folder groups are not searchable anymore: skip
+                // history entries recorded before that rule (and any that slipped
+                // in through Enter), otherwise they would still show up here.
+                var usable = new List<SearchHistoryEntry>();
+                foreach (var e in top) if (!e.IsFolder) usable.Add(e);
+                if (usable.Count == 0) { HidePanelSearch(); return; }
                 panelSearchGen++;
                 panelSearchResults.Clear();
-                foreach (var e in top)
+                foreach (var e in usable)
                 {
                     var it = new ShortcutItem();
                     it.Name = (string.IsNullOrEmpty(e.Query) ? "" : e.Query + "  →  ") + e.Name;
@@ -1514,11 +1519,15 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("Past search", ex); }
         }
 
+        // Search pool collector: descends into the panel's own folder groups so
+        // their contents stay searchable, but never adds the group itself — the
+        // groups ("Create Folder" containers, the overflow pseudo-folder) only
+        // structure the panel and open by navigation, they are not launchable.
         private static void CollectAllItems(List<ShortcutItem> items, List<ShortcutItem> outList)
         {
             foreach (var it in items)
             {
-                outList.Add(it);
+                if (!it.IsFolder) outList.Add(it);
                 if (it.Children != null && it.Children.Count > 0) CollectAllItems(it.Children, outList);
             }
         }
