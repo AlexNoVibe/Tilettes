@@ -3930,6 +3930,8 @@ namespace WinPanel
             tabBtn.Font = tabFontActive;
             tabBtn.FlatAppearance.MouseOverBackColor = panelColor;
             layoutPanels[tabBtn].Visible = true;
+            var activatedScroll = layoutPanels[tabBtn] as ScrollPanel;
+            if (activatedScroll != null) activatedScroll.ScrollToTop(); // tabs open at the top
 
             activeTabBtn = tabBtn;
             activeLayoutPanel = layoutPanels[tabBtn];
@@ -6556,6 +6558,20 @@ namespace WinPanel
         public Color PanelBg { get { return bgColor; } }
         public bool LightBg { get { return lightTheme; } }
         public float ThumbOpacity { get { return opacity; } }
+
+        // Tab switch: a tab always opens at the top - the scroll offset belonged
+        // to the previous session of this tab. The pill stays hidden (no pulse:
+        // a programmatic position set raises no .NET Scroll event).
+        public void ScrollToTop()
+        {
+            try
+            {
+                if (AutoScrollPosition.X == 0 && AutoScrollPosition.Y == 0) return;
+                AutoScrollPosition = new Point(0, 0);
+                if (thumb != null && !thumb.IsDisposed) RepositionThumb();
+            }
+            catch { }
+        }
 
         private bool CanScroll()
         {
