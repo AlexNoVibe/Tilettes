@@ -3694,7 +3694,7 @@ namespace WinPanel
 
                 int row = tabData.Row;
 
-                var layoutPanel = new Panel
+                var layoutPanel = new ScrollPanel
                 {
                     Dock = DockStyle.Fill,
                     AutoScroll = true,
@@ -3703,9 +3703,11 @@ namespace WinPanel
                     BackColor = bgColor,
                     Visible = false
                 };
+                layoutPanel.SetTheme(bgColor, settings.IsLightTheme);
                 // Panel.DoubleBuffered is protected; without it every tile drag
                 // erased+repainted the exposed background and made the icons of
-                // the neighbouring tiles blink.
+                // the neighbouring tiles blink. (ScrollPanel also sets it; kept
+                // for any plain Panel fallback.)
                 typeof(Panel).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                     .SetValue(layoutPanel, true, null);
                 layoutPanel.DragEnter += LayoutPanel_DragEnter;
@@ -4075,12 +4077,6 @@ namespace WinPanel
             }
         }
 
-        // Live tile reflow: grid tiles are sized from the panel's cell size at
-        // render time only; without this a window resize left the tiles stale
-        // until the next full re-render, which then snapped everything at once
-        // (the "rescale jerk" after a drag). Bounds-only recompute - the tiles,
-        // icons and their async loaders stay alive, DrawFit rescales the icon on
-        // the next paint. Free-layout tabs keep their fixed 40px cells.
         // ---- Extra rows below the visible grid (scrollable, settings) ----
         private int ExtraGridRows
         {
@@ -4113,6 +4109,12 @@ namespace WinPanel
             catch { }
         }
 
+        // Live tile reflow: grid tiles are sized from the panel's cell size at
+        // render time only; without this a window resize left the tiles stale
+        // until the next full re-render, which then snapped everything at once
+        // (the "rescale jerk" after a drag). Bounds-only recompute - the tiles,
+        // icons and their async loaders stay alive, DrawFit rescales the icon on
+        // the next paint. Free-layout tabs keep their fixed 40px cells.
         private void ReflowGridTiles(Panel panel, TabData tabData)
         {
             try
@@ -4206,6 +4208,8 @@ namespace WinPanel
                 AddShortcutControl(layoutPanel, item, tabData);
             }
             UpdateGridScrollArea(layoutPanel, tabData);
+            var scrollPanel = layoutPanel as ScrollPanel;
+            if (scrollPanel != null) scrollPanel.EnsureThumb(); // overlay survives Controls.Clear
         }
 
         // ---- Grid occupancy helpers ----
@@ -6463,6 +6467,379 @@ namespace WinPanel
             path.AddArc(arc, 90, 90);
             path.CloseFigure();
             return path;
+        }
+    }
+
+    // Tab layout panel with a custom floating scrollbar. The native bar is
+    // removed for good: the WS_VSCROLL style bit is stripped whenever WinForms
+    // re-adds it (the scroll info and the wheel keep working without the
+    // style, and the client area always keeps the full width). A slim pill is
+    // drawn instead (FloatingScrollThumb); it appears on any scroll activity
+    // and fades out after a short idle, so the panel is clean while not being
+    // scrolled. NOTE: hiding the bar by expanding the client rect over it
+    // (WM_NCCALCSIZE) was tried and rejected - in the reclaimed strip the
+    // native bar's own painting still lands on top and child controls render
+    // unreliably.
+    public class ScrollPanel : Panel
+    {
+        private const int GWL_STYLE = -16;
+        private const int WS_VSCROLL = 0x00200000;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        private FloatingScrollThumb thumb;
+        private System.Windows.Forms.Timer fade;
+        private int idleTicks;          // fade ticks since the last scroll pulse
+        private float opacity = 1f;     // current thumb opacity (0..1)
+        private Color bgColor = Color.FromArgb(240, 240, 240);
+        private bool lightTheme = true;
+
+        public ScrollPanel()
+        {
+            DoubleBuffered = true;
+            thumb = new FloatingScrollThumb(this);
+            thumb.Visible = false;
+            Controls.Add(thumb);
+            // Any scroll source (wheel, thumb drag, AutoScrollPosition) fires
+            // this: show the thumb and reset the idle countdown.
+            Scroll += delegate { Pulse(); };
+            fade = new System.Windows.Forms.Timer { Interval = 50 };
+            fade.Tick += FadeTick;
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                // WS_CLIPCHILDREN: without it the panel's own (double-buffered)
+                // background repaints cover the pill child window's pixels.
+                var cp = base.CreateParams;
+                cp.Style |= 0x02000000;
+                return cp;
+            }
+        }
+
+        // Theme look for the thumb, blended over the panel background.
+        public void SetTheme(Color bg, bool light)
+        {
+            bgColor = bg;
+            lightTheme = light;
+            thumb.Invalidate();
+        }
+
+        // Re-attaches the thumb after a re-render: RenderCurrentFolder clears
+        // the control collection (disposing the old thumb with it), so the
+        // overlay has to be recreated before it can float above the tiles.
+        public void EnsureThumb()
+        {
+            try
+            {
+                if (thumb == null || thumb.IsDisposed) thumb = new FloatingScrollThumb(this);
+                if (!Controls.Contains(thumb))
+                {
+                    thumb.Visible = false;
+                    Controls.Add(thumb);
+                }
+                // Controls.Add appends at the BOTTOM of the z-order (index 0 is
+                // the front): without this the tiles added before the thumb
+                // cover its opaque surface and the pill never shows.
+                thumb.BringToFront();
+                RepositionThumb();
+            }
+            catch { }
+        }
+
+        public Color PanelBg { get { return bgColor; } }
+        public bool LightBg { get { return lightTheme; } }
+        public float ThumbOpacity { get { return opacity; } }
+
+        private bool CanScroll()
+        {
+            return DisplayRectangle.Height - ClientSize.Height > 0;
+        }
+
+        // Thumb metrics for the current scroll state: top/height inside the
+        // client, scrollMax = how many pixels the content can move.
+        public void ThumbMetrics(out int top, out int height, out int scrollMax)
+        {
+            int viewport = Math.Max(1, ClientSize.Height);
+            int content = Math.Max(viewport, DisplayRectangle.Height);
+            scrollMax = content - viewport;
+            height = viewport * viewport / content;
+            if (height > viewport - 8) height = viewport - 8;
+            if (height < 28) height = 28;
+            int pos = -AutoScrollPosition.Y;
+            if (pos < 0) pos = 0;
+            if (pos > scrollMax) pos = scrollMax;
+            top = 4 + (viewport - 8 - height) * pos / Math.Max(1, scrollMax);
+        }
+
+        private void RepositionThumb()
+        {
+            try
+            {
+                if (thumb.IsDisposed) return;
+                int top, height, scrollMax;
+                ThumbMetrics(out top, out height, out scrollMax);
+                // The control IS the pill (6px), 2px away from the window edge.
+                var bounds = new Rectangle(Math.Max(0, ClientSize.Width - 8), top, 6, height);
+                if (thumb.Bounds != bounds) thumb.Bounds = bounds;
+            }
+            catch { }
+        }
+
+        // Scroll activity happened: fully visible thumb, idle countdown from 0.
+        private void Pulse()
+        {
+            try
+            {
+                if (!CanScroll())
+                {
+                    opacity = 0f;
+                    thumb.Visible = false;
+                    fade.Stop();
+                    return;
+                }
+                idleTicks = 0;
+                opacity = 1f;
+                bool wasVisible = thumb.Visible;
+                RepositionThumb();
+                thumb.Visible = true;
+                thumb.BringToFront();
+                if (!wasVisible || !fade.Enabled) thumb.Invalidate();
+                if (!fade.Enabled) fade.Start();
+            }
+            catch { }
+        }
+
+        // Called by the thumb while it is being dragged with the mouse.
+        public void ScrollByThumb(int thumbTop)
+        {
+            try
+            {
+                int top, height, scrollMax;
+                ThumbMetrics(out top, out height, out scrollMax);
+                if (scrollMax <= 0) return;
+                int pos = (thumbTop - 4) * scrollMax / Math.Max(1, ClientSize.Height - 8 - height);
+                if (pos < 0) pos = 0;
+                if (pos > scrollMax) pos = scrollMax;
+                AutoScrollPosition = new Point(0, pos);
+                // A programmatic AutoScrollPosition set does not raise the .NET
+                // Scroll event: pulse explicitly so the thumb tracks the drag.
+                Pulse();
+            }
+            catch { }
+        }
+
+        // Page jump on a strip click above/below the thumb.
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            try
+            {
+                if (e.Button != MouseButtons.Left || !CanScroll()) return;
+                if (e.X < ClientSize.Width - 14) return;
+                int top, height, scrollMax;
+                ThumbMetrics(out top, out height, out scrollMax);
+                int pos = -AutoScrollPosition.Y;
+                if (pos < 0) pos = 0; if (pos > scrollMax) pos = scrollMax;
+                int page = Math.Max(1, ClientSize.Height - height);
+                pos = e.Y < top ? pos - page : pos + page;
+                if (pos < 0) pos = 0;
+                if (pos > scrollMax) pos = scrollMax;
+                AutoScrollPosition = new Point(0, pos);
+                Pulse(); // show/refresh the thumb (no Scroll event for this)
+            }
+            catch { }
+        }
+
+        protected override void OnResize(EventArgs eventargs)
+        {
+            base.OnResize(eventargs);
+            try { if (thumb.Visible) RepositionThumb(); } catch { }
+        }
+
+        private void FadeTick(object sender, EventArgs e)
+        {
+            try
+            {
+                if (thumb.IsDisposed) { fade.Stop(); return; }
+                // Grabbed or hovered thumb stays fully visible.
+                if (thumb.Dragging || thumb.Hovered)
+                {
+                    idleTicks = 0;
+                    opacity = 1f;
+                    thumb.Invalidate();
+                    return;
+                }
+                if (idleTicks < 14) { idleTicks++; return; } // ~0.7s solid, then fade
+                opacity -= 0.12f;
+                if (opacity <= 0f)
+                {
+                    opacity = 0f;
+                    thumb.Visible = false;
+                    fade.Stop();
+                }
+                thumb.Invalidate();
+            }
+            catch { }
+        }
+
+        protected override void OnScroll(ScrollEventArgs se)
+        {
+            base.OnScroll(se);
+            // The thumb is a child of the scrolling panel: every scroll shifts
+            // it with the content. Snap it back to the strip after the scroll.
+            try { if (thumb != null && !thumb.IsDisposed && thumb.Visible) RepositionThumb(); } catch { }
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_MOUSEWHEEL = 0x020A;
+            // Strip the vertical scrollbar style whenever WinForms re-adds it:
+            // the native bar never appears and the client keeps the full width.
+            // Scrolling itself (scroll info, wheel, AutoScrollPosition) does not
+            // need the style bit. The check is a no-op while the bit is clear,
+            // and clearing it triggers its own recalc that finds it clear, so
+            // there is no loop.
+            try
+            {
+                int style = GetWindowLong(m.HWnd, GWL_STYLE);
+                if ((style & WS_VSCROLL) != 0)
+                    SetWindowLong(m.HWnd, GWL_STYLE, style & ~WS_VSCROLL);
+            }
+            catch { }
+            // The wheel arrives here directly (focused panel) or bubbled from a
+            // focused tile by DefWindowProc.
+            if (m.Msg == WM_MOUSEWHEEL)
+            {
+                Pulse();
+                base.WndProc(ref m);
+                // The scroll above shifted the thumb with the content: snap it
+                // back before the frame paints.
+                try { if (thumb != null && !thumb.IsDisposed && thumb.Visible) RepositionThumb(); } catch { }
+                return;
+            }
+            base.WndProc(ref m);
+        }
+    }
+
+    // The floating scrollbar pill: a slim bar at the right edge of a
+    // ScrollPanel, floating above the content. The control is exactly the
+    // pill (6px wide) and fills itself in OnPaintBackground - a window Region
+    // was tried for the rounded caps and silently broke the painting of the
+    // whole control (nothing rendered), so the pill is a plain 6px strip.
+    public class FloatingScrollThumb : Control
+    {
+        private readonly ScrollPanel owner;
+        internal bool Dragging;
+        internal bool Hovered;
+
+        public FloatingScrollThumb(ScrollPanel owner)
+        {
+            this.owner = owner;
+            // Selectable=false keeps clicks from stealing the focus; plain
+            // default paint styles + DoubleBuffered. The explicit
+            // Opaque|AllPaintingInWmPaint|UserPaint combo was tried here and
+            // silently killed ALL painting of this window (no WM_PAINT ever
+            // reached OnPaintBackground) - do not re-add it.
+            SetStyle(ControlStyles.Selectable, false);
+            DoubleBuffered = true;
+            TabStop = false;
+            Cursor = Cursors.Arrow;
+            Width = 6;
+            Height = 60;
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button == MouseButtons.Left)
+            {
+                Dragging = true;
+                grabY = e.Y;
+                grabTop = Top;
+                Capture = true;
+                Invalidate();
+            }
+        }
+        private int grabY;
+        private int grabTop;
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (Dragging)
+            {
+                // The Scroll event (fired by AutoScrollPosition) calls back into
+                // Pulse and repositions the thumb; the drag origin stays fixed,
+                // so the target slot is always derived from the press point.
+                owner.ScrollByThumb(grabTop + e.Y - grabY);
+            }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (Dragging)
+            {
+                Dragging = false;
+                Capture = false;
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            Hovered = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            Hovered = false;
+            Invalidate();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            Invalidate();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // The whole control IS the pill: one blended fill, opacity-aware.
+            try
+            {
+                float op = owner.ThumbOpacity;
+                if (op <= 0f) return;
+                Color fg = owner.LightBg ? Color.FromArgb(30, 30, 30) : Color.FromArgb(240, 240, 240);
+                float a = 0.28f + 0.32f * op;                 // fades with opacity
+                if (Hovered || Dragging) a = Math.Min(0.85f, a + 0.2f);
+                using (var brush = new SolidBrush(Blend(owner.PanelBg, fg, a)))
+                    e.Graphics.FillRectangle(brush, ClientRectangle);
+            }
+            catch { }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            // Everything is drawn in OnPaintBackground.
+        }
+
+        private static Color Blend(Color bg, Color fg, float a)
+        {
+            return Color.FromArgb(
+                (int)Math.Round(bg.R + (fg.R - bg.R) * a),
+                (int)Math.Round(bg.G + (fg.G - bg.G) * a),
+                (int)Math.Round(bg.B + (fg.B - bg.B) * a));
         }
     }
 
