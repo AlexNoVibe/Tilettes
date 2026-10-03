@@ -3944,6 +3944,14 @@ namespace WinPanel
                     settings.ActiveTab = td.Name;
                     try { settings.Save(settingsPath); } catch { }
                 }
+                // Leaving a tab while inside a folder (same-window navigation)
+                // must not hang the folder view on return: the tab always opens
+                // at its root, the Back button included.
+                if (tabNavigations.ContainsKey(td) && tabNavigations[td].Count > 0)
+                {
+                    tabNavigations[td].Clear();
+                    renderedTabs.Remove(td); // force the root re-render below
+                }
             }
             // Lazy rendering: build this tab's tiles on its first activation. The
             // panel is visible now, so the layout has real bounds to work with.
