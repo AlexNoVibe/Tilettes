@@ -267,7 +267,10 @@ namespace WinPanel
             { "Center", "Centro" },
             { "Right", "Derecha" },
             { "Hide shortcut suffix ( - Shortcut)", "Ocultar sufijo de acceso directo ( - Acceso directo)" },
-            { "Hide file extension (.mp4)", "Ocultar extensión de archivo (.mp4)" }
+            { "Hide file extension (.mp4)", "Ocultar extensión de archivo (.mp4)" },
+            { "Extra rows below:", "Filas extra debajo:" },
+            { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
+              "Filas de mosaicos extra bajo la cuadrícula visible, del mismo tamaño; se accede desplazándose hacia abajo (0 = desactivado)" }
         };
     }
 }

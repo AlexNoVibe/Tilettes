@@ -4081,6 +4081,38 @@ namespace WinPanel
         // (the "rescale jerk" after a drag). Bounds-only recompute - the tiles,
         // icons and their async loaders stay alive, DrawFit rescales the icon on
         // the next paint. Free-layout tabs keep their fixed 40px cells.
+        // ---- Extra rows below the visible grid (scrollable, settings) ----
+        private int ExtraGridRows
+        {
+            get { return Math.Max(0, settings.GridExtraRows); }
+        }
+
+        // Visible grid rows + the extra ones: the capacity that placement uses
+        // (items that do not fit the visible grid flow into the extra rows).
+        private int TotalGridRows
+        {
+            get { return Math.Max(1, settings.GridRows) + ExtraGridRows; }
+        }
+
+        // Extends the scrollable area of a grid-layout panel over the extra rows;
+        // a free-layout panel must not keep a stale scroll range after a toggle.
+        private void UpdateGridScrollArea(Panel panel, TabData tabData)
+        {
+            try
+            {
+                if (!tabData.IsGridLayout)
+                {
+                    if (panel.AutoScrollMinSize != Size.Empty) panel.AutoScrollMinSize = Size.Empty;
+                    return;
+                }
+                int rows = Math.Max(1, settings.GridRows);
+                int cellHeight = Math.Max(1, panel.ClientSize.Height / rows);
+                var minSize = new Size(0, (rows + ExtraGridRows) * cellHeight);
+                if (panel.AutoScrollMinSize != minSize) panel.AutoScrollMinSize = minSize;
+            }
+            catch { }
+        }
+
         private void ReflowGridTiles(Panel panel, TabData tabData)
         {
             try
@@ -4090,6 +4122,15 @@ namespace WinPanel
                 int rows = Math.Max(1, settings.GridRows);
                 int cellWidth = Math.Max(1, panel.ClientSize.Width / cols);
                 int cellHeight = Math.Max(1, panel.ClientSize.Height / rows);
+                // Keep the scrollable area over the extra rows (rows below the
+                // visible grid): even with no tiles there the panel scrolls.
+                var minSize = new Size(0, (rows + Math.Max(0, settings.GridExtraRows)) * cellHeight);
+                if (panel.AutoScrollMinSize != minSize) panel.AutoScrollMinSize = minSize;
+                // Child Location inside an AutoScroll panel is PHYSICAL while
+                // scrolled (the scroll shifts children): add the scroll offset
+                // so the logical grid slot is preserved. At scroll 0 this is a
+                // no-op and the layout is exactly as before.
+                var scroll = panel.AutoScrollPosition;
                 foreach (Control c in panel.Controls)
                 {
                     var tile = c as TileControl;
@@ -4099,7 +4140,7 @@ namespace WinPanel
                     // the visible grid, rows may overflow into AutoScroll.
                     int col = Math.Max(0, Math.Min(cols - s, tile.Item.GridX));
                     int row = Math.Max(0, tile.Item.GridY);
-                    var bounds = new Rectangle(col * cellWidth, row * cellHeight, s * cellWidth, s * cellHeight);
+                    var bounds = new Rectangle(col * cellWidth + scroll.X, row * cellHeight + scroll.Y, s * cellWidth, s * cellHeight);
                     if (tile.Bounds != bounds) tile.Bounds = bounds;
                 }
             }
@@ -4144,7 +4185,9 @@ namespace WinPanel
             if (tabData.IsGridLayout && itemsToRender != null)
             {
                 int cols = Math.Max(1, settings.GridColumns);
-                int rows = Math.Max(1, settings.GridRows);
+                // Unpositioned items fill the visible grid first, then the
+                // extra rows below it (the panel scrolls to them).
+                int rows = TotalGridRows;
                 bool placedAny = false;
                 foreach (var it in itemsToRender)
                 {
@@ -4162,6 +4205,7 @@ namespace WinPanel
             {
                 AddShortcutControl(layoutPanel, item, tabData);
             }
+            UpdateGridScrollArea(layoutPanel, tabData);
         }
 
         // ---- Grid occupancy helpers ----
@@ -4302,8 +4346,12 @@ namespace WinPanel
             if (tab.Kind == StartMenuSync.TabKind) return false;
             int cols = Math.Max(1, settings.GridColumns);
             int rows = Math.Max(1, settings.GridRows);
-            int usableRows = rows - ReservedRows;
-            if (usableRows < 1) usableRows = rows;
+            // Extra rows below the fold count toward the capacity: the grid is
+            // "full" only when the extra rows are full too (the reserved rows
+            // stay at the very bottom, out of sight).
+            int totalRows = rows + Math.Max(0, settings.GridExtraRows);
+            int usableRows = totalRows - ReservedRows;
+            if (usableRows < 1) usableRows = totalRows;
 
             ShortcutItem overflow = null;
             foreach (var it in tab.Items)
@@ -4316,13 +4364,13 @@ namespace WinPanel
             {
                 long need = 0;
                 foreach (var it in tab.Items)
-                    if (!ReferenceEquals(it, overflow)) need += CellCount(it, cols, rows);
-                foreach (var ch in overflow.Children) need += CellCount(ch, cols, rows);
+                    if (!ReferenceEquals(it, overflow)) need += CellCount(it, cols, totalRows);
+                foreach (var ch in overflow.Children) need += CellCount(ch, cols, totalRows);
                 if (need <= (long)cols * usableRows)
                 {
                     foreach (var ch in overflow.Children)
                     {
-                        PlaceInGrid(tab.Items, ch, Math.Max(0, ch.GridX), Math.Max(0, ch.GridY), cols, rows);
+                        PlaceInGrid(tab.Items, ch, Math.Max(0, ch.GridX), Math.Max(0, ch.GridY), cols, totalRows);
                         tab.Items.Add(ch);
                     }
                     overflow.Children.Clear();
@@ -4335,7 +4383,7 @@ namespace WinPanel
             // 2) Evict bottom-most items until the rest fits into the usable rows.
             long total = 0;
             foreach (var it in tab.Items)
-                if (!ReferenceEquals(it, overflow)) total += CellCount(it, cols, rows);
+                if (!ReferenceEquals(it, overflow)) total += CellCount(it, cols, totalRows);
 
             if (total > (long)cols * usableRows)
             {
@@ -4417,8 +4465,8 @@ namespace WinPanel
                 if (tabData.IsGridLayout)
                 {
                     int cols = Math.Max(1, settings.GridColumns);
-                    int rows = Math.Max(1, settings.GridRows);
-                    PlaceInGrid(targetList, folder, Math.Max(0, folder.X / Math.Max(1, layoutPanel.ClientSize.Width / cols)), Math.Max(0, folder.Y / Math.Max(1, layoutPanel.ClientSize.Height / rows)), cols, rows);
+                    int cellHeight = Math.Max(1, layoutPanel.ClientSize.Height / Math.Max(1, settings.GridRows));
+                    PlaceInGrid(targetList, folder, Math.Max(0, folder.X / Math.Max(1, layoutPanel.ClientSize.Width / cols)), Math.Max(0, folder.Y / cellHeight), cols, TotalGridRows);
                 }
                 targetList.Add(folder);
                 records.Save(recordsPath);
@@ -4495,7 +4543,8 @@ namespace WinPanel
                     {
                         int cellWidth = Math.Max(1, layoutPanel.ClientSize.Width / cols);
                         int cellHeight = Math.Max(1, layoutPanel.ClientSize.Height / rows);
-                        PlaceInGrid(targetList, shortcut, displayPt.X / cellWidth, displayPt.Y / cellHeight, cols, rows);
+                        // Prefer the drop cell; overflow goes into the extra rows.
+                        PlaceInGrid(targetList, shortcut, displayPt.X / cellWidth, displayPt.Y / cellHeight, cols, TotalGridRows);
                     }
                     targetList.Add(shortcut);
                 }
@@ -4516,6 +4565,8 @@ namespace WinPanel
 
             int cols = Math.Max(1, settings.GridColumns);
             int rows = Math.Max(1, settings.GridRows);
+            // The dashed grid continues over the extra rows below the fold.
+            int totalRows = rows + ExtraGridRows;
 
             // The grid stretches over the visible window area. The outer border lines
             // are pulled 8px inside: the last 6px of every window edge are covered by
@@ -4538,6 +4589,12 @@ namespace WinPanel
             float right = panel.ClientSize.Width - BorderInset + scroll.X;
             float top = BorderInset + scroll.Y;
             float bottom = panel.ClientSize.Height - BorderInset + scroll.Y;
+            if (totalRows > rows)
+            {
+                // Extra rows: the bottom border sits at the end of the virtual
+                // grid (a floating dashed line, the window edge is far above).
+                bottom = totalRows * cellHeight + scroll.Y;
+            }
 
             Color gridColor = settings.IsLightTheme
                 ? Color.FromArgb(settings.GridTransparency, 0, 0, 0)
@@ -4554,11 +4611,11 @@ namespace WinPanel
                     if (x >= 0 && x <= panel.ClientSize.Width)
                         e.Graphics.DrawLine(gridPen, x, top, x, bottom);
                 }
-                for (int i = 0; i <= rows; i++)
+                for (int i = 0; i <= totalRows; i++)
                 {
                     float y = i * cellHeight + scroll.Y;
                     if (i == 0) y = top;
-                    else if (i == rows) y = bottom;
+                    else if (i == totalRows) y = bottom;
                     if (y >= 0 && y <= panel.ClientSize.Height)
                         e.Graphics.DrawLine(gridPen, left, y, right, y);
                 }
@@ -4569,6 +4626,7 @@ namespace WinPanel
         {
             int cols = Math.Max(1, settings.GridColumns);
             int rows = Math.Max(1, settings.GridRows);
+            int rowsTotal = TotalGridRows; // drag-drop target rows include the extra ones
             int cellWidth = Math.Max(1, panel.ClientSize.Width / cols);
             int cellHeight = Math.Max(1, panel.ClientSize.Height / rows);
 
@@ -4602,6 +4660,13 @@ namespace WinPanel
                 xPos = item.X;
                 yPos = item.Y;
             }
+
+            // Child Location inside an AutoScroll panel is PHYSICAL while the
+            // panel is scrolled (the scroll shifts children): add the scroll
+            // offset so the stored logical slot is preserved. At scroll 0 this
+            // is a no-op.
+            xPos += panel.AutoScrollPosition.X;
+            yPos += panel.AutoScrollPosition.Y;
 
             var tile = new TileControl
             {
@@ -4780,9 +4845,13 @@ namespace WinPanel
                         {
                             if (tabData.IsGridLayout)
                             {
+                                // tile.Top is a PHYSICAL coordinate while the
+                                // panel is scrolled (AutoScrollPosition is
+                                // negative then): convert to the logical slot.
+                                int topLogical = tile.Top - panel.AutoScrollPosition.Y;
                                 int col = Math.Max(0, Math.Min(cols - s, (tile.Left + cellWidth / 2) / cellWidth));
-                                int row = Math.Max(0, Math.Min(rows - s, (tile.Top + cellHeight / 2) / cellHeight));
-                                PlaceInGrid(GetCurrentItems(tabData), item, col, row, cols, rows);
+                                int row = Math.Max(0, Math.Min(rowsTotal - s, (topLogical + cellHeight / 2) / cellHeight));
+                                PlaceInGrid(GetCurrentItems(tabData), item, col, row, cols, rowsTotal);
                             }
                             else
                             {
@@ -4920,8 +4989,7 @@ namespace WinPanel
                     if (tabData.IsGridLayout)
                     {
                         int cols = Math.Max(1, settings.GridColumns);
-                        int rows = Math.Max(1, settings.GridRows);
-                        PlaceInGrid(targetList, child, folder.GridX + 1, folder.GridY, cols, rows);
+                        PlaceInGrid(targetList, child, folder.GridX + 1, folder.GridY, cols, TotalGridRows);
                     }
                     else
                     {
@@ -5082,9 +5150,8 @@ namespace WinPanel
             if (tabData.IsGridLayout)
             {
                 int cols = Math.Max(1, settings.GridColumns);
-                int rows = Math.Max(1, settings.GridRows);
                 // After resizing, keep the tile inside the grid and off other tiles.
-                PlaceInGrid(GetCurrentItems(tabData), item, item.GridX, item.GridY, cols, rows);
+                PlaceInGrid(GetCurrentItems(tabData), item, item.GridX, item.GridY, cols, TotalGridRows);
             }
             records.Save(recordsPath);
             RenderCurrentFolder(panel, tabData);
@@ -5124,8 +5191,7 @@ namespace WinPanel
             if (tabData.IsGridLayout)
             {
                 int cols = Math.Max(1, settings.GridColumns);
-                int rows = Math.Max(1, settings.GridRows);
-                PlaceInGrid(targetList, item, currentFolder.GridX + 1, currentFolder.GridY, cols, rows);
+                PlaceInGrid(targetList, item, currentFolder.GridX + 1, currentFolder.GridY, cols, TotalGridRows);
             }
             else
             {
@@ -5175,7 +5241,7 @@ namespace WinPanel
                 if (items == null || items.Count == 0 || toTab == null || ReferenceEquals(fromTab, toTab)) return;
                 var fromList = GetCurrentItems(fromTab);
                 int cols = Math.Max(1, settings.GridColumns);
-                int rows = Math.Max(1, settings.GridRows);
+                int rows = TotalGridRows;
                 foreach (var it in items)
                 {
                     if (it == null) continue;

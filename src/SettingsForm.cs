@@ -25,6 +25,7 @@ namespace WinPanel
         private NumericUpDown numGridTransparency;
         private NumericUpDown numGridCols;
         private NumericUpDown numGridRows;
+        private NumericUpDown numGridExtraRows;
         private NumericUpDown numDefaultItemSize;
         private CheckBox chkEditMode;
         private CheckBox chkMiniExplorer;
@@ -250,6 +251,13 @@ namespace WinPanel
             var lblRowsCap = new Label { Text = Loc.S("rows", "строк"), Left = 372, Top = y, Width = 60 };
             Tip(numGridCols, "Grid cells horizontally", "Клеток сетки по горизонтали");
             Tip(numGridRows, "Grid cells vertically", "Клеток сетки по вертикали");
+            y += 30;
+
+            // Extra tile rows below the visible grid, reached by scrolling down.
+            var lblExtraRows = new Label { Text = Loc.S("Extra rows below:", "Рядов ниже сетки:"), Left = 20, Top = y, Width = 130 };
+            numGridExtraRows = new NumericUpDown { Left = 155, Top = y - 2, Width = 60, Maximum = 100, Minimum = 0, Value = Math.Max(0, Math.Min(100, settings.GridExtraRows)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numGridExtraRows, "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
+                "Дополнительные ряды плиток под видимой сеткой, того же размера; добраться до них можно прокруткой вниз (0 = выкл)");
             y += 30;
 
             var lblDefSize = new Label { Text = "Def. Item Size:", Left = 20, Top = y, Width = 120 };
@@ -728,6 +736,8 @@ namespace WinPanel
             scrollPanel.Controls.Add(lblColsCap);
             scrollPanel.Controls.Add(numGridRows);
             scrollPanel.Controls.Add(lblRowsCap);
+            scrollPanel.Controls.Add(lblExtraRows);
+            scrollPanel.Controls.Add(numGridExtraRows);
             scrollPanel.Controls.Add(lblDefSize);
             scrollPanel.Controls.Add(numDefaultItemSize);
             scrollPanel.Controls.Add(lblIconScale);
@@ -954,6 +964,7 @@ namespace WinPanel
             settings.GridTransparency = (int)numGridTransparency.Value;
             settings.GridColumns = (int)numGridCols.Value;
             settings.GridRows = (int)numGridRows.Value;
+            settings.GridExtraRows = (int)numGridExtraRows.Value;
             settings.DefaultItemSize = (int)numDefaultItemSize.Value;
             settings.EditMode = chkEditMode.Checked;
             settings.LabelTwoRows = chkTwoRows.Checked;

@@ -267,7 +267,10 @@ namespace WinPanel
             { "Center", "居中" },
             { "Right", "右对齐" },
             { "Hide shortcut suffix ( - Shortcut)", "隐藏快捷方式后缀" },
-            { "Hide file extension (.mp4)", "隐藏文件扩展名 (.mp4)" }
+            { "Hide file extension (.mp4)", "隐藏文件扩展名 (.mp4)" },
+            { "Extra rows below:", "底部额外行数:" },
+            { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
+              "可见网格下方的额外图块行，大小相同；向下滚动即可到达（0 = 关）" }
         };
     }
 }

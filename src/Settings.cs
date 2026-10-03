@@ -82,6 +82,9 @@ namespace WinPanel
         public int GridTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
+        // Extra tile rows BELOW the visible grid, same cell size; reachable by
+        // scrolling down. 0 = off (the panel never scrolls).
+        public int GridExtraRows { get; set; }
         public int DefaultItemSize { get; set; }
         public bool IsLightTheme { get; set; }
 
@@ -175,6 +178,7 @@ namespace WinPanel
             GridTransparency = 50;
             GridColumns = 16;
             GridRows = 16;
+            GridExtraRows = 0;
             DefaultItemSize = 2;
             // Mint is the factory look; IsLightTheme follows the skin (mint is
             // a light skin) so every dark/light branch agrees with it.
@@ -390,6 +394,8 @@ namespace WinPanel
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
+                int ger;
+                if (int.TryParse(ini.Read("GridExtraRows"), out ger)) s.GridExtraRows = Math.Max(0, Math.Min(100, ger));
                 if (int.TryParse(ini.Read("DefaultItemSize"), out dis)) s.DefaultItemSize = dis;
                 if (bool.TryParse(ini.Read("IsLightTheme"), out lt)) s.IsLightTheme = lt;
 
@@ -507,6 +513,7 @@ namespace WinPanel
                 ini.Write("GridTransparency", GridTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
                 ini.Write("GridRows", GridRows.ToString());
+                ini.Write("GridExtraRows", GridExtraRows.ToString());
                 ini.Write("DefaultItemSize", DefaultItemSize.ToString());
                 ini.Write("IsLightTheme", IsLightTheme.ToString());
 

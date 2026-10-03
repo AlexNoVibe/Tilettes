@@ -267,7 +267,10 @@ namespace WinPanel
             { "Center", "中央" },
             { "Right", "右" },
             { "Hide shortcut suffix ( - Shortcut)", "ショートカット接尾辞を隠す ( - ショートカット)" },
-            { "Hide file extension (.mp4)", "ファイル拡張子を隠す (.mp4)" }
+            { "Hide file extension (.mp4)", "ファイル拡張子を隠す (.mp4)" },
+            { "Extra rows below:", "下部の追加行:" },
+            { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
+              "表示グリッドの下に追加するタイル行（同じサイズ）。下にスクロールして到達 (0 = オフ)" }
         };
     }
 }

@@ -134,6 +134,7 @@ namespace WinPanel
             { "Grid Transp. (0-255):", "Прозрачность сетки (0-255):" },
             { "Grid Columns:", "Колонки сетки:" },
             { "Grid Rows:", "Строки сетки:" },
+            { "Extra rows below:", "Рядов ниже сетки:" },
             { "Def. Item Size:", "Размер элемента:" },
             { "Icon Scale (%):", "Масштаб иконок (%):" },
             { "Minimize instead of close", "Сворачивать в трей вместо закрытия" },
@@ -230,6 +231,8 @@ namespace WinPanel
             { "Right", "Справа" },
             { "Hide shortcut suffix ( - Shortcut)", "Скрывать суффикс ярлыка ( — ярлык)" },
             { "Hide file extension (.mp4)", "Скрывать расширение файла (.mp4)" },
+            { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
+              "Дополнительные ряды плиток под видимой сеткой, того же размера; добраться до них можно прокруткой вниз (0 = выкл)" },
         };
 
         // Applies dictionary translation to every static text in the control tree
