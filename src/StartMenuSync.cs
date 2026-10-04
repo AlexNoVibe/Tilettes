@@ -116,18 +116,22 @@ namespace WinPanel
         {
             var roots = new List<Node>();
 
+            // One WScript.Shell COM instance serves every .lnk of this sync;
+            // BuildTree runs on a single background thread.
+            object sh = CreateShell();
+
             string userMenu = SafeFolder(Environment.SpecialFolder.StartMenu);
-            if (userMenu != null) roots.Add(MirrorFolder(userMenu, KeyUser, Loc.S("Start Menu (user)", "Пуск (пользователь)")));
+            if (userMenu != null) roots.Add(MirrorFolder(userMenu, KeyUser, Loc.S("Start Menu (user)", "Пуск (пользователь)"), sh));
 
             string localMenu = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) ?? "",
                 "Microsoft", "Windows", "Start Menu");
             if (!string.IsNullOrEmpty(localMenu) && Directory.Exists(localMenu) &&
                 (userMenu == null || !string.Equals(localMenu, userMenu, StringComparison.OrdinalIgnoreCase)))
-                roots.Add(MirrorFolder(localMenu, KeyLocal, Loc.S("Start Menu (local)", "Пуск (локальный)")));
+                roots.Add(MirrorFolder(localMenu, KeyLocal, Loc.S("Start Menu (local)", "Пуск (локальный)"), sh));
 
             string commonMenu = SafeFolder(Environment.SpecialFolder.CommonStartMenu);
-            if (commonMenu != null) roots.Add(MirrorFolder(commonMenu, KeyCommon, Loc.S("Start Menu (all users)", "Пуск (все пользователи)")));
+            if (commonMenu != null) roots.Add(MirrorFolder(commonMenu, KeyCommon, Loc.S("Start Menu (all users)", "Пуск (все пользователи)"), sh));
 
             roots.Add(BuildUwpFolder());
             return roots;
@@ -143,18 +147,18 @@ namespace WinPanel
             catch { return null; }
         }
 
-        private static Node MirrorFolder(string dir, string key, string displayName)
+        private static Node MirrorFolder(string dir, string key, string displayName, object sh)
         {
             var node = new Node();
             node.Name = displayName;
             node.Src = key;
             node.IsFolder = true;
-            try { FillChildren(node, dir); }
+            try { FillChildren(node, dir, sh); }
             catch (Exception ex) { AppLog.Write("MirrorFolder " + dir, ex); }
             return node;
         }
 
-        private static void FillChildren(Node parent, string dir)
+        private static void FillChildren(Node parent, string dir, object sh)
         {
             // Subdirectories
             try
@@ -175,7 +179,7 @@ namespace WinPanel
                             n.Src = "dir:" + sub.ToLowerInvariant();
                             n.IsFolder = true;
                             n.Path = sub;
-                            FillChildren(n, sub);
+                            FillChildren(n, sub, sh);
                             parent.Children.Add(n);
                         }
                         catch (Exception ex) { AppLog.Write("FillChildren: subdir " + sub, ex); }
@@ -198,7 +202,7 @@ namespace WinPanel
                         {
                             string name = Path.GetFileName(file);
                             if (name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
-                            string target = ResolveShortcutTarget(file);
+                            string target = ResolveShortcutTarget(sh, file);
                             // Dead link: the .lnk names a target that no longer exists.
                             if (target != null && !File.Exists(target) && !Directory.Exists(target)) continue;
                             var n = new Node();
@@ -241,18 +245,29 @@ namespace WinPanel
             return node;
         }
 
-        // .lnk target via WScript.Shell COM (reflection, no dynamic). Returns null
-        // when the path is not a shortcut or the target cannot be determined
-        // (advertised shortcuts stay: launching them still works).
-        private static string ResolveShortcutTarget(string path)
+        // One WScript.Shell instance per sync; null when COM is unavailable
+        // (targets stay undetermined and no shortcut is filtered out).
+        private static object CreateShell()
+        {
+            try
+            {
+                var t = Type.GetTypeFromProgID("WScript.Shell");
+                return t == null ? null : Activator.CreateInstance(t);
+            }
+            catch { return null; }
+        }
+
+        // .lnk target via the shared WScript.Shell instance (reflection, no
+        // dynamic). Returns null when the path is not a shortcut or the target
+        // cannot be determined (advertised shortcuts stay: launching them still
+        // works).
+        private static string ResolveShortcutTarget(object sh, string path)
         {
             try
             {
                 if (!path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return "";
-                var t = Type.GetTypeFromProgID("WScript.Shell");
-                if (t == null) return "";
-                object sh = Activator.CreateInstance(t);
-                object sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { path });
+                if (sh == null) return "";
+                object sc = sh.GetType().InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { path });
                 object target = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null);
                 return target as string;
             }
@@ -271,38 +286,46 @@ namespace WinPanel
                 {
                     if (t.Kind == TabKind || t.Name == Loc.S("Start Menu", "Пуск") || t.Name == Loc.S("Start", "Пуск")) { tab = t; break; }
                 }
+                bool changed = false;
                 if (tab == null)
                 {
                     tab = new TabData();
                     tab.Kind = TabKind;
                     tab.IsGridLayout = true;
                     records.Tabs.Add(tab);
+                    changed = true;
                     AppLog.Write("Start Menu sync: tab created");
                 }
                 // The sync owns this tab and keeps its name canonical.
+                string wasName = tab.Name;
                 tab.Name = Loc.S("Start", "Пуск");
+                if (!string.Equals(wasName, tab.Name, StringComparison.Ordinal)) changed = true;
 
                 int cols = Math.Max(1, s.GridColumns);
                 int rows = Math.Max(1, s.GridRows);
 
-                MergeList(tab.Items, roots, cols, rows);
+                changed |= MergeList(tab.Items, roots, cols, rows) > 0;
 
                 // Start tab auto-layout: senior folders on the top row, their
                 // subfolders copied as quick-access tiles across the field.
-                LayoutStartTab(tab, cols, rows);
-
-                // The sync is a bulk add event: collect search metadata for the
-                // (re)merged items once, on a worker thread.
-                form.WarmAllSearchMeta(true);
+                changed |= LayoutStartTab(tab, cols, rows);
 
                 // The layout uses the whole grid; the generic overflow packing
                 // (EnsureTabFits) is skipped for this tab and would fight it.
 
                 s.LastSyncDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                records.Save(form.RecordsFilePath);
+                if (changed)
+                {
+                    records.Save(form.RecordsFilePath);
+                    // Re-read from disk and rebuild the UI; only then collect the
+                    // search metadata - the reload replaces every item object and
+                    // the metadata cache is keyed by item reference, so a warm
+                    // pass before it would be thrown away.
+                    form.OnDataExternallyChanged();
+                    form.WarmAllSearchMeta(true);
+                }
                 s.Save(form.SettingsFilePath);
-                form.OnDataExternallyChanged();
-                AppLog.Write("Start Menu sync finished: " + tab.Items.Count + " top-level items");
+                AppLog.Write("Start Menu sync finished: " + tab.Items.Count + " top-level items" + (changed ? "" : ", no changes"));
                 if (notify)
                     form.ShowBalloon(Loc.S("Start Menu synced:", "Пуск синхронизирован:") + " " + tab.Items.Count);
             }
@@ -313,9 +336,12 @@ namespace WinPanel
             }
         }
 
-        // Differential merge of one list level.
-        private static void MergeList(List<ShortcutItem> items, List<Node> nodes, int cols, int rows)
+        // Differential merge of one list level. Returns how many items were
+        // added or removed (0 = the level is unchanged).
+        private static int MergeList(List<ShortcutItem> items, List<Node> nodes, int cols, int rows)
         {
+            int changes = 0;
+
             // Index the existing items by their sync key.
             var bySrc = new Dictionary<string, ShortcutItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var it in items)
@@ -330,7 +356,7 @@ namespace WinPanel
                 ShortcutItem existing;
                 if (bySrc.TryGetValue(n.Src, out existing))
                 {
-                    if (existing.IsFolder && n.IsFolder) MergeList(existing.Children, n.Children, cols, rows);
+                    if (existing.IsFolder && n.IsFolder) changes += MergeList(existing.Children, n.Children, cols, rows);
                     // Files are kept as-is (user renames, sizes and positions survive).
                 }
                 else
@@ -342,11 +368,12 @@ namespace WinPanel
                     it.Path = n.Path ?? "";
                     it.IsUwp = n.IsUwp;
                     it.Size = 2; // 1x1 synced tiles proved too small to read
-                    if (n.IsFolder) MergeChildren(it.Children, n.Children);
+                    if (n.IsFolder) changes += MergeChildren(it.Children, n.Children);
                     // Find a free cell: the spiral search starts at (0,0), so new
                     // items pack into the first available corner of the grid.
                     MainForm.PlaceIntoGridStatic(items, it, cols, rows);
                     items.Add(it);
+                    changes++;
                 }
             }
 
@@ -354,13 +381,15 @@ namespace WinPanel
             for (int i = items.Count - 1; i >= 0; i--)
             {
                 string src = items[i].Src;
-                if (IsSyncKey(src) && !keep.Contains(src)) items.RemoveAt(i);
+                if (IsSyncKey(src) && !keep.Contains(src)) { items.RemoveAt(i); changes++; }
             }
+            return changes;
         }
 
-        private static void MergeChildren(List<ShortcutItem> items, List<Node> nodes)
+        private static int MergeChildren(List<ShortcutItem> items, List<Node> nodes)
         {
             // Folder children are a flat flow: same diff logic, no grid placement.
+            int changes = 0;
             var bySrc = new Dictionary<string, ShortcutItem>(StringComparer.OrdinalIgnoreCase);
             foreach (var it in items)
                 if (!string.IsNullOrEmpty(it.Src) && !bySrc.ContainsKey(it.Src)) bySrc[it.Src] = it;
@@ -379,19 +408,21 @@ namespace WinPanel
                     it.Path = n.Path ?? "";
                     it.IsUwp = n.IsUwp;
                     it.Size = 2; // 1x1 synced tiles proved too small to read
-                    if (n.IsFolder) MergeChildren(it.Children, n.Children);
+                    if (n.IsFolder) changes += MergeChildren(it.Children, n.Children);
                     items.Add(it);
+                    changes++;
                 }
                 else if (existing.IsFolder && n.IsFolder)
                 {
-                    MergeChildren(existing.Children, n.Children);
+                    changes += MergeChildren(existing.Children, n.Children);
                 }
             }
             for (int i = items.Count - 1; i >= 0; i--)
             {
                 string src = items[i].Src;
-                if (IsSyncKey(src) && !keep.Contains(src)) items.RemoveAt(i);
+                if (IsSyncKey(src) && !keep.Contains(src)) { items.RemoveAt(i); changes++; }
             }
+            return changes;
         }
 
         private static bool IsSyncKey(string src)

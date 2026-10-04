@@ -17,7 +17,7 @@ Ein Schnellstart-Panel für Windows: ein Kachelraster mit Verknüpfungen, Ordner
 
 ![Tilettes — das Hauptfenster](screenshot_main.png)
 
-Aktuelle Version: **v1.0** — Download über [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **Beta**.
+Aktuelle Version: **v1.0.2** — Download über [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **Beta**.
 
 ## Highlights
 
@@ -214,8 +214,6 @@ Erforderlich ist ein beliebiges Windows mit .NET Framework 4.x (der Compiler ist
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 oder direkt:
@@ -224,7 +222,7 @@ oder direkt:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Releases werden automatisch von GitHub Actions bei jedem `v*`-Tag erstellt: Der Workflow baut die EXE-Varianten mit demselben csc-Aufruf und hängt einfache EXE-Dateien an das Release an (AnyCPU universell + x86 + x64 — ohne Zip); die automatischen Quellcode-Archive von GitHub liegen ebenfalls im Release. Die EXE kannst du auch selbst mit `build.bat` bauen.
+Releases werden automatisch von GitHub Actions bei jedem `v*`-Tag erstellt: Der Workflow baut die universelle EXE mit demselben csc-Aufruf und hängt eine einzige einfache EXE-Datei an das Release an (ohne Zip) samt `SHA256SUMS.txt` mit ihrer Prüfsumme (die Prüfsumme steht auch in den Release-Hinweisen); die automatischen Quellcode-Archive von GitHub liegen ebenfalls im Release. Der universelle AnyCPU-Build läuft als 64-Bit-Prozess auf 64-Bit-Windows und als 32-Bit-Prozess auf 32-Bit-Windows. Die EXE kannst du auch selbst mit `build.bat` bauen.
 
 ## Antivirus-Fehlalarme
 

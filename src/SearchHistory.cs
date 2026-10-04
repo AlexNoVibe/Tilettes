@@ -37,9 +37,9 @@ namespace WinPanel
             lock (Gate)
             {
                 entries = new List<SearchHistoryEntry>();
+                string p = FilePath();
                 try
                 {
-                    string p = FilePath();
                     if (File.Exists(p))
                     {
                         var ser = new XmlSerializer(typeof(List<SearchHistoryEntry>));
@@ -50,7 +50,7 @@ namespace WinPanel
                         }
                     }
                 }
-                catch (Exception ex) { AppLog.Write("SearchHistory.Load", ex); }
+                catch (Exception ex) { DataGuard.OnReadFailure(p, "SearchHistory.Load", ex); }
             }
         }
 

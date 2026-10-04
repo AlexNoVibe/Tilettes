@@ -188,20 +188,23 @@ namespace WinPanel
 
         public static void Load(string path)
         {
+            if (!File.Exists(path)) return;
+            List<FileTypeRule> list = null;
             try
             {
-                if (!File.Exists(path)) return;
                 var ser = new XmlSerializer(typeof(List<FileTypeRule>));
                 using (var fs = File.OpenRead(path))
                 {
-                    var list = (List<FileTypeRule>)ser.Deserialize(fs);
-                    ReplaceAll(list);
+                    list = (List<FileTypeRule>)ser.Deserialize(fs);
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 rules.Clear();
+                DataGuard.OnReadFailure(path, "FileTypes.Load", ex);
+                return;
             }
+            ReplaceAll(list);
         }
 
         public static void Save(string path)

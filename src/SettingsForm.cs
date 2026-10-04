@@ -18,11 +18,14 @@ namespace WinPanel
         private NumericUpDown numY;
         private CheckBox chkMinimizeToTray;
         private ComboBox cmbFolders;
-        private ComboBox cmbHotkey;
+        private TextBox txtHotkey;        // click-and-press hotkey capture field
+        private string hotkeyValue;       // canonical "Ctrl+Alt+F5" / "None"
+        private bool hotkeyTextLock;
         private Label lblLive;
         private Rectangle liveRect;
 
         private NumericUpDown numGridTransparency;
+        private NumericUpDown numAuraTransparency;
         private NumericUpDown numGridCols;
         private NumericUpDown numGridRows;
         private NumericUpDown numGridExtraRows;
@@ -42,6 +45,7 @@ namespace WinPanel
         private ComboBox cmbTileOpen, cmbSearchOpen;
         private NumericUpDown numFolderExit;
     private TextBox txtFolderOpenProgram;
+    private TextBox txtFolderConsole;
     private CheckBox chkWinClick;
 
     // A bold section subtitle: the settings are split into blocks. Returns the
@@ -243,6 +247,13 @@ namespace WinPanel
             Tip(numGridTransparency, "Grid line opacity: 0 = invisible, 255 = solid", "Насыщенность линий сетки: 0 = невидима, 255 = сплошные");
             y += 30;
 
+            var lblAuraTr = new Label { Text = Loc.S("Aura Transp. (%):", "Прозрачность ауры (%):"), Left = 20, Top = y, Width = 130 };
+            numAuraTransparency = new NumericUpDown { Left = 155, Top = y - 2, Width = 120, Maximum = 100, Minimum = 0, Value = Math.Max(0, Math.Min(100, settings.AuraTransparency)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numAuraTransparency,
+                "Aura transparency of all tiles (0 = solid color, 100 = almost invisible). A single tile can set its own in the aura color dialog.",
+                "Прозрачность ауры всех плиток (0 = сплошной цвет, 100 = почти невидима). Свою прозрачность для одной плитки можно задать в диалоге цвета ауры.");
+            y += 30;
+
             // Columns and rows share one row, each field labelled.
             var lblGrid = new Label { Text = Loc.S("Grid:", "Сетка:"), Left = 20, Top = y, Width = 130 };
             numGridCols = new NumericUpDown { Left = 155, Top = y - 2, Width = 60, Maximum = 100, Minimum = 1, Value = settings.GridColumns, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
@@ -255,7 +266,7 @@ namespace WinPanel
 
             // Extra tile rows below the visible grid, reached by scrolling down.
             var lblExtraRows = new Label { Text = Loc.S("Extra rows below:", "Рядов ниже сетки:"), Left = 20, Top = y, Width = 130 };
-            numGridExtraRows = new NumericUpDown { Left = 155, Top = y - 2, Width = 60, Maximum = 100, Minimum = 0, Value = Math.Max(0, Math.Min(100, settings.GridExtraRows)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            numGridExtraRows = new NumericUpDown { Left = 155, Top = y - 2, Width = 60, Maximum = 500, Minimum = 0, Value = Math.Max(0, Math.Min(500, settings.GridExtraRows)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
             Tip(numGridExtraRows, "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
                 "Дополнительные ряды плиток под видимой сеткой, того же размера; добраться до них можно прокруткой вниз (0 = выкл)");
             y += 30;
@@ -339,11 +350,21 @@ namespace WinPanel
                     if (ofd.ShowDialog(this) == DialogResult.OK) txtFolderOpenProgram.Text = ofd.FileName;
                 }
             };
-            Tip(txtFolderOpenProgram, "Total Commander etc.: the .exe that opens directory tiles and \"open containing folder\". Switches are allowed, %1 marks the folder position, e.g. C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Empty or explorer.exe = the system default. For Total Commander /O is added automatically",
-                "Total Commander и т.п.: .exe, которым открываются папки и «открыть содержащую папку». Можно указывать ключи, %1 — место папки, например C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Пусто или explorer.exe — системный проводник. Для Total Commander ключ /O подставляется автоматически");
+            Tip(txtFolderOpenProgram, "Total Commander etc.: the .exe that opens directory tiles and \"open containing folder\". %1 marks the folder position; without %1 the folder is appended at the end, e.g. C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Empty or explorer.exe = the system default. For Total Commander /O is added automatically",
+                "Total Commander и т.п.: .exe, которым открываются папки и «открыть содержащую папку». %1 — место подставляемой папки; если %1 не указан, папка добавится в конец команды, например C:\\totalcmd\\TOTALCMD64.EXE /O \"%1\". Пусто или explorer.exe — системный проводник. Для Total Commander ключ /O подставляется автоматически");
             scrollPanel.Controls.Add(lblOpenWith);
             scrollPanel.Controls.Add(txtFolderOpenProgram);
             scrollPanel.Controls.Add(btnPickFm);
+            y += 30;
+
+            // Ctrl + right-click on a folder tile runs this command; %1 = folder.
+            var lblFolderConsole = new Label { Text = Loc.S("Ctrl+Rt-click console:", "Ctrl+ПКМ консоль:"), Left = 20, Top = y, Width = 130 };
+            txtFolderConsole = new TextBox { Left = 150, Top = y - 2, Width = 380, Text = settings.FolderConsole ?? "", BorderStyle = BorderStyle.FixedSingle, BackColor = panelColor, ForeColor = textColor };
+            Tip(txtFolderConsole,
+                "Ctrl + right-click on a folder tile runs this command. %1 = the folder path, e.g. wt -d \"%1\" (Windows Terminal) or cmd /K cd /d \"%1\". Empty = off (the regular menu shows).",
+                "Ctrl + правый клик по плитке папки выполняет эту команду. %1 — путь к папке, например wt -d \"%1\" (Windows Terminal) или cmd /K cd /d \"%1\". Пусто = выключено (обычное меню).");
+            scrollPanel.Controls.Add(lblFolderConsole);
+            scrollPanel.Controls.Add(txtFolderConsole);
             y += 30;
 
             y = AddSection("Panel & hotkeys", "Панель и клавиши", y);
@@ -364,15 +385,31 @@ namespace WinPanel
             y += 30;
 
             var lblHotkey = new Label { Text = "Show window hotkey:", Left = 20, Top = y, Width = 130 };
-            // Editable dropdown: pick a preset or type any Mod+Key combination
-            // (Ctrl/Alt/Shift/Win + a letter or digit), e.g. "Ctrl+Alt+P".
-            cmbHotkey = new ComboBox { Left = 150, Top = y - 2, Width = 185, DropDownStyle = ComboBoxStyle.DropDown, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
-            cmbHotkey.Items.AddRange(new object[] { "None", "Ctrl+Q", "Ctrl+Shift+Q", "Alt+Q", "Ctrl+J", "Ctrl+Shift+J", "Ctrl+Alt+J", "Ctrl+K", "Ctrl+Shift+K", "Alt+J" });
-            string hk = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+Q" : settings.HotkeyShow;
-            if (!cmbHotkey.Items.Contains(hk)) cmbHotkey.Items.Add(hk);
-            cmbHotkey.Text = hk;
-            Tip(cmbHotkey, "Global hotkey that shows the panel; pick a preset or type your own: Ctrl/Alt/Shift/Win + letter or digit",
-                "Глобальная горячая клавиша показа панели; выберите пресет или впишите свою: Ctrl/Alt/Shift/Win + буква или цифра");
+            // Click-and-press capture: the user presses the combination right
+            // here and it becomes the hotkey (letters, digits, F1-F24, Space,
+            // with Ctrl/Alt/Shift/Win). Esc or the "x" button sets None.
+            txtHotkey = new TextBox { Left = 150, Top = y - 2, Width = 148, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle, Cursor = Cursors.Hand };
+            hotkeyValue = string.IsNullOrEmpty(settings.HotkeyShow) ? "Ctrl+Q" : settings.HotkeyShow;
+            hotkeyTextLock = true; txtHotkey.Text = hotkeyValue; hotkeyTextLock = false;
+            txtHotkey.PreviewKeyDown += (s, e) =>
+            {
+                // Route Esc/Back into KeyDown instead of closing the dialog.
+                if (e.KeyCode == Keys.Escape || e.KeyCode == Keys.Back || e.KeyCode == Keys.Delete) e.IsInputKey = true;
+            };
+            txtHotkey.KeyDown += HotkeyCaptureKeyDown;
+            txtHotkey.TextChanged += (s, e) =>
+            {
+                if (hotkeyTextLock) return;
+                SetHotkeyValue(hotkeyValue); // revert paste and other foreign text
+            };
+            Tip(txtHotkey,
+                "Click here and press the key combination: a letter, digit, F1-F24 or Space, with Ctrl/Alt/Shift/Win. Esc or x = None.",
+                "Кликните сюда и нажмите сочетание: буква, цифра, F1-F24 или пробел, с Ctrl/Alt/Shift/Win. Esc или × = None.");
+            var btnHotkeyClear = new Button { Text = "×", Left = 302, Top = y - 3, Width = 26, Height = 24, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor, Cursor = Cursors.Hand };
+            btnHotkeyClear.FlatAppearance.BorderSize = 0;
+            btnHotkeyClear.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            btnHotkeyClear.Click += (s, e) => SetHotkeyValue("None");
+            Tip(btnHotkeyClear, "No global hotkey (None)", "Без горячей клавиши (None)");
             chkWinKey = new CheckBox
             {
                 Text = Loc.S("Capture the Win key", "Захват клавиши Win"),
@@ -714,6 +751,8 @@ namespace WinPanel
             scrollPanel.Controls.Add(lblPosY);
             scrollPanel.Controls.Add(lblTrans);
             scrollPanel.Controls.Add(numGridTransparency);
+            scrollPanel.Controls.Add(lblAuraTr);
+            scrollPanel.Controls.Add(numAuraTransparency);
             scrollPanel.Controls.Add(lblGrid);
             scrollPanel.Controls.Add(numGridCols);
             scrollPanel.Controls.Add(lblColsCap);
@@ -739,7 +778,8 @@ namespace WinPanel
             scrollPanel.Controls.Add(lblLang);
             scrollPanel.Controls.Add(cmbLang);
             scrollPanel.Controls.Add(lblHotkey);
-            scrollPanel.Controls.Add(cmbHotkey);
+            scrollPanel.Controls.Add(txtHotkey);
+            scrollPanel.Controls.Add(btnHotkeyClear);
             scrollPanel.Controls.Add(lblTypes);
             scrollPanel.Controls.Add(btnTypeIcons);
             scrollPanel.Controls.Add(btnTypeOpen);
@@ -772,6 +812,53 @@ namespace WinPanel
         private void Tip(Control c, string en, string ru)
         {
             tips.SetToolTip(c, Loc.S(en, ru));
+        }
+
+        // ---- Hotkey capture field ----
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetKeyState(int nVirtKey);
+
+        // Every key press inside the field becomes the new hotkey value; bare
+        // modifiers wait for the actual key, Esc/Back/Delete set None.
+        private void HotkeyCaptureKeyDown(object sender, KeyEventArgs e)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            Keys k = e.KeyCode;
+            if (k == Keys.Escape || k == Keys.Back || k == Keys.Delete) { SetHotkeyValue("None"); return; }
+            if (k == Keys.ControlKey || k == Keys.LControlKey || k == Keys.RControlKey
+                || k == Keys.ShiftKey || k == Keys.LShiftKey || k == Keys.RShiftKey
+                || k == Keys.Menu || k == Keys.LMenu || k == Keys.RMenu
+                || k == Keys.LWin || k == Keys.RWin)
+                return;
+            string keyName = HotkeyKeyName(k);
+            if (keyName == null) return; // unsupported key: keep the previous value
+            bool win = (GetKeyState(0x5B) & 0x8000) != 0 || (GetKeyState(0x5C) & 0x8000) != 0;
+            string combo = (e.Control ? "Ctrl+" : "") + (e.Alt ? "Alt+" : "") +
+                           (e.Shift ? "Shift+" : "") + (win ? "Win+" : "") + keyName;
+            SetHotkeyValue(combo);
+        }
+
+        private void SetHotkeyValue(string value)
+        {
+            hotkeyValue = value;
+            hotkeyTextLock = true;
+            txtHotkey.Text = value;
+            hotkeyTextLock = false;
+        }
+
+        // Printable name of a capturable key; null when the key is not offered
+        // (only letters, digits and F1-F24/Space are - the same set ParseHotkey
+        // understands).
+        private static string HotkeyKeyName(Keys k)
+        {
+            int kc = (int)k;
+            if (kc >= (int)Keys.F1 && kc <= (int)Keys.F24) return k.ToString();
+            if (k == Keys.Space) return "Space";
+            if (k >= Keys.A && k <= Keys.Z) return k.ToString();
+            if (k >= Keys.D0 && k <= Keys.D9) return ((char)('0' + (kc - (int)Keys.D0))).ToString();
+            return null;
         }
 
         // Shows the actual (current) window numbers at the bottom, but only when at
@@ -919,21 +1006,23 @@ namespace WinPanel
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
             settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
             settings.FolderOpenProgram = (txtFolderOpenProgram.Text ?? "").Trim();
+            settings.FolderConsole = (txtFolderConsole.Text ?? "").Trim();
             settings.MiniExplorerCtrlClick = chkMiniExplorer.Checked;
             // Any Mod+Key combination typed into the editable dropdown; invalid
             // input keeps the dialog open with an explanation.
-            string hotkey = (cmbHotkey.Text ?? "").Trim();
+            string hotkey = (hotkeyValue ?? "").Trim();
             if (hotkey.Length == 0) hotkey = "None";
             if (!hotkey.Equals("None", StringComparison.OrdinalIgnoreCase) && !MainForm.TryParseHotkey(hotkey))
             {
                 ConfirmDialog.ShowInfo(this,
                     Loc.S("Cannot parse the hotkey \"", "Не удалось разобрать комбинацию \"") + hotkey +
-                    Loc.S("\". Use Ctrl/Alt/Shift/Win + a letter or digit, e.g. Ctrl+Alt+P (or None).",
-                          "\". Формат: Ctrl/Alt/Shift/Win + буква или цифра, например Ctrl+Alt+P (или None)."));
+                    Loc.S("\". Use Ctrl/Alt/Shift/Win + a letter, digit or F-key (or None).",
+                          "\". Формат: Ctrl/Alt/Shift/Win + буква, цифра или F-клавиша (или None)."));
                 return;
             }
             settings.HotkeyShow = hotkey;
             settings.GridTransparency = (int)numGridTransparency.Value;
+            settings.AuraTransparency = (int)numAuraTransparency.Value;
             settings.GridColumns = (int)numGridCols.Value;
             settings.GridRows = (int)numGridRows.Value;
             settings.GridExtraRows = (int)numGridExtraRows.Value;

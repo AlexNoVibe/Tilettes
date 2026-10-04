@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.0.2 — 2026-10-04
+
+- **Damaged data files**: if records.xml (or bookmarks, file-type rules, search history) cannot be read, the broken file is kept next to the exe as `<name>.broken-<date-time>`, a fresh default is created in its place, and the user is told once, briefly — a tray balloon when the icon is around, a small dialog otherwise; details go to log.txt. Save failures are logged now too.
+- **Launch failures**: a tile whose file cannot be opened answers with a short localized notice («Cannot open "name"») — a tray balloon when possible, a small dialog otherwise — with the technical reason only in log.txt; the raw English "Error opening file" box is gone.
+- **Aura transparency setting**: a global "Aura Transp. (%)" row in the settings changes the transparency of all auras at once; the per-tile aura dialog can still override a single tile (a value matching the global one stores no override). Old transparency values baked into aura colors migrate: the former default follows the global setting, any other keeps acting as that tile's own.
+- **Softer aura**: auras are painted as a soft glow — strongest in the middle of the tile, melting to transparent at the rounded edge — instead of a hard-edged solid fill; the aura dialog's live preview shows the same.
+- **Any-key hotkey**: the "Show window hotkey" field is now click-and-press: press any combination (a letter, digit, F1–F24 or Space, with Ctrl/Alt/Shift/Win) and it becomes the hotkey; Esc or the × button sets None.
+- **Console on Ctrl+right-click**: a folder tile (in the panel and in the folder popup) opens in a console command from the settings — "%1" is the folder path, e.g. `wt -d "%1"`; empty = off (the regular context menu shows). The "Open folders with" hint now explains %1 explicitly, and the mini explorer's "Open in Explorer" honors the configured folder manager for directories.
+- **Search limits**: up to 10 rows in the past-search block (was 8) and the 30 most relevant regular results (was 200).
+- **Grid capacity**: extra rows below the grid go up to 500 now — tens of thousands of cells for one tab; overflow protection stays as the safety net.
+- **Quieter Start Menu sync**: a sync that finds no changes no longer rewrites records.xml or rebuilds the whole panel (that was a multi-second UI hiccup once a day); search metadata is collected after the data reload instead of being thrown away; one COM object serves every shortcut of a sync instead of one per shortcut.
+- **One universal exe in releases**: GitHub Actions ships only the AnyCPU Tilettes.exe (it runs as a 64-bit process on 64-bit Windows and as a 32-bit one on 32-bit Windows) with its SHA256 checksum; the x86/x64 variants are gone.
+
+**Also new in this release:**
+
+- **Tile aura**: every tile (and folder tile) can get its own translucent background color — right-click a tile → "Aura color..." — preset swatches, any custom color via the system picker, and a transparency slider with a live preview; multi-select applies one color to the whole selection at once.
+- **Multi-select menu**: the red-checkmark mode gained "Move out of folder" (raise every selected tile one level) and "Aura color..." next to remove / move-to-tab.
+- **Mini explorer tabs**: folders open as tabs inside the existing explorer window instead of overwriting its navigation (Ctrl+click, context menu and panel search alike); per-tab back/forward history, "+" opens a tab, middle-click or the tab context menu closes one, closing the last tab closes the window.
+- **Bookmarks panel**: its width is adjustable by a splitter and remembered; command bookmarks show their display name with the command in a tooltip (a name is asked when saving a command); bookmarks reorder by drag-and-drop — drop below a group header to put an entry inside the group.
+- **Console fix**: streaming commands (`docker stats`, progress bars) no longer flood the console — refresh frames (`\r`) update the last line in place, ANSI escape codes are stripped, runs of empty lines collapse, and a repeating plain-`\n` block (the `docker stats` table) is detected by its header and **redrawn in place**: the console shows one live-updating table like a real terminal; a new **Stop** button kills the running command's whole process tree and restarts the console.
+- **Working directory on launch**: every launch path (tiles, search, folder views, the mini explorer, context-menu "Open") now pins the working directory the way a double-click in Explorer does — a `.bat` keeps finding the files next to it (`.env`, configs), an `.exe` its resources, and a shortcut's own "Start in" is respected (an empty "Start in" falls back to the target's folder); previously the child inherited Tilettes' own working directory, so scripts launched from the panel lost their surroundings.
+- **Virtual desktops**: summoning the panel (hotkey, tray, Win key, a second launch) no longer drags the whole view back to the desktop the panel was left on — it re-homes itself to the desktop you are on before activating (a precise move through the public virtual-desktop COM when the system provides it, a window recreation where the component is missing); the same applies to a mini explorer left open on another desktop.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.0...v1.0.2
+
 ## v1.0 — 2026-10-04
 
 First stable release — everything since v0.6.0-beta, briefly:

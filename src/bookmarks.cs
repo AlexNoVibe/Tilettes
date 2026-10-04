@@ -29,9 +29,9 @@ namespace WinPanel
     {
         public static List<ExplorerBookmark> Load(string path)
         {
-            try
+            if (File.Exists(path))
             {
-                if (File.Exists(path))
+                try
                 {
                     var serializer = new XmlSerializer(typeof(List<ExplorerBookmark>));
                     using (var fs = new FileStream(path, FileMode.Open))
@@ -45,10 +45,11 @@ namespace WinPanel
                     }
                     return new List<ExplorerBookmark>();
                 }
-            }
-            catch
-            {
-                return new List<ExplorerBookmark>();
+                catch (Exception ex)
+                {
+                    DataGuard.OnReadFailure(path, "BookmarksStore.Load", ex);
+                    return new List<ExplorerBookmark>();
+                }
             }
 
             var seeded = CreateDefault();

@@ -29,19 +29,38 @@ namespace WinPanel
 
         // navigation state
         private string currentPath = "";
-        private readonly List<string> history = new List<string>();
+        // The ACTIVE tab's back/forward history (mirrors activeTab.History).
+        private List<string> history = new List<string>();
         private int historyIndex = -1;
+        // Explorer tabs: each tab keeps its own path and back/forward history;
+        // the file list, breadcrumbs, bookmarks and the console are shared.
+        private class ExplorerTab
+        {
+            public string Path = "";
+            public List<string> History = new List<string>();
+            public int HistoryIndex = -1;
+        }
+        private readonly List<ExplorerTab> tabs = new List<ExplorerTab>();
+        private ExplorerTab activeTab;
+        private Panel tabStripHost;
+        private FlowLayoutPanel tabFlow;
+        private Button btnTabNew;
+        private readonly Dictionary<Button, ExplorerTab> tabByButton = new Dictionary<Button, ExplorerTab>();
 
         // controls
         private Label titleLbl, statusLbl;
         private Label lblConsole, hintLbl, promptLbl, bmHeader;
         private Button btnBack, btnFwd, btnUp, btnRefresh, btnEditPath, btnBmAdd, btnToggleBm, btnTopBar;
-        private Button btnConsoleWin, btnConsoleRestart, btnConsoleClear, btnSaveCmd, btnRunCmd;
-        private Panel topBarHost, splitter;
+        private Button btnConsoleWin, btnConsoleRestart, btnConsoleClear, btnSaveCmd, btnRunCmd, btnConsoleStop;
+        private Panel topBarHost, splitter, bmSplitter;
         private FlowLayoutPanel topBarFlow;
         private int splitGrabDy;
         private bool topBarVisible = true;
         private bool splitterDragging;
+        private bool bmSplitterDragging;
+        private int bmGrabDx;
+        // Bookmarks panel width, fraction of the window width (settings key MiniExplorerBm).
+        private double bmFrac = 0.18;
         private bool sizing;
         private double consoleFrac = 0.40;
         private Panel crumbHost;
@@ -82,6 +101,13 @@ namespace WinPanel
         private readonly HashSet<string> expandedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private class Row { public ExplorerBookmark Bm; public int Depth; }
         private readonly List<Row> bmRows = new List<Row>();
+        // Manual drag-and-drop reordering of bookmark rows (no OLE DnD).
+        private int bmDragIndex = -1;   // source row
+        private int bmDragTarget = -1;  // row the insertion line is drawn on (-1 = none)
+        private bool bmDragDropAbove;   // insert above (true) / below the target row
+        private bool bmDragging;
+        private Point bmDragStart;
+        private bool bmSuppressClick;   // a drag release must not act as a click
 
         // console
         private Process shell;
@@ -100,6 +126,8 @@ namespace WinPanel
             topBarVisible = settings.MiniExplorerTopBar;
             if (settings.MiniExplorerConsole >= 15 && settings.MiniExplorerConsole <= 85)
                 consoleFrac = settings.MiniExplorerConsole / 100.0;
+            if (settings.MiniExplorerBm >= 12 && settings.MiniExplorerBm <= 45)
+                bmFrac = settings.MiniExplorerBm / 100.0;
             // UiPalette: follows the active skin, falls back to the classic
             // light/dark theme (previously the window ignored decorative skins).
             bool light = UiPalette.IsLight;
@@ -181,6 +209,22 @@ namespace WinPanel
             closeBtn.Click += (s, e) => this.Close();
             titleBar.Controls.Add(closeBtn);
             this.Controls.Add(titleBar);
+
+            // ---------- tab strip (one tab per browsed folder) ----------
+            tabStripHost = new Panel { Left = 6, Top = 34, Width = 900, Height = 30, BackColor = bgColor, AutoScroll = true };
+            tabFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                WrapContents = false,
+                FlowDirection = FlowDirection.LeftToRight,
+                BackColor = bgColor
+            };
+            tabStripHost.Controls.Add(tabFlow);
+            btnTabNew = FlatButton("+", 0, 0, 26, 24);
+            btnTabNew.Margin = new Padding(2, 2, 2, 2);
+            btnTabNew.Click += (s, e) => NewTab(currentPath);
+            tip.SetToolTip(btnTabNew, Loc.S("New tab", "Новая вкладка"));
+            this.Controls.Add(tabStripHost);
 
             // ---------- toolbar: navigation + breadcrumb + status ----------
             btnToggleBm = NavButton("≡", 8);
@@ -327,8 +371,18 @@ namespace WinPanel
             bookmarksList.Click += BookmarksList_Click;
             bookmarksList.MouseDown += BookmarksList_MouseDown;
             bookmarksList.MouseMove += BookmarksList_MouseMove;
+            bookmarksList.MouseUp += BookmarksList_MouseUp;
             bookmarksList.MouseLeave += (s, e) => { if (hoverBm != -1) { hoverBm = -1; bookmarksList.Invalidate(); } };
             this.Controls.Add(bookmarksList);
+
+            // ---------- bookmarks width splitter (drag to resize the left panel) ----------
+            bmSplitter = new Panel { Left = 210, Top = 88, Width = 6, Height = 340, BackColor = panelColor, Cursor = Cursors.SizeWE };
+            bmSplitter.MouseDown += BmSplitter_MouseDown;
+            bmSplitter.MouseMove += BmSplitter_MouseMove;
+            bmSplitter.MouseUp += BmSplitter_MouseUp;
+            bmSplitter.Paint += BmSplitter_Paint;
+            tip.SetToolTip(bmSplitter, Loc.S("Drag to resize the bookmarks panel", "Потяните, чтобы изменить ширину панели закладок"));
+            this.Controls.Add(bmSplitter);
 
             // ---------- file list ----------
             fileList = new ListBox
@@ -371,9 +425,13 @@ namespace WinPanel
             btnConsoleRestart.Click += (s, e) => StartShell();
             btnConsoleClear = FlatButton("Clear", 682, 437, 64, 22);
             btnConsoleClear.Click += (s, e) => { try { consoleOut.Clear(); } catch { } };
+            btnConsoleStop = FlatButton(Loc.S("Stop", "Стоп"), 610, 437, 62, 22);
+            btnConsoleStop.Click += (s, e) => StopConsoleCommand();
+            tip.SetToolTip(btnConsoleStop, Loc.S("Stop the running command", "Остановить выполняющуюся команду"));
             this.Controls.Add(btnConsoleWin);
             this.Controls.Add(btnConsoleRestart);
             this.Controls.Add(btnConsoleClear);
+            this.Controls.Add(btnConsoleStop);
 
             consoleOut = new RichTextBox
             {
@@ -440,6 +498,13 @@ namespace WinPanel
             Loc.Walk(this);
             LayoutAll();
             UpdateRegion();
+
+            // ---------- tabs: the initial tab holds the startup folder ----------
+            activeTab = new ExplorerTab();
+            tabs.Add(activeTab);
+            history = activeTab.History;
+            historyIndex = activeTab.HistoryIndex;
+            RebuildTabStrip();
 
             Navigate(startPath);
             if (currentPath.Length == 0)
@@ -546,6 +611,7 @@ namespace WinPanel
                 settings.MiniExplorerBookmarks = bookmarksVisible;
                 settings.MiniExplorerTopBar = topBarVisible;
                 settings.MiniExplorerConsole = (int)Math.Round(consoleFrac * 100);
+                settings.MiniExplorerBm = (int)Math.Round(bmFrac * 100);
                 settings.Save(settingsPath);
             }
             catch { }
@@ -566,7 +632,15 @@ namespace WinPanel
             int lblH = fh + 4;   // small labels: status, hint, bookmarks header
             int titleH = fh + 14;
             if (titleBarPanel != null) titleBarPanel.Height = titleH;
-            int top = titleH;
+            // Tab strip below the title bar; everything else moves down with it.
+            // The row height follows the font so tab captions do not clip.
+            int tabBtnH = Math.Max(22, TextRenderer.MeasureText("Ag", this.Font).Height + 8);
+            int tabH = tabBtnH + 8;
+            if (tabStripHost != null)
+            {
+                tabStripHost.SetBounds(6, titleH + 2, W - 12, tabH);
+            }
+            int top = titleH + tabH + 2;
             int rightEdge = W - 8;
 
             int navY = top + 4;
@@ -609,16 +683,27 @@ namespace WinPanel
             int listH = consTop - 10 - 4 - listTop;
             if (listH < 60) listH = 60;
 
-            bmHeader.SetBounds(10, listTop - lblH - 4, 150, lblH);
-            btnBmAdd.SetBounds(184, listTop - btnH - 2, 24, btnH);
-            bookmarksList.SetBounds(8, listTop, 200, listH);
+            // Bookmarks panel: a fraction of the window width, adjustable by the
+            // vertical splitter next to it.
+            int bmW = 200;
+            if (bookmarksVisible)
+            {
+                bmW = (int)Math.Round(W * bmFrac);
+                if (bmW < 130) bmW = 130;
+                if (bmW > W - 210) bmW = Math.Max(130, W - 210); // keep the file list usable
+            }
+            bmHeader.SetBounds(10, listTop - lblH - 4, Math.Max(80, bmW - 20), lblH);
+            btnBmAdd.SetBounds(8 + bmW - 28, listTop - btnH - 2, 24, btnH);
+            bookmarksList.SetBounds(8, listTop, bmW, listH);
             int bmItemH = Math.Max(20, TextRenderer.MeasureText("Ag", this.Font).Height + 8);
             if (bookmarksList.ItemHeight != bmItemH) bookmarksList.ItemHeight = bmItemH;
             bmHeader.Visible = bookmarksVisible;
             btnBmAdd.Visible = bookmarksVisible;
             bookmarksList.Visible = bookmarksVisible;
+            bmSplitter.Visible = bookmarksVisible;
+            bmSplitter.SetBounds(8 + bmW + 1, listTop, 6, listH);
 
-            int fx = bookmarksVisible ? 216 : 8;
+            int fx = bookmarksVisible ? 8 + bmW + 9 : 8;
             fileList.SetBounds(fx, listTop, W - fx - 8, listH);
 
             splitter.SetBounds(8, listTop + listH + 2, W - 16, splitH);
@@ -628,9 +713,11 @@ namespace WinPanel
             int wWin = TextRenderer.MeasureText(btnConsoleWin.Text, this.Font).Width + 20;
             int wRestart = TextRenderer.MeasureText(btnConsoleRestart.Text, this.Font).Width + 16;
             int wClear = TextRenderer.MeasureText(btnConsoleClear.Text, this.Font).Width + 16;
+            int wStop = TextRenderer.MeasureText(btnConsoleStop.Text, this.Font).Width + 16;
             btnConsoleWin.SetBounds(rightEdge - wWin, conBtnY, wWin, btnH);
             btnConsoleRestart.SetBounds(rightEdge - wWin - 6 - wRestart, conBtnY, wRestart, btnH);
             btnConsoleClear.SetBounds(rightEdge - wWin - 6 - wRestart - 6 - wClear, conBtnY, wClear, btnH);
+            btnConsoleStop.SetBounds(rightEdge - wWin - 6 - wRestart - 6 - wClear - 6 - wStop, conBtnY, wStop, btnH);
 
             // Bottom: input row + hint line, both scaled from the font.
             int ipTop = H - (btnH + lblH + 16);
@@ -673,7 +760,7 @@ namespace WinPanel
             string text;
             if (b.Kind == "group") text = b.Name + " \u25BE";
             else if (b.Kind == "folder") text = b.Name;
-            else text = "\u203A " + (string.IsNullOrEmpty(b.Value) ? b.Name : b.Value);
+            else text = "\u203A " + (!string.IsNullOrEmpty(b.Name) ? b.Name : b.Value);
             var chip = new Button
             {
                 Text = text,
@@ -688,6 +775,8 @@ namespace WinPanel
             };
             chip.FlatAppearance.BorderSize = 0;
             chip.FlatAppearance.MouseOverBackColor = hoverColor;
+            // The command/path of a chip is one hover away, its label stays short.
+            tip.SetToolTip(chip, b.Kind == "group" ? b.Name : b.Value);
             var cap = b;
             chip.Click += (s, e) => OnChipClick(cap, chip);
             chip.MouseDown += (s, e) => { if (e.Button == MouseButtons.Right) ShowTopBarItemMenu(cap, chip, e.Location); };
@@ -714,7 +803,7 @@ namespace WinPanel
             {
                 var cap = c;
                 string label = c.Kind == "cmd"
-                    ? (string.IsNullOrEmpty(c.Value) ? c.Name : c.Value)
+                    ? (!string.IsNullOrEmpty(c.Name) ? c.Name : c.Value)
                     : (c.Kind == "group" ? c.Name + " \u203A" : c.Name);
                 m.MenuItems.Add(label, (s2, e2) =>
                 {
@@ -806,6 +895,55 @@ namespace WinPanel
             catch { }
         }
 
+        // ---------- bookmarks panel width splitter ----------
+
+        private void BmSplitter_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                bmSplitterDragging = true;
+                bmGrabDx = e.X;
+                try { bmSplitter.Capture = true; } catch { }
+            }
+        }
+
+        private void BmSplitter_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!bmSplitterDragging) return;
+            Point p = this.PointToClient(bmSplitter.PointToScreen(e.Location));
+            int availW = this.ClientSize.Width - 16;
+            if (availW < 300) return;
+            int desiredBmW = p.X - bmGrabDx - 8;
+            double f = desiredBmW / (double)availW;
+            if (f < 0.12) f = 0.12;
+            if (f > 0.45) f = 0.45;
+            if (Math.Abs(f - bmFrac) > 0.003)
+            {
+                bmFrac = f;
+                LayoutAll();
+            }
+        }
+
+        private void BmSplitter_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (bmSplitterDragging)
+            {
+                bmSplitterDragging = false;
+                try { bmSplitter.Capture = false; } catch { }
+                SaveWindowState();
+            }
+        }
+
+        private void BmSplitter_Paint(object sender, PaintEventArgs e)
+        {
+            try
+            {
+                var r = new Rectangle((bmSplitter.Width - 2) / 2, (bmSplitter.Height - 40) / 2, 2, 40);
+                using (var b = new SolidBrush(dimColor)) e.Graphics.FillRectangle(b, r);
+            }
+            catch { }
+        }
+
         private Font ConsoleFont()
         {
             float size = 8.5f;
@@ -878,28 +1016,176 @@ namespace WinPanel
 
         // ---------- navigation ----------
 
-        public void NavigateExternal(string path)
+        // Opens `path` in a new tab of this explorer window and activates the
+        // window. The very first open reuses the constructor's initial tab when
+        // it still shows exactly that folder (one tile click = one tab); every
+        // later open adds a tab instead of overwriting the current view.
+        public void OpenInTab(string path)
         {
+            if (string.IsNullOrEmpty(path)) return;
             if (this.InvokeRequired)
             {
-                try { this.BeginInvoke((Action)delegate { Navigate(path); }); } catch { }
+                try { this.BeginInvoke((Action)delegate { OpenInTab(path); }); } catch { }
                 return;
             }
-            Navigate(path);
+            try { if (!Directory.Exists(path)) return; } catch { return; }
+            bool firstOpen = tabs.Count == 1 && activeTab != null && activeTab.History != null
+                             && activeTab.History.Count <= 1 && Eq(activeTab.Path, path);
+            if (firstOpen) Navigate(path);
+            else NewTab(path);
+            if (!this.Visible) this.Show();
+            else this.Activate();
         }
 
-        // Navigates to `folder` and (optionally) selects the child entry with
-        // that name — used by the panel-search context menu ("open the original
-        // folder" for a search result).
-        public void NavigateExternalSelect(string folder, string selectName)
+        // OpenInTab + select a child entry — used by the panel-search context
+        // menu ("open the original folder" for a search result).
+        public void OpenInTabSelect(string folder, string selectName)
         {
-            if (this.InvokeRequired)
+            OpenInTab(folder);
+            SelectEntryByName(selectName);
+        }
+
+        private void SaveActiveTabState()
+        {
+            if (activeTab == null) return;
+            activeTab.Path = currentPath;
+            activeTab.History = history;
+            activeTab.HistoryIndex = historyIndex;
+        }
+
+        // Creates a tab and navigates it to `path`; the new tab becomes active.
+        private void NewTab(string path)
+        {
+            SaveActiveTabState();
+            var t = new ExplorerTab();
+            tabs.Add(t);
+            activeTab = t;
+            history = t.History;
+            historyIndex = t.HistoryIndex;
+            currentPath = "";
+            RebuildTabStrip();
+            if (!string.IsNullOrEmpty(path)) Navigate(path);
+            else { UpdateTitle(); UpdateCrumbs(); LoadDir(); UpdateNavButtons(); }
+            UpdateTabButtons();
+        }
+
+        private void ActivateTab(ExplorerTab t)
+        {
+            if (t == null || ReferenceEquals(t, activeTab)) return;
+            SaveActiveTabState();
+            activeTab = t;
+            history = t.History;
+            historyIndex = t.HistoryIndex;
+            if (historyIndex >= 0 && historyIndex < history.Count) GoToPath(history[historyIndex]);
+            else if (!string.IsNullOrEmpty(t.Path)) GoToPath(t.Path);
+            else { currentPath = ""; UpdateTitle(); UpdateCrumbs(); LoadDir(); UpdateNavButtons(); }
+            UpdateTabButtons();
+        }
+
+        private void CloseTab(ExplorerTab t)
+        {
+            if (t == null) return;
+            int i = tabs.IndexOf(t);
+            if (i < 0) return;
+            tabs.RemoveAt(i);
+            if (tabs.Count == 0)
             {
-                try { this.BeginInvoke((Action)delegate { Navigate(folder); SelectEntryByName(selectName); }); } catch { }
+                this.Close(); // the last tab closes the window
                 return;
             }
-            Navigate(folder);
-            SelectEntryByName(selectName);
+            if (ReferenceEquals(t, activeTab))
+            {
+                activeTab = null;
+                ActivateTab(tabs[Math.Min(i, tabs.Count - 1)]);
+            }
+            RebuildTabStrip();
+        }
+
+        private void RebuildTabStrip()
+        {
+            if (tabFlow == null) return;
+            tabFlow.SuspendLayout();
+            var keep = btnTabNew;
+            var old = new List<Control>();
+            foreach (Control c in tabFlow.Controls) old.Add(c);
+            tabFlow.Controls.Clear();
+            foreach (var c in old)
+            {
+                if (ReferenceEquals(c, keep)) continue;
+                var b = c as Button;
+                if (b != null) tabByButton.Remove(b);
+                c.Dispose();
+            }
+            int btnH = Math.Max(22, TextRenderer.MeasureText("Ag", this.Font).Height + 8);
+            if (keep != null) keep.Height = btnH;
+            foreach (var t in tabs)
+            {
+                string cap = TabCaption(t);
+                int w = Math.Min(170, Math.Max(60, TextRenderer.MeasureText(cap, this.Font).Width + 26));
+                var btn = new Button
+                {
+                    Text = cap,
+                    Width = w,
+                    Height = btnH,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = ReferenceEquals(t, activeTab) ? hoverColor : panelColor,
+                    ForeColor = textColor,
+                    Cursor = Cursors.Hand,
+                    Margin = new Padding(2, 1, 2, 1),
+                    Font = ReferenceEquals(t, activeTab) ? boldFont : this.Font,
+                    TextAlign = ContentAlignment.MiddleCenter
+                };
+                btn.FlatAppearance.BorderSize = 0;
+                btn.FlatAppearance.MouseOverBackColor = hoverColor;
+                tabByButton[btn] = t;
+                var tabRef = t;
+                btn.Click += (s, e) => ActivateTab(tabRef);
+                btn.MouseUp += (s, e) =>
+                {
+                    if (e.Button == MouseButtons.Middle) CloseTab(tabRef);
+                    else if (e.Button == MouseButtons.Right) ShowTabMenu(tabRef, btn, e.Location);
+                };
+                tip.SetToolTip(btn, t.Path);
+                tabFlow.Controls.Add(btn);
+            }
+            if (keep != null) tabFlow.Controls.Add(keep);
+            tabFlow.ResumeLayout();
+        }
+
+        // Lightweight refresh of tab captions/colors (no rebuild) — on navigation.
+        private void UpdateTabButtons()
+        {
+            if (tabFlow == null) return;
+            foreach (var kv in tabByButton)
+            {
+                var btn = kv.Key;
+                var t = kv.Value;
+                if (btn == null || btn.IsDisposed) continue;
+                string cap = TabCaption(t);
+                if (btn.Text != cap) btn.Text = cap;
+                bool act = ReferenceEquals(t, activeTab);
+                btn.BackColor = act ? hoverColor : panelColor;
+                btn.Font = act ? boldFont : this.Font;
+                tip.SetToolTip(btn, t.Path);
+            }
+        }
+
+        private string TabCaption(ExplorerTab t)
+        {
+            string p = t != null ? t.Path : "";
+            if (string.IsNullOrEmpty(p)) return Loc.S("New tab", "Новая вкладка");
+            string name;
+            try { name = Path.GetFileName(p.TrimEnd('\\')); } catch { name = p; }
+            if (string.IsNullOrEmpty(name)) name = p;
+            if (name.Length > 24) name = name.Substring(0, 23) + "…";
+            return name;
+        }
+
+        private void ShowTabMenu(ExplorerTab t, Control anchor, Point loc)
+        {
+            var m = new ContextMenu();
+            m.MenuItems.Add(Loc.S("Close tab", "Закрыть вкладку"), (s2, e2) => CloseTab(t));
+            m.Show(anchor, loc);
         }
 
         private void Navigate(string path)
@@ -922,7 +1208,9 @@ namespace WinPanel
         private void GoToPath(string path)
         {
             currentPath = path;
+            if (activeTab != null) activeTab.Path = path;
             UpdateTitle();
+            UpdateTabButtons();
             UpdateCrumbs();
             LoadDir();
             UpdateNavButtons();
@@ -1358,6 +1646,19 @@ namespace WinPanel
         {
             try
             {
+                // The configured folder manager is honored for plain opens of
+                // directories ("Open in Explorer" on a folder); "select" keeps
+                // the system Explorer - revealing one file is an Explorer
+                // feature, and so is opening a bare file.
+                if (!select && System.IO.Directory.Exists(path))
+                {
+                    string fmExe, fmTemplate;
+                    if (MainForm.TryGetFolderOpenCommand(out fmExe, out fmTemplate))
+                    {
+                        Process.Start(MainForm.BuildShellStart(fmExe, MainForm.FolderOpenArgs(fmTemplate, fmExe, path), path));
+                        return;
+                    }
+                }
                 if (select) Process.Start("explorer.exe", "/select,\"" + path + "\"");
                 else Process.Start("explorer.exe", "\"" + path + "\"");
             }
@@ -1759,13 +2060,23 @@ namespace WinPanel
             else
             {
                 TextRenderer.DrawText(g, "›", boldFont, new Point(x, ty), accentColor);
-                string label = !string.IsNullOrEmpty(b.Value) ? b.Value : b.Name;
+                // The label shows the bookmark's name; the command stays in the tooltip.
+                string label = !string.IsNullOrEmpty(b.Name) ? b.Name : b.Value;
                 TextRenderer.DrawText(g, label, this.Font, new Point(x + 14, ty), textColor);
+            }
+
+            // Insertion line while drag-reordering.
+            if (bmDragging && e.Index == bmDragTarget && e.Index != bmDragIndex)
+            {
+                int ly = bmDragDropAbove ? e.Bounds.Top : e.Bounds.Bottom - 2;
+                using (var pen = new Pen(accentColor, 2f))
+                    g.DrawLine(pen, e.Bounds.Left + 2, ly, e.Bounds.Right - 2, ly);
             }
         }
 
         private void BookmarksList_Click(object sender, EventArgs e)
         {
+            if (bmSuppressClick) { bmSuppressClick = false; return; }
             int i = bookmarksList.SelectedIndex;
             if (i < 0 || i >= bmRows.Count) return;
             var b = bmRows[i].Bm;
@@ -1803,6 +2114,40 @@ namespace WinPanel
 
         private void BookmarksList_MouseMove(object sender, MouseEventArgs e)
         {
+            // Drag-and-drop arming: only after the cursor leaves the system drag
+            // size, so an ordinary click never turns into a reorder.
+            if ((Control.MouseButtons & MouseButtons.Left) != 0 && bmDragIndex >= 0 && bmDragIndex < bmRows.Count)
+            {
+                if (!bmDragging)
+                {
+                    Size ds = SystemInformation.DragSize;
+                    if (Math.Abs(e.X - bmDragStart.X) > ds.Width || Math.Abs(e.Y - bmDragStart.Y) > ds.Height)
+                    {
+                        bmDragging = true;
+                        bmDragTarget = bmDragIndex;
+                        bmDragDropAbove = true;
+                        try { bookmarksList.Capture = true; } catch { }
+                    }
+                }
+                if (bmDragging)
+                {
+                    int ti = bookmarksList.IndexFromPoint(e.Location);
+                    bool above = bmDragDropAbove;
+                    if (ti >= 0 && ti < bmRows.Count && ti != bmDragIndex)
+                    {
+                        var rect = bookmarksList.GetItemRectangle(ti);
+                        above = e.Y < rect.Top + rect.Height / 2;
+                    }
+                    else ti = -1;
+                    if (ti != bmDragTarget || above != bmDragDropAbove)
+                    {
+                        bmDragTarget = ti;
+                        bmDragDropAbove = above;
+                        bookmarksList.Invalidate();
+                    }
+                    return;
+                }
+            }
             int i = bookmarksList.IndexFromPoint(e.Location);
             if (i != hoverBm) { hoverBm = i; bookmarksList.Invalidate(); }
             try
@@ -1821,6 +2166,14 @@ namespace WinPanel
 
         private void BookmarksList_MouseDown(object sender, MouseEventArgs e)
         {
+            if (e.Button == MouseButtons.Left)
+            {
+                int di = bookmarksList.IndexFromPoint(e.Location);
+                bmDragIndex = (di >= 0 && di < bmRows.Count) ? di : -1;
+                bmDragStart = e.Location;
+                bmDragging = false;
+                return;
+            }
             if (e.Button != MouseButtons.Right) return;
             int i = bookmarksList.IndexFromPoint(e.Location);
             var m = new ContextMenu();
@@ -1966,6 +2319,8 @@ namespace WinPanel
                 cmd = cmd.Trim();
             }
             string group = Prompt.ShowDialog(Loc.S("Group (empty = top level):", "Группа (пусто = верхний уровень):"), Loc.S("Add command", "Добавить команду"), "");
+            // Display name (defaults to the command itself so Enter keeps it).
+            string displayName = Prompt.ShowDialog(Loc.S("Display name:", "Название:"), Loc.S("Add command", "Добавить команду"), cmd);
             ExplorerBookmark target = null;
             if (!string.IsNullOrWhiteSpace(group))
             {
@@ -1983,8 +2338,8 @@ namespace WinPanel
             }
             var nb = new ExplorerBookmark();
             nb.Kind = "cmd";
-            nb.Name = cmd;
             nb.Value = cmd;
+            nb.Name = string.IsNullOrWhiteSpace(displayName) ? cmd : displayName.Trim();
             if (target != null) target.Children.Add(nb);
             else bookmarks.Add(nb);
             SaveBookmarks();
@@ -2033,7 +2388,16 @@ namespace WinPanel
                 t2.Start();
 
                 shell.EnableRaisingEvents = true;
-                shell.Exited += (s, e) => Ui(delegate { AppendConsole(Loc.S("[console process exited - press Restart]", "[процесс консоли завершён — нажмите «Перезапуск»]"), dimColor); });
+                int shellPid = shell.Id;
+                shell.Exited += (s, e) =>
+                {
+                    // The notice makes sense only while this process is still the
+                    // current shell — after Stop it fires during the restart and
+                    // would claim an exit that has already been handled.
+                    bool current = false;
+                    try { current = shell != null && shell.Id == shellPid; } catch { }
+                    if (current) Ui(delegate { AppendConsole(Loc.S("[console process exited - press Restart]", "[процесс консоли завершён — нажмите «Перезапуск»]"), dimColor); });
+                };
 
                 if (Directory.Exists(currentPath)) SendCmd("cd /d \"" + currentPath + "\"");
                 AppendConsole(Loc.S("Tilettes console · ", "Консоль Плиточек · ") + currentPath, dimColor);
@@ -2055,49 +2419,240 @@ namespace WinPanel
             shell = null;
         }
 
+        // Interrupts the command running in the console: kills the whole shell
+        // process tree (taskkill /T — cmd.exe and everything it spawned: ping,
+        // powershell, docker stats...) and starts a fresh shell. A graceful
+        // Ctrl+C was tried first via GenerateConsoleCtrlEvent, but on redirected
+        // child consoles the API reports success while delivering nothing — or
+        // kills only cmd.exe and orphans the command. The tree kill always works.
+        private void StopConsoleCommand()
+        {
+            bool dead = true;
+            try { dead = shell == null || shell.HasExited; } catch { dead = true; }
+            if (dead) return;
+            int shellId = 0;
+            try { shellId = shell.Id; } catch (Exception ex) { AppLog.Write("Stop: no shell id", ex); return; }
+            HardStopShell(shellId);
+        }
+
+        // Kills the shell and everything it spawned and starts a fresh shell so
+        // the console keeps working.
+        private void HardStopShell(int shellId)
+        {
+            try
+            {
+                using (var tk = Process.Start(new ProcessStartInfo("taskkill", "/PID " + shellId + " /T /F")
+                { CreateNoWindow = true, UseShellExecute = false }))
+                {
+                    if (!tk.WaitForExit(3000)) AppLog.Write("Stop: taskkill timed out");
+                }
+            }
+            catch (Exception ex) { AppLog.Write("Stop: taskkill failed", ex); }
+            StopShell();
+            AppendConsole(Loc.S("[stopped]", "[остановлено]"), dimColor);
+            StartShell();
+        }
+
+        // The shell is read character by character: a plain \n line is appended as
+        // usual, while a line ended by a bare \r (tools like docker stats and every
+        // progress bar redraw their frame in place) REPLACES the last console line.
+        // Frames are stripped of ANSI escape sequences, and a run of empty lines
+        // collapses into one — a streaming tool can no longer flood the console
+        // with blank output (the old ReadLine loop split on every \r and appended
+        // each empty fragment, which re-filled the 150k buffer cyclically).
         private void ReadLoop(StreamReader r)
         {
+            var sb = new System.Text.StringBuilder();
+            bool prevCr = false;
             bool holdBlank = false;
             try
             {
-                string line;
-                while ((line = r.ReadLine()) != null)
+                int ch;
+                while ((ch = r.Read()) >= 0)
                 {
-                    string l = line;
-                    if (skipBanner)
+                    char c = (char)ch;
+                    if (c == '\r') { EmitConsoleLine(sb, true, ref holdBlank); prevCr = true; continue; }
+                    if (c == '\n')
                     {
-                        if (l.Trim().Length == 0 ||
-                            l.StartsWith("Microsoft Windows [Version", StringComparison.OrdinalIgnoreCase) ||
-                            l.StartsWith("(c)", StringComparison.OrdinalIgnoreCase))
-                            continue;
-                        skipBanner = false;
-                    }
-                    if (l.Trim().Length == 0)
-                    {
-                        if (!holdBlank) holdBlank = true;
-                        else Ui(delegate { AppendConsole("", textColor); });
+                        if (!prevCr) EmitConsoleLine(sb, false, ref holdBlank);
+                        prevCr = false;
                         continue;
                     }
-                    if (IsEchoOfSent(l))
-                    {
-                        holdBlank = false;
-                        continue;
-                    }
-                    if (l.IndexOf(Sentinel, StringComparison.Ordinal) >= 0)
-                    {
-                        holdBlank = false;
-                        Ui(delegate { AppendConsole(PromptText(), accentColor); });
-                        continue;
-                    }
-                    if (holdBlank)
-                    {
-                        holdBlank = false;
-                        Ui(delegate { AppendConsole("", textColor); });
-                    }
-                    Ui(delegate { AppendConsole(l, textColor); });
+                    sb.Append(c);
+                    prevCr = false;
                 }
+                if (sb.Length > 0) EmitConsoleLine(sb, false, ref holdBlank);
             }
             catch { }
+        }
+
+        // One terminated line arrived from the shell; `overwrite` marks a bare-\r
+        // refresh frame. Empty overwrite frames are dropped, other empty lines
+        // collapse into a single one, everything else keeps the banner / echo /
+        // sentinel filtering.
+        private void EmitConsoleLine(System.Text.StringBuilder sb, bool overwrite, ref bool holdBlank)
+        {
+            string l = StripAnsi(sb.ToString());
+            sb.Length = 0;
+            if (skipBanner)
+            {
+                if (l.Trim().Length == 0 ||
+                    l.StartsWith("Microsoft Windows [Version", StringComparison.OrdinalIgnoreCase) ||
+                    l.StartsWith("(c)", StringComparison.OrdinalIgnoreCase))
+                    return;
+                skipBanner = false;
+            }
+            if (l.Trim().Length == 0)
+            {
+                if (overwrite) return; // a redraw frame that erased itself
+                if (!holdBlank) holdBlank = true;
+                return;                // further blanks of the run collapse away
+            }
+            if (IsEchoOfSent(l))
+            {
+                holdBlank = false;
+                return;
+            }
+            if (l.IndexOf(Sentinel, StringComparison.Ordinal) >= 0)
+            {
+                holdBlank = false;
+                Ui(delegate { AppendConsole(PromptText(), accentColor); });
+                return;
+            }
+            if (holdBlank)
+            {
+                holdBlank = false;
+                Ui(delegate { AppendConsole("", textColor); });
+            }
+            Ui(delegate { AppendConsole(l, textColor, overwrite ? 1 : 2); });
+        }
+
+        // Removes ANSI escape sequences (CSI "ESC[...final", OSC "ESC]...BEL/ESC\\",
+        // charset and two-char escapes) that streaming tools send with their frames.
+        internal static string StripAnsi(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\x1b') < 0) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            int i = 0;
+            while (i < s.Length)
+            {
+                char c = s[i];
+                if (c == '\x1b' && i + 1 < s.Length)
+                {
+                    char n = s[i + 1];
+                    if (n == '[')
+                    {
+                        i += 2;
+                        while (i < s.Length && s[i] >= '\x20' && s[i] <= '\x3f') i++; // params + intermediates
+                        if (i < s.Length && s[i] >= '\x40' && s[i] <= '\x7e') i++;    // final byte
+                        continue;
+                    }
+                    if (n == ']')
+                    {
+                        i += 2;
+                        while (i < s.Length && s[i] != '\x07')
+                        {
+                            if (s[i] == '\x1b' && i + 1 < s.Length && s[i + 1] == '\\') { i++; break; }
+                            i++;
+                        }
+                        if (i < s.Length) i++; // BEL or the ESC\ terminator
+                        continue;
+                    }
+                    if (n == '(' || n == ')') { i += 3; continue; } // charset, e.g. ESC(B
+                    i += 2;
+                    continue;
+                }
+                sb.Append(c);
+                i++;
+            }
+            return sb.ToString();
+        }
+
+        private void BookmarksList_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            if (!bmDragging) { bmDragIndex = -1; return; }
+            try { bookmarksList.Capture = false; } catch { }
+            int src = bmDragIndex, tgt = bmDragTarget;
+            bool above = bmDragDropAbove;
+            bmDragging = false;
+            bmDragIndex = -1;
+            bmDragTarget = -1;
+            bookmarksList.Invalidate();
+            if (tgt < 0 || tgt >= bmRows.Count || src < 0 || src >= bmRows.Count || tgt == src) return;
+            bmSuppressClick = true; // the release must not also open/run the bookmark
+            DropBookmark(src, tgt, above);
+        }
+
+        // Drop of a bookmark reorder: above/below the target row; a drop below a
+        // group header appends into that group. Groups only reorder among
+        // themselves at the top level, and a group can not land inside itself.
+        private void DropBookmark(int srcIdx, int tgtIdx, bool above)
+        {
+            var src = bmRows[srcIdx].Bm;
+            var tgt = bmRows[tgtIdx].Bm;
+            if (src == null || tgt == null || ReferenceEquals(src, tgt)) return;
+            var srcList = FindOwningList(bookmarks, src);
+
+            if (tgt.Kind == "group")
+            {
+                if (src.Kind == "group")
+                {
+                    if (!bookmarks.Contains(src)) return;
+                    bookmarks.Remove(src);
+                    int j = bookmarks.IndexOf(tgt);
+                    if (j < 0) { bookmarks.Add(src); }
+                    else bookmarks.Insert(above ? j : j + 1, src);
+                    SaveBookmarks();
+                    RebuildBookmarks();
+                    return;
+                }
+                if (above)
+                {
+                    // before the group, at the top level
+                    if (srcList != null) srcList.Remove(src);
+                    int j = bookmarks.IndexOf(tgt);
+                    if (j < 0) bookmarks.Add(src);
+                    else bookmarks.Insert(j, src);
+                    SaveBookmarks();
+                    RebuildBookmarks();
+                    return;
+                }
+                // below the header = into the group
+                if (ContainsBookmark(src, tgt)) return;                          // into own child
+                if (srcList != null && ReferenceEquals(srcList, tgt.Children)) return; // already there
+                if (srcList != null) srcList.Remove(src);
+                if (tgt.Children == null) tgt.Children = new List<ExplorerBookmark>();
+                tgt.Children.Add(src);
+                expandedGroups.Add(tgt.Name);
+                SaveBookmarks();
+                RebuildBookmarks();
+                return;
+            }
+
+            var list = FindOwningList(bookmarks, tgt);
+            if (list == null) return;
+            int jj = list.IndexOf(tgt);
+            if (jj < 0) return;
+            bool sameList = ReferenceEquals(srcList, list);
+            if (srcList != null) srcList.Remove(src);
+            if (sameList) jj = list.IndexOf(tgt); // the removal may shift the target
+            if (jj < 0) { list.Add(src); }
+            else list.Insert(above ? jj : jj + 1, src);
+            SaveBookmarks();
+            RebuildBookmarks();
+        }
+
+        // True when `target` sits anywhere inside `container`'s subtree.
+        private static bool ContainsBookmark(ExplorerBookmark container, ExplorerBookmark target)
+        {
+            if (container.Children == null) return false;
+            foreach (var c in container.Children)
+            {
+                if (ReferenceEquals(c, target)) return true;
+                if (ContainsBookmark(c, target)) return true;
+            }
+            return false;
         }
 
         // The shell echoes every input line back with its prompt ("C:\dir>command").
@@ -2210,16 +2765,220 @@ namespace WinPanel
             }
         }
 
+        // True when the last console line came from a \r refresh frame — only such
+        // lines are replaced by the next refresh frame, real output (and the
+        // "> command" echo) is never overwritten. UI thread only.
+        private bool lastAppendWasOverwrite;
+        // Consecutive-duplicate tracking: a plain \n line equal to the previous
+        // one is rewritten into a ×N counter instead of being printed again.
+        // UI thread only.
+        private string lastConsoleLine;
+        private int lastConsoleLineDup;
+        // Streaming-table redraw: `docker stats` (non-TTY) reprints the whole
+        // table every second as plain \n lines. When an incoming line equals the
+        // first line of the previous block (the table header), the old block is
+        // rewritten in place line by line — the console shows one live-updating
+        // table, exactly like a real terminal. Only "columnar" lines (with a
+        // double space, like table headers) may start a redraw, so plain-text
+        // streams are never touched. UI thread only.
+        private readonly List<string> frameBlock = new List<string>();
+        private int frameBlockStartChar = -1; // buffer offset where the tracked block begins
+        private bool frameReplacing;
+        private int frameReplaceChar; // buffer offset of the line being rewritten
+        private int frameOldLen;      // line count of the frame being replaced
+        private int frameLine;        // index of the next line inside the frame
+
+        private void ResetFrameTracking()
+        {
+            frameReplacing = false;
+            frameBlockStartChar = -1;
+            frameBlock.Clear();
+        }
+
         private void AppendConsole(string text, Color color)
+        {
+            AppendConsole(text, color, 0);
+        }
+
+        // mode: 0 = append; 1 = replace the last line, but only when it was a
+        // refresh frame; 2 = append with streaming dedupe: a repeated line
+        // collapses into ×N, and a line that repeats the block header starts a
+        // live redraw of the whole block. Prompts, echoes and banners (mode 0)
+        // reset both runs.
+        private void AppendConsole(string text, Color color, int mode)
         {
             try
             {
                 if (consoleOut == null || consoleOut.IsDisposed) return;
-                if (consoleOut.TextLength > 150000) consoleOut.Clear();
+                if (consoleOut.TextLength > 150000)
+                {
+                    consoleOut.Clear();
+                    ResetFrameTracking();
+                }
+
+                if (mode == 2 && !string.IsNullOrEmpty(text))
+                {
+                    if (TryFrameRedraw(text)) return;
+                    if (text == lastConsoleLine)
+                    {
+                        lastConsoleLineDup++;
+                        RewriteLastConsoleLine(lastConsoleLine + "  ×" + lastConsoleLineDup, textColor);
+                        return;
+                    }
+                    AppendConsoleCore(text, color); // a fresh line of the block — keep tracking
+                    return;
+                }
+                ResetFrameTracking();
+                if (mode == 1 && lastAppendWasOverwrite)
+                {
+                    RewriteLastConsoleLine(text, color);
+                    lastConsoleLine = string.IsNullOrEmpty(text) ? null : text;
+                    lastConsoleLineDup = 1;
+                    lastAppendWasOverwrite = true;
+                    return;
+                }
+                lastConsoleLine = string.IsNullOrEmpty(text) ? null : text;
+                lastConsoleLineDup = 1;
+                lastAppendWasOverwrite = false;
                 consoleOut.SelectionStart = consoleOut.TextLength;
                 consoleOut.SelectionLength = 0;
                 consoleOut.SelectionColor = color;
                 consoleOut.AppendText(text + "\n");
+                consoleOut.SelectionStart = consoleOut.TextLength;
+                consoleOut.ScrollToCaret();
+            }
+            catch { }
+        }
+
+        // The streaming-table redraw state machine (see the fields above). Called
+        // only for plain-\n lines. Returns true when the line was consumed by the
+        // redraw and must not be appended.
+        private bool TryFrameRedraw(string text)
+        {
+            if (frameReplacing)
+            {
+                bool columnar = text.IndexOf("  ", StringComparison.Ordinal) >= 0;
+                if (frameLine >= frameOldLen && text == frameBlock[0] && columnar)
+                {
+                    // The next frame's header arrived: redraw it over the previous block.
+                    frameReplaceChar = frameBlockStartChar;
+                    frameOldLen = frameLine;
+                    frameLine = 0;
+                }
+                if (frameLine < frameOldLen)
+                {
+                    RewriteAt(frameReplaceChar, text);
+                    frameReplaceChar += text.Length + 1;
+                }
+                else
+                {
+                    if (frameLine == frameOldLen) frameBlockStartChar = consoleOut.TextLength;
+                    AppendConsoleCore(text, textColor);
+                }
+                if (frameLine < frameBlock.Count) frameBlock[frameLine] = text; else frameBlock.Add(text);
+                frameLine++;
+                return true;
+            }
+            if (frameBlockStartChar >= 0 && frameBlock.Count >= 1 && frameBlock[0] == text
+                && text.IndexOf("  ", StringComparison.Ordinal) >= 0)
+            {
+                // The block must still start at the remembered offset.
+                bool aligned = false;
+                try
+                {
+                    string t = consoleOut.Text;
+                    aligned = frameBlockStartChar + frameBlock[0].Length <= t.Length
+                        && t.IndexOf(frameBlock[0], frameBlockStartChar, StringComparison.Ordinal) == frameBlockStartChar;
+                }
+                catch { }
+                if (aligned)
+                {
+                    frameReplacing = true;
+                    frameReplaceChar = frameBlockStartChar;
+                    frameOldLen = frameBlock.Count;
+                    frameLine = 1;
+                    RewriteAt(frameReplaceChar, text);
+                    frameReplaceChar += text.Length + 1;
+                    return true;
+                }
+                ResetFrameTracking(); // the block no longer matches the buffer — start over
+            }
+            if (frameBlock.Count > 400) frameBlock.Clear();
+            if (frameBlock.Count == 0) frameBlockStartChar = consoleOut.TextLength; // the pending append starts here
+            frameBlock.Add(text);
+            return false;
+        }
+
+        // Plain append without touching the streaming state.
+        private void AppendConsoleCore(string text, Color color)
+        {
+            lastConsoleLine = string.IsNullOrEmpty(text) ? null : text;
+            lastConsoleLineDup = 1;
+            lastAppendWasOverwrite = false;
+            consoleOut.SelectionStart = consoleOut.TextLength;
+            consoleOut.SelectionLength = 0;
+            consoleOut.SelectionColor = color;
+            consoleOut.AppendText(text + "\n");
+            consoleOut.SelectionStart = consoleOut.TextLength;
+            consoleOut.ScrollToCaret();
+        }
+
+        // Replaces the line content at the character offset `pos` in place (the
+        // line break stays); falls back to appending when the offset is out of
+        // range. The box is read-only — the lock is lifted for the rewrite.
+        private void RewriteAt(int pos, string text)
+        {
+            try
+            {
+                string t = consoleOut.Text;
+                if (pos < 0 || pos >= t.Length) { AppendConsoleCore(text, textColor); return; }
+                int end = t.IndexOf('\n', pos);
+                if (end < 0) end = t.Length;
+                consoleOut.ReadOnly = false;
+                try
+                {
+                    consoleOut.SelectionStart = pos;
+                    consoleOut.SelectionLength = end - pos;
+                    consoleOut.SelectionColor = textColor;
+                    consoleOut.SelectedText = text;
+                }
+                finally { consoleOut.ReadOnly = true; }
+                consoleOut.SelectionStart = consoleOut.TextLength;
+                consoleOut.ScrollToCaret();
+            }
+            catch { }
+        }
+
+        // Replaces the content of the last console line in place. Every append
+        // ends with a newline, so the "last line" starts before that trailing
+        // break; the box is read-only — the lock is lifted for the one rewrite.
+        private void RewriteLastConsoleLine(string text, Color color)
+        {
+            try
+            {
+                string t = consoleOut.Text;
+                int end = t.Length;
+                if (end > 0 && t[end - 1] == '\n') end--;
+                consoleOut.ReadOnly = false;
+                try
+                {
+                    if (end > 0)
+                    {
+                        int idx = t.LastIndexOf('\n', end - 1, end);
+                        consoleOut.SelectionStart = idx + 1;
+                        consoleOut.SelectionLength = end - (idx + 1);
+                        consoleOut.SelectionColor = color;
+                        consoleOut.SelectedText = text;
+                    }
+                    else
+                    {
+                        consoleOut.SelectionStart = 0;
+                        consoleOut.SelectionLength = 0;
+                        consoleOut.SelectionColor = color;
+                        consoleOut.AppendText(text + "\n");
+                    }
+                }
+                finally { consoleOut.ReadOnly = true; }
                 consoleOut.SelectionStart = consoleOut.TextLength;
                 consoleOut.ScrollToCaret();
             }

@@ -12,7 +12,7 @@ A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, b
 
 ![Tilettes — the main window](docs/screenshot_main.png)
 
-Current version: **v1.0** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+Current version: **v1.0.2** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
 
 ## Highlights
 
@@ -209,8 +209,6 @@ Requires any Windows with .NET Framework 4.x (the compiler ships with the OS):
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 or directly:
@@ -219,7 +217,7 @@ or directly:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the exe variants with the same csc call and attaches plain exe files to the release (AnyCPU universal + x86 + x64 — no zip) plus a `SHA256SUMS.txt` with the checksums of all three exes (the sums are appended to the release notes as well); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`.
+Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the universal exe with the same csc call and attaches it to the release as a plain exe file (no zip) plus a `SHA256SUMS.txt` with its checksum (the sum is appended to the release notes as well); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`. The universal AnyCPU build runs as a 64-bit process on 64-bit Windows and as a 32-bit one on 32-bit Windows.
 
 ## Antivirus false positives
 

@@ -55,7 +55,7 @@ namespace WinPanel
         // Top block of the search overlay: remembered query -> item pairs whose
         // QUERY matches what is being typed ("поиск среди прошлых поисков").
         private readonly List<SearchHistoryEntry> panelSearchPast = new List<SearchHistoryEntry>();
-        private const int PastSearchBlockMax = 8;
+        private const int PastSearchBlockMax = 10;
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
         // Fully measured row layouts (see PreparePanelSearchRow): rebuilt per query
@@ -199,6 +199,24 @@ namespace WinPanel
         private const int HotkeyIdWinL = 0x5712;
         private const int HotkeyIdWinR = 0x5713;
         private bool hotkeyWinRegistered = false;
+
+        // Virtual desktops: IVirtualDesktopManager is public COM (Windows 10+)
+        // and moves only the calling process's own windows - the panel is one.
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("aa509086-5ca9-4c25-8f95-589d3c07b0ea"), System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IVirtualDesktopManager
+        {
+            [System.Runtime.InteropServices.PreserveSig] int IsWindowOnCurrentVirtualDesktop(IntPtr topLevelWindow, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] out bool onCurrentDesktop);
+            [System.Runtime.InteropServices.PreserveSig] int GetWindowDesktopId(IntPtr topLevelWindow, out Guid desktopId);
+            [System.Runtime.InteropServices.PreserveSig] int MoveWindowToDesktop(IntPtr topLevelWindow, ref Guid desktopId);
+        }
+
+        [System.Runtime.InteropServices.ComImport, System.Runtime.InteropServices.Guid("B2A9D5EA-DC82-4F57-B1E2-91E27A3240E4")]
+        private class CVirtualDesktopManager { }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool DestroyWindow(IntPtr hWnd);
 
         // Active decorative skin (null/"None" id = classic behavior).
         private Skin skin = Skin.None;
@@ -559,6 +577,10 @@ namespace WinPanel
                     if (activeLayoutPanel != null && activeTabData != null)
                         ReflowGridTiles(activeLayoutPanel, activeTabData);
                 }
+                catch { }
+                // Data files load in the constructor, before any UI: a notice
+                // about a damaged file waits for this moment.
+                try { DataGuard.FlushPending(this); }
                 catch { }
             };
 
@@ -1273,15 +1295,17 @@ namespace WinPanel
         public string RecordsFilePath { get { return recordsPath; } }
         public Records Records { get { return records; } }
 
-        // Tray balloon from any thread-safe context.
-        public void ShowBalloon(string text)
+        // Tray balloon from any thread-safe context; false when the icon is
+        // hidden - a balloon would go nowhere then.
+        public bool ShowBalloon(string text)
         {
             try
             {
-                if (trayIcon == null) return;
+                if (trayIcon == null || !trayIcon.Visible) return false;
                 trayIcon.ShowBalloonTip(3000, Loc.S("Tilettes", "Плиточки"), text ?? "", ToolTipIcon.Info);
+                return true;
             }
-            catch { }
+            catch { return false; }
         }
 
         // The records were replaced underneath the form (Start Menu sync): re-read
@@ -1319,19 +1343,119 @@ namespace WinPanel
 
         private void RestoreWindow()
         {
-            // A plain Show()+Activate() can be denied foreground rights when
-            // another app owns the focus (this path runs from a hotkey or the
-            // Win-key hook): the panel then appeared visible but BEHIND the
-            // other windows. Raise it into the topmost band for an instant and
-            // force the foreground; dropping TOPMOST right away keeps it above
-            // the windows it was raised over without pinning it permanently.
+            // A panel left on another virtual desktop must not drag the whole
+            // view back there: Activate() follows the window and the shell
+            // follows the activation. Re-home it to the current desktop BEFORE
+            // any activation - and show it without activating first, because
+            // even the plain showing (SW_SHOW) activates, and activating a
+            // foreign-desktop window switches the view mid-flight.
             this.TopMost = true;
-            this.Show();
+            if (!this.Visible) ShowWindow(this.Handle, 8); // SW_SHOWNA
+            EnsureOnCurrentDesktop();
             this.WindowState = FormWindowState.Normal;
+            // A plain Activate() can be denied foreground rights when another
+            // app owns the focus (this path runs from a hotkey or the Win-key
+            // hook): the panel then stayed BEHIND. Raise it into the topmost
+            // band for an instant and force the foreground; dropping TOPMOST
+            // right away keeps it above the windows it was raised over without
+            // pinning it permanently.
             this.Activate();
             ForceForeground();
             this.TopMost = false;
             try { if (trayIcon != null) trayIcon.Visible = settings.TrayIconAlways; } catch { }
+        }
+
+        // Re-homes the panel to the virtual desktop the user is on now. Whether
+        // the panel is elsewhere is decided by comparing desktop GUIDs (public
+        // COM): the current desktop's id comes from a throwaway probe window -
+        // a freshly created window is born on the current desktop - while an
+        // idle window keeps the id of the desktop it was left on. When the COM
+        // layer is missing (stripped Windows images ship virtual desktops
+        // without the public coclass) or refuses the move, the native window is
+        // recreated: a newly created window is born on the current desktop.
+        // WinForms carries every managed property over (bounds, topmost,
+        // visibility); only the hotkey registrations are bound to the old
+        // handle and are re-applied here.
+        private void EnsureOnCurrentDesktop()
+        {
+            try
+            {
+                if (this.Handle == IntPtr.Zero) return;
+                if (MoveToCurrentDesktop(this.Handle)) return;
+                bool wasTopMost = this.TopMost;
+                RecreateHandle();
+                this.TopMost = wasTopMost;
+                ApplyHotkey();
+                ApplyWinKeyHotkey();
+            }
+            catch (Exception ex) { AppLog.Write("EnsureOnCurrentDesktop", ex); }
+        }
+
+        // Moves `hwnd` to the current virtual desktop. Returns true when the
+        // window is on the current desktop afterwards; false means "could not
+        // tell or could not move" and the caller falls back. Systems without
+        // the virtual-desktop COM class return true only when they also have no
+        // virtual desktops (pre-Windows 10); a stripped Windows 10+ image falls
+        // through to the caller's fallback.
+        private static bool MoveToCurrentDesktop(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return false;
+            IVirtualDesktopManager mgr = null;
+            try { mgr = (IVirtualDesktopManager)new CVirtualDesktopManager(); }
+            catch { mgr = null; }
+            if (mgr == null)
+            {
+                // No COM class: virtual desktops can still exist (stripped
+                // Windows 10+ images). Judge by the real build number from the
+                // registry - Environment.OSVersion underreports without an app
+                // manifest. Windows 10+: let the caller re-create the window;
+                // older systems have no desktops at all - nothing to fix.
+                try
+                {
+                    string build = Microsoft.Win32.Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber", null) as string;
+                    int b;
+                    if (!string.IsNullOrEmpty(build) && int.TryParse(build, out b) && b >= 10240) return false;
+                }
+                catch { }
+                return true;
+            }
+            NativeWindow probe = null;
+            try
+            {
+                probe = CreateDesktopProbeWindow();
+                if (probe == null) return false;
+                Guid mine, current;
+                if (mgr.GetWindowDesktopId(hwnd, out mine) != 0) return false;
+                if (mgr.GetWindowDesktopId(probe.Handle, out current) != 0) return false;
+                if (mine == current) return true; // already on the user's desktop
+                return mgr.MoveWindowToDesktop(hwnd, ref current) == 0;
+            }
+            catch { return false; }
+            finally
+            {
+                if (probe != null) { try { probe.ReleaseHandle(); } catch { } }
+            }
+        }
+
+        // A zero-sized tool window at (0,0): never painted, never activated,
+        // but a real top-level window - the shell associates it with the
+        // desktop that is current at creation time. Shown no-activate once,
+        // because the desktop assignment settles on visibility.
+        private static NativeWindow CreateDesktopProbeWindow()
+        {
+            try
+            {
+                NativeWindow probe = new NativeWindow();
+                CreateParams cp = new CreateParams();
+                cp.ClassName = "STATIC";
+                cp.Style = unchecked((int)0x80000000);   // WS_POPUP
+                cp.ExStyle = 0x80 | 0x08000000;          // WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+                cp.X = 0; cp.Y = 0; cp.Width = 0; cp.Height = 0;
+                probe.CreateHandle(cp);
+                ShowWindow(probe.Handle, 8);             // SW_SHOWNA
+                return probe;
+            }
+            catch { return null; }
         }
 
         // SetForegroundWindow is restricted: the caller must already own the
@@ -1834,10 +1958,11 @@ namespace WinPanel
             {
                 panelSearchResults.Clear();
                 // Best-ranked first, so the survivor of a duplicate pair is the
-                // one the ranking preferred.
+                // one the ranking preferred. The final cap is deliberately
+                // small: the most relevant 30 are what a launcher is for.
                 var flat = new List<ShortcutItem>();
                 for (int i = 0; i < found.Count && flat.Count < 400; i++) flat.Add(found[i].Value);
-                foreach (var it in DedupeSearchResults(flat, 200))
+                foreach (var it in DedupeSearchResults(flat, 30))
                     panelSearchResults.Add(it);
                 RebuildPanelSearchList();
                 panelSearchStatus.Text = (Loc.IsRu ? "Найдено: " : "Found: ") + panelSearchResults.Count +
@@ -2094,11 +2219,17 @@ namespace WinPanel
                 if (!exists) return;
                 if (miniExplorer == null || miniExplorer.IsDisposed)
                     miniExplorer = new MiniExplorerForm(folder, settings, settingsPath);
-                miniExplorer.NavigateExternalSelect(folder, selectName);
+                miniExplorer.OpenInTabSelect(folder, selectName);
                 // Shown WITHOUT owner: an owned window is pinned above its owner,
                 // which made the mini explorer impossible to send behind the panel.
                 if (!miniExplorer.Visible) miniExplorer.Show();
-                else miniExplorer.Activate();
+                else
+                {
+                    // Left open on another virtual desktop: activating it as is
+                    // would drag the view back there - re-home it first.
+                    MoveToCurrentDesktop(miniExplorer.Handle);
+                    miniExplorer.Activate();
+                }
             }
             catch (Exception ex)
             {
@@ -2487,7 +2618,7 @@ namespace WinPanel
             if (!ParseHotkey(settings != null ? settings.HotkeyShow : null, out mods, out vk)) { ApplyWinKeyHotkey(); return; }
             hotkeyRegistered = RegisterHotKey(this.Handle, HotkeyId, mods | 0x4000 /* MOD_NOREPEAT */, vk);
             if (!hotkeyRegistered && trayIcon != null)
-                trayIcon.ShowBalloonTip(2500, Loc.S("Tilettes", "Плиточки"), "Hotkey " + settings.HotkeyShow + " is already in use by another program.", ToolTipIcon.Warning);
+                trayIcon.ShowBalloonTip(2500, Loc.S("Tilettes", "Плиточки"), Loc.S("Hotkey ", "Комбинация ") + settings.HotkeyShow + Loc.S(" is already in use by another program.", " уже занята другой программой."), ToolTipIcon.Warning);
             ApplyWinKeyHotkey();
         }
 
@@ -2949,6 +3080,8 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("Win key toggle", ex); }
         }
 
+        // "Ctrl+Alt+P" style strings; the key part is a letter, a digit,
+        // "F1".."F24" or "Space". "None"/empty = no hotkey (vk 0).
         private static bool ParseHotkey(string hotkey, out uint mods, out uint vk)
         {
             mods = 0;
@@ -2961,6 +3094,15 @@ namespace WinPanel
                 else if (p.Equals("Alt", StringComparison.OrdinalIgnoreCase)) mods |= 0x1;
                 else if (p.Equals("Shift", StringComparison.OrdinalIgnoreCase)) mods |= 0x4;
                 else if (p.Equals("Win", StringComparison.OrdinalIgnoreCase)) mods |= 0x8;
+                else if (p.Equals("Space", StringComparison.OrdinalIgnoreCase)) vk = 0x20;
+                else if (p.Length == 2 && (p[0] == 'F' || p[0] == 'f') && p[1] >= '1' && p[1] <= '9')
+                    vk = (uint)(0x70 + (p[1] - '1')); // F1..F9 -> 0x70..0x78
+                else if (p.Length == 3 && (p[0] == 'F' || p[0] == 'f') && p[1] >= '1' && p[1] <= '2'
+                    && p[2] >= '0' && p[2] <= '9')
+                {
+                    int f = (p[1] - '0') * 10 + (p[2] - '0'); // F10..F24 -> 0x79..0x87
+                    if (f >= 10 && f <= 24) vk = (uint)(0x79 + (f - 10));
+                }
                 else if (p.Length == 1)
                 {
                     char c = char.ToUpperInvariant(p[0]);
@@ -3469,6 +3611,7 @@ namespace WinPanel
             // File-type rule: open with the program assigned to this extension (if any).
             string target = path;
             string args = null;
+            string workDir = null;
             try
             {
                 var rule = FileTypes.GetRuleForPath(path);
@@ -3480,13 +3623,16 @@ namespace WinPanel
                         target = rule.OpenWith;
                         args = "\"" + path + "\"";
                         if (!string.IsNullOrEmpty(rule.OpenArgs)) args = rule.OpenArgs + " " + args;
+                        // The editor opens on the document, so its working
+                        // directory is the document's folder - like Explorer.
+                        try { workDir = Path.GetDirectoryName(path); } catch { }
                     }
                 }
             }
             catch (Exception ex) { AppLog.Write("LaunchItem: file-type rule", ex); }
 
-            try { StartDetached(target, args); }
-            catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError("Error opening: " + path); }
+            try { StartDetached(target, args, workDir); }
+            catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError(ShortLaunchNotice(path)); }
         }
 
         // The folder-opening command from the settings. Accepted forms:
@@ -3503,11 +3649,32 @@ namespace WinPanel
             try
             {
                 string p = CurrentSettings != null ? CurrentSettings.FolderOpenProgram : null;
+                string rest;
+                if (!SplitCommandTemplate(p, out exe, out rest)) return false;
+                string name = Path.GetFileName(exe).ToLowerInvariant();
+                if (name == "explorer" || name == "explorer.exe") return false;
+                if (!File.Exists(exe))
+                {
+                    AppLog.Write("FolderOpenProgram not found, using the system default: " + exe);
+                    return false;
+                }
+                argsTemplate = rest;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Splits a settings command line "exe + arguments" tolerating spaces
+        // in the exe path: a quoted exe wins, otherwise the longest existing-
+        // file prefix is taken as the exe and the remainder is the template.
+        internal static bool SplitCommandTemplate(string p, out string exe, out string rest)
+        {
+            exe = null; rest = "";
+            try
+            {
                 if (string.IsNullOrEmpty(p)) return false;
                 p = p.Trim();
                 if (p.Length == 0) return false;
-
-                string rest = "";
                 if (p.StartsWith("\"", StringComparison.Ordinal))
                 {
                     int close = p.IndexOf('"', 1);
@@ -3527,20 +3694,62 @@ namespace WinPanel
                             string cand = p.Substring(0, i);
                             if (File.Exists(cand)) { exe = cand; rest = p.Substring(i + 1).Trim(); break; }
                         }
+                        // Still nothing and the line starts with a bare command
+                        // name ("cmd /K ...", "wt -d ..."): resolve it the way
+                        // the shell would - through System32 and PATH - so the
+                        // short forms from the hint work as-is.
+                        if (rest.Length == 0 && p.IndexOf('\\') < 0)
+                        {
+                            int sp = p.IndexOf(' ');
+                            string first = sp > 0 ? p.Substring(0, sp) : p;
+                            string[] dirs = null;
+                            try { dirs = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';'); } catch { }
+                            if (dirs != null && dirs.Length > 0)
+                            {
+                                foreach (string dir in dirs)
+                                {
+                                    if (string.IsNullOrEmpty(dir)) continue;
+                                    string cand;
+                                    try { cand = System.IO.Path.Combine(dir.Trim(), first + ".exe"); }
+                                    catch { continue; }
+                                    if (File.Exists(cand)) { exe = cand; rest = sp > 0 ? p.Substring(sp + 1).Trim() : ""; break; }
+                                }
+                            }
+                        }
                     }
                 }
-                if (string.IsNullOrEmpty(exe)) return false;
-                string name = Path.GetFileName(exe).ToLowerInvariant();
-                if (name == "explorer" || name == "explorer.exe") return false;
-                if (!File.Exists(exe))
-                {
-                    AppLog.Write("FolderOpenProgram not found, using the system default: " + exe);
-                    return false;
-                }
-                argsTemplate = rest;
+                return !string.IsNullOrEmpty(exe);
+            }
+            catch { exe = null; rest = ""; return false; }
+        }
+
+        // Ctrl + right-click on a folder tile: run the console command from the
+        // settings ("FolderConsole", %1 = the folder, e.g. wt -d "%1"). Returns
+        // false (and does nothing) when the setting is empty or the path is not
+        // an existing directory, so the regular context menu shows instead.
+        private bool LaunchFolderConsole(string folder)
+        {
+            return LaunchFolderConsoleCmd(settings, folder);
+        }
+
+        // Core shared with the folder popup (which carries its own settings).
+        internal static bool LaunchFolderConsoleCmd(Settings st, string folder)
+        {
+            try
+            {
+                string cmd = st != null ? st.FolderConsole : null;
+                if (string.IsNullOrWhiteSpace(cmd)) return false;
+                if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) return false;
+                string exe, argsTemplate;
+                if (!SplitCommandTemplate(cmd, out exe, out argsTemplate)) return false;
+                StartDetached(exe, FolderOpenArgs(argsTemplate, exe, folder), folder);
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                AppLog.Write("LaunchFolderConsole", ex);
+                return false;
+            }
         }
 
         // Builds the argument line for opening `folder` with the configured
@@ -3573,6 +3782,16 @@ namespace WinPanel
         // takes seconds to hand the launch over (cold start, antivirus inspection, UAC).
         private static void StartDetached(string fileName, string arguments)
         {
+            StartDetached(fileName, arguments, null);
+        }
+
+        // workDir: preferred working directory for the launched process (e.g. the
+        // document's folder when a file-type rule supplies the program). When it
+        // is empty, the folder of the launched file itself is used - double-click
+        // semantics, so a .bat keeps finding its neighbouring .env and an .exe
+        // its resources no matter where Tilettes was started from.
+        private static void StartDetached(string fileName, string arguments, string workDir)
+        {
             var t = new Thread(delegate()
             {
                 try
@@ -3585,29 +3804,100 @@ namespace WinPanel
                         string fmExe, fmTemplate;
                         if (TryGetFolderOpenCommand(out fmExe, out fmTemplate) && IsDirectoryPath(fileName))
                         {
-                            System.Diagnostics.Process.Start(fmExe, FolderOpenArgs(fmTemplate, fmExe, fileName));
+                            System.Diagnostics.Process.Start(BuildShellStart(fmExe, FolderOpenArgs(fmTemplate, fmExe, fileName), fileName));
                             return;
                         }
-                        System.Diagnostics.Process.Start(fileName);
+                        System.Diagnostics.Process.Start(BuildShellStart(fileName, null, workDir));
                     }
                     else
-                        System.Diagnostics.Process.Start(fileName, arguments);
+                        System.Diagnostics.Process.Start(BuildShellStart(fileName, arguments, workDir));
                 }
                 catch (System.ComponentModel.Win32Exception wex)
                 {
                     if (wex.NativeErrorCode == 1223) return; // "No" in the UAC prompt
                     AppLog.Write("StartDetached: Win32Exception", wex);
-                    ReportLaunchError("Error opening file: " + wex.Message);
+                    ReportLaunchError(ShortLaunchNotice(fileName));
                 }
                 catch (Exception ex)
                 {
                     AppLog.Write("StartDetached: Exception", ex);
-                    ReportLaunchError("Error opening file: " + ex.Message);
+                    ReportLaunchError(ShortLaunchNotice(fileName));
                 }
             });
             t.IsBackground = true;
             t.SetApartmentState(ApartmentState.STA);
             t.Start();
+        }
+
+        // Builds a ShellExecute start for `fileName` with the working directory
+        // pinned the way a double-click in Explorer does: `workDir` when given
+        // and existing; for a shortcut its own "Start in" (or the target's
+        // folder when the shortcut has none); otherwise the launched file's
+        // own folder. Anything unresolvable (a URL, an env-var path) keeps the
+        // previous behavior and inherits Tilettes' working directory.
+        internal static System.Diagnostics.ProcessStartInfo BuildShellStart(string fileName, string arguments, string workDir)
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo();
+            psi.FileName = fileName;
+            if (!string.IsNullOrEmpty(arguments)) psi.Arguments = arguments;
+            try
+            {
+                string wd = null;
+                if (!string.IsNullOrEmpty(workDir) && Directory.Exists(workDir)) wd = workDir;
+                string p = string.IsNullOrEmpty(fileName) ? null : fileName.Trim('"');
+                if (wd == null && !string.IsNullOrEmpty(p) &&
+                    string.Equals(Path.GetExtension(p), ".lnk", StringComparison.OrdinalIgnoreCase))
+                {
+                    string target, lnkDir;
+                    if (TryResolveLnk(p, out target, out lnkDir))
+                    {
+                        if (!string.IsNullOrEmpty(lnkDir) && Directory.Exists(lnkDir)) wd = lnkDir;
+                        else if (!string.IsNullOrEmpty(target))
+                        {
+                            if (File.Exists(target)) wd = Path.GetDirectoryName(target);
+                            else if (Directory.Exists(target)) wd = target;
+                        }
+                    }
+                }
+                if (wd == null && !string.IsNullOrEmpty(p))
+                {
+                    if (Directory.Exists(p)) wd = p;
+                    else if (File.Exists(p)) wd = Path.GetDirectoryName(p);
+                }
+                if (!string.IsNullOrEmpty(wd)) psi.WorkingDirectory = wd;
+            }
+            catch (Exception ex) { AppLog.Write("BuildShellStart: working directory", ex); }
+            return psi;
+        }
+
+        // Reads a .lnk's target and "Start in" via WScript.Shell (reflection, no
+        // referenced assemblies). Used to pin the working directory of shortcut
+        // launches: with an empty "Start in" the child would otherwise inherit
+        // Tilettes' own working directory and lose the file's surroundings.
+        internal static bool TryResolveLnk(string lnkPath, out string target, out string workDir)
+        {
+            target = null; workDir = null;
+            try
+            {
+                var t = Type.GetTypeFromProgID("WScript.Shell");
+                if (t == null) return false;
+                object sh = Activator.CreateInstance(t);
+                object sc = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
+                target = sc.GetType().InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
+                workDir = sc.GetType().InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
+                return !string.IsNullOrEmpty(target);
+            }
+            catch { return false; }
+        }
+
+        // Short, localized notice for a failed launch: the user sees what did
+        // not open; the technical reason lives only in log.txt.
+        internal static string ShortLaunchNotice(string target)
+        {
+            string name = target;
+            try { name = System.IO.Path.GetFileName((target ?? "").TrimEnd('\\', '/')); } catch { }
+            if (string.IsNullOrEmpty(name)) name = target ?? "";
+            return Loc.S("Cannot open \"", "Не удаётся открыть \"") + name + "\"";
         }
 
         private static void ReportLaunchError(string message)
@@ -3619,7 +3909,12 @@ namespace WinPanel
                     var mf = f as MainForm;
                     if (mf != null && !mf.IsDisposed && mf.IsHandleCreated)
                     {
-                        mf.BeginInvoke((MethodInvoker)delegate { ConfirmDialog.ShowInfo(mf, message); });
+                        // A tray balloon when the icon is around (short, hides
+                        // itself); a small dialog when it is not.
+                        mf.BeginInvoke((MethodInvoker)delegate
+                        {
+                            if (!mf.ShowBalloon(message)) ConfirmDialog.ShowInfo(mf, message);
+                        });
                         return;
                     }
                 }
@@ -4404,7 +4699,8 @@ namespace WinPanel
         }
 
         private void RenderCurrentFolder(Panel layoutPanel, TabData tabData)
-        {            renderedTabs.Add(tabData);
+        {
+            renderedTabs.Add(tabData);
             ClearMultiSelection();
             DisposeControlTree(layoutPanel);
             layoutPanel.Controls.Clear();
@@ -4457,10 +4753,18 @@ namespace WinPanel
                 }
             }
 
-            foreach (var item in itemsToRender)
+            // Thousands of tiles: every Controls.Add on an AutoScroll panel
+            // recomputes the layout, which made a 5000-tile tab take ~18 s to
+            // appear. Suspend the layout for the bulk and do a single pass.
+            layoutPanel.SuspendLayout();
+            try
             {
-                AddShortcutControl(layoutPanel, item, tabData);
+                foreach (var item in itemsToRender)
+                {
+                    AddShortcutControl(layoutPanel, item, tabData);
+                }
             }
+            finally { layoutPanel.ResumeLayout(true); }
             UpdateGridScrollArea(layoutPanel, tabData);
             var scrollPanel = layoutPanel as ScrollPanel;
             if (scrollPanel != null) scrollPanel.EnsureThumb(); // overlay survives Controls.Clear
@@ -4991,6 +5295,10 @@ namespace WinPanel
                         ShowMultiSelectMenu(tile, item, panel, tabData, e.Location);
                         return;
                     }
+                    // Ctrl + right-click on a folder tile: open it in the console
+                    // command from the settings (empty = the regular menu below).
+                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && LaunchFolderConsole(item.Path))
+                        return;
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
                     {
@@ -5013,6 +5321,7 @@ namespace WinPanel
                             fSizeMenu.MenuItems.Add("6 x 6", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 6));
                             fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) => EditItemDescription(item));
+                            fMenu.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) => EditItemAura(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
                             fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
                             var fMoveMenu = fMenu.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
@@ -5037,6 +5346,8 @@ namespace WinPanel
                             () => RemoveItem(panel, tile, item, tabData),
                             () => RenameItem(item, tile),
                             () => ChangeItemIcon(item, tile),
+                            Loc.S("Aura color...", "Цвет ауры..."),
+                            (Action)delegate { EditItemAura(item, tile); },
                             () => ChangeIconSize(item, tile, panel, tabData, 5),
                             () => ChangeIconSize(item, tile, panel, tabData, 6),
                             OtherTabNames(tabData),
@@ -5217,7 +5528,7 @@ namespace WinPanel
                 string openDir = !string.IsNullOrEmpty(dir) ? dir : path;
                 if (IsDirectoryPath(openDir))
                 {
-                    StartDetached(fmExe, FolderOpenArgs(fmTemplate, fmExe, openDir));
+                    StartDetached(fmExe, FolderOpenArgs(fmTemplate, fmExe, openDir), openDir);
                     return;
                 }
             }
@@ -5283,18 +5594,148 @@ namespace WinPanel
             {
                 if (miniExplorer == null || miniExplorer.IsDisposed)
                     miniExplorer = new MiniExplorerForm(item.Path, settings, settingsPath);
-                else
-                    miniExplorer.NavigateExternal(item.Path);
                 // Shown WITHOUT owner: an owned window is pinned above its owner, which
                 // made the mini explorer impossible to send behind the main panel.
                 if (!miniExplorer.Visible) miniExplorer.Show();
-                else miniExplorer.Activate();
+                else
+                {
+                    // Left open on another virtual desktop: activating it as is
+                    // would drag the view back there - re-home it first.
+                    MoveToCurrentDesktop(miniExplorer.Handle);
+                    miniExplorer.Activate();
+                }
+                // A folder always opens as a new tab of the existing window.
+                miniExplorer.OpenInTab(item.Path);
             }
             catch (Exception ex)
             {
                 AppLog.Write("OpenMiniExplorer: create/show", ex);
-                ReportLaunchError("Mini Explorer error: " + ex.Message);
+                ReportLaunchError(Loc.S("Mini Explorer did not open - details in log.txt",
+                    "Мини-проводник не открылся — подробности в log.txt"));
             }
+        }
+
+        // ---- Aura: color + transparency ----
+        // AuraColor stores "RRGGBB" (legacy records may carry "AARRGGBB"),
+        // empty = no aura. The effective alpha is the tile's own AuraAlpha
+        // override, or the global transparency setting - except a legacy
+        // color that already carries the old default transparency (it means
+        // "default" too); any other legacy value keeps acting as that tile's
+        // own override. Painted by TileControl.OnPaint / PopupTile.OnPaint.
+
+        // The slider is "transparency" 0..100%; the stored alpha keeps a small
+        // floor so a tile never turns fully invisible.
+        internal const int DefaultAuraTransparency = 55;
+        private const int MinAuraAlpha = 30;
+        // Alpha baked into aura colors by pre-v1.0.2 records ("AARRGGBB" with
+        // the then-default transparency).
+        private const int LegacyDefaultAuraAlpha = 132;
+
+        internal static int AuraAlphaOf(int transparencyPct)
+        {
+            int a = 255 - transparencyPct * 225 / 100;
+            if (a < MinAuraAlpha) a = MinAuraAlpha;
+            return a;
+        }
+
+        internal static int AuraTransparencyOf(int alpha)
+        {
+            int t = (255 - alpha) * 100 / 225;
+            if (t < 0) t = 0;
+            if (t > 100) t = 100;
+            return t;
+        }
+
+        internal static int GlobalAuraTransparency()
+        {
+            try
+            {
+                Settings st = CurrentSettings;
+                if (st != null) return Math.Max(0, Math.Min(100, st.AuraTransparency));
+            }
+            catch { }
+            return DefaultAuraTransparency;
+        }
+
+        internal static int GlobalAuraAlpha() { return AuraAlphaOf(GlobalAuraTransparency()); }
+
+        internal static bool TryGetAura(ShortcutItem item, out Color color)
+        {
+            color = Color.Empty;
+            if (item == null || string.IsNullOrEmpty(item.AuraColor)) return false;
+            Color baseColor;
+            if (!TryGetAura(item.AuraColor, out baseColor)) return false;
+            int alpha = item.AuraAlpha;
+            if (alpha <= 0)
+            {
+                string h = item.AuraColor.Trim().TrimStart('#');
+                alpha = (h.Length == 8 && baseColor.A != LegacyDefaultAuraAlpha) ? baseColor.A : GlobalAuraAlpha();
+            }
+            if (alpha > 255) alpha = 255;
+            color = Color.FromArgb(alpha, baseColor);
+            return true;
+        }
+
+        internal static bool TryGetAura(string hex, out Color color)
+        {
+            color = Color.Empty;
+            try
+            {
+                if (string.IsNullOrEmpty(hex)) return false;
+                string h = hex.Trim().TrimStart('#');
+                if (h.Length == 6) h = "FF" + h;
+                if (h.Length != 8) return false;
+                uint argb = uint.Parse(h, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+                color = Color.FromArgb(unchecked((int)argb));
+                return color.A > 0;
+            }
+            catch { return false; }
+        }
+
+        internal static string AuraToString(Color c)
+        {
+            return c.A.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
+                   c.R.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
+                   c.G.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
+                   c.B.ToString("X2", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        internal static string AuraToRgbString(Color c)
+        {
+            return c.R.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
+                   c.G.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
+                   c.B.ToString("X2", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        // The soft "glow" fill of a tile aura: strongest in the middle, melting
+        // to transparent at the rounded edge (a radial gradient with a plateau
+        // under the icon), instead of a hard-edged solid fill.
+        internal static void DrawAura(Graphics g, System.Drawing.Drawing2D.GraphicsPath path, Color aura)
+        {
+            using (var brush = new System.Drawing.Drawing2D.PathGradientBrush(path))
+            {
+                brush.CenterColor = aura;
+                brush.SurroundColors = new Color[] { Color.FromArgb(0, aura) };
+                // Plateau: the icon/label area keeps the full tint before the fade.
+                brush.FocusScales = new PointF(0.62f, 0.62f);
+                g.FillPath(brush, path);
+            }
+        }
+
+        // Opens the aura picker for one tile (the multi-select menu applies its
+        // result to the whole selection itself).
+        private void EditItemAura(ShortcutItem item, Control tileToInvalidate)
+        {
+            int alpha;
+            // Seed the slider with what the tile is actually painted with now.
+            Color eff;
+            int effAlpha = TryGetAura(item, out eff) ? eff.A : GlobalAuraAlpha();
+            string r = AuraDialog.Show(this, item.AuraColor, effAlpha, item.Name, out alpha);
+            if (r == null) return;
+            item.AuraColor = r;
+            item.AuraAlpha = r.Length == 0 ? 0 : alpha;
+            records.Save(recordsPath);
+            if (tileToInvalidate != null) tileToInvalidate.Invalidate();
         }
 
         // Lets the user attach a free-form description to any item; the text is
@@ -5601,6 +6042,35 @@ namespace WinPanel
                     foreach (var it in doomed) currentList.Remove(it);
                     ClearMultiSelection();
                     records.Save(recordsPath);
+                    RenderCurrentFolder(panel, tabData);
+                });
+                if (tabNavigations[tabData].Count > 0)
+                {
+                    // Raise every selected tile one level out of the open folder.
+                    m.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) =>
+                    {
+                        var up = new List<ShortcutItem>(multiSelection);
+                        foreach (var it in up) MoveItemOutOfFolder(panel, tabData, it);
+                        ClearMultiSelection();
+                    });
+                }
+                m.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) =>
+                {
+                    var targets = new List<ShortcutItem>(multiSelection);
+                    if (targets.Count == 0) return;
+                    string subject = targets.Count + " " + Loc.S("selected", "выбрано");
+                    int alpha;
+                    Color eff;
+                    int effAlpha = MainForm.TryGetAura(targets[0], out eff) ? eff.A : MainForm.GlobalAuraAlpha();
+                    string r = AuraDialog.Show(this, targets[0].AuraColor, effAlpha, subject, out alpha);
+                    if (r == null) return;
+                    foreach (var it in targets)
+                    {
+                        it.AuraColor = r;
+                        it.AuraAlpha = r.Length == 0 ? 0 : alpha;
+                    }
+                    records.Save(recordsPath);
+                    ClearMultiSelection();
                     RenderCurrentFolder(panel, tabData);
                 });
                 var moveTo = m.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
@@ -5991,6 +6461,10 @@ namespace WinPanel
             {
                 if (e.Button == MouseButtons.Right)
                 {
+                    // Ctrl + right-click on a folder tile: open it in the
+                    // console command from the settings (empty = the menu).
+                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && OpenFolderConsole(child))
+                        return;
                     ShowTileMenu(tile, child, e.Location);
                     return;
                 }
@@ -6023,6 +6497,11 @@ namespace WinPanel
             BuildTiles();
         }
 
+        private bool OpenFolderConsole(ShortcutItem child)
+        {
+            return MainForm.LaunchFolderConsoleCmd(settings, child == null ? null : child.Path);
+        }
+
         private void ShowTileMenu(PopupTile tile, ShortcutItem child, Point location)
         {
             var menu = new ContextMenu();
@@ -6040,6 +6519,18 @@ namespace WinPanel
             }
             if (editMode)
             {
+                menu.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) =>
+                {
+                    int alpha;
+                    Color eff;
+                    int effAlpha = MainForm.TryGetAura(child, out eff) ? eff.A : MainForm.GlobalAuraAlpha();
+                    string r = AuraDialog.Show(this, child.AuraColor, effAlpha, child.Name, out alpha);
+                    if (r == null) return;
+                    child.AuraColor = r;
+                    child.AuraAlpha = r.Length == 0 ? 0 : alpha;
+                    tile.Invalidate();
+                    if (onChanged != null) onChanged();
+                });
                 menu.MenuItems.Add(Loc.S("Remove from Panel"), (s2, e2) =>
                 {
                     suppressDeactivate = true;
@@ -6233,10 +6724,25 @@ namespace WinPanel
                 e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
                 var path = RoundPath();
-                using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
+                try
                 {
-                    e.Graphics.FillPath(brush, path);
+                    Color aura;
+                    if (MainForm.TryGetAura(item, out aura))
+                    {
+                        MainForm.DrawAura(e.Graphics, path, aura);
+                        if (hovered)
+                            using (var hoverBrush = new SolidBrush(hoverColor))
+                                e.Graphics.FillPath(hoverBrush, path);
+                    }
+                    else
+                    {
+                        using (var brush = new SolidBrush(hovered ? hoverColor : tileColor))
+                        {
+                            e.Graphics.FillPath(brush, path);
+                        }
+                    }
                 }
+                catch { }
 
                 if (IconImage != null)
                 {
@@ -6510,9 +7016,18 @@ namespace WinPanel
                 {
                     try
                     {
-                        using (var brush = new SolidBrush(Color.FromArgb(50, 128, 128, 128)))
+                        Color aura;
+                        if (MainForm.TryGetAura(Item, out aura))
                         {
-                            e.Graphics.FillPath(brush, path);
+                            // The folder's own aura replaces the neutral gray fill.
+                            MainForm.DrawAura(e.Graphics, path, aura);
+                        }
+                        else
+                        {
+                            using (var brush = new SolidBrush(Color.FromArgb(50, 128, 128, 128)))
+                            {
+                                e.Graphics.FillPath(brush, path);
+                            }
                         }
                     }
                     catch { }
@@ -6559,8 +7074,18 @@ namespace WinPanel
                 }
                 else
                 {
-                    // No solid tile fill: the icon sits directly on the panel background,
+                    // Per-tile "aura": a translucent color fill behind the icon.
+                    // Without one the icon sits directly on the panel background,
                     // with only a soft highlight when hovered.
+                    try
+                    {
+                        Color aura;
+                        if (MainForm.TryGetAura(Item, out aura))
+                        {
+                            MainForm.DrawAura(e.Graphics, path, aura);
+                        }
+                    }
+                    catch { }
                     if (IsHovered)
                     {
                         try
@@ -7412,6 +7937,277 @@ namespace WinPanel
             {
                 dlg.ShowDialog(owner);
                 return dlg.accepted ? dlg.textBox.Text.Trim() : null;
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(Color.FromArgb(120, this.ForeColor)))
+            {
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            }
+        }
+    }
+
+    // Themed picker for the per-tile background color ("aura"): preset swatches,
+    // a custom color via the system color dialog, a transparency slider and a
+    // live preview. Returns null on Cancel, "" when the aura is removed and the
+    // "AARRGGBB" string otherwise (stored in ShortcutItem.AuraColor).
+    public class AuraDialog : Form
+    {
+        private Color baseColor;      // picked color; alpha always comes from the slider
+        private bool hasColor;
+        private bool accepted;
+        private bool resetRequested;
+        private string result;
+        private int resultAlpha;      // 0 = follow the global transparency setting
+        private TrackBar transparency;
+        private Label transparencyLabel;
+        private Panel preview;
+        private Button selectedSwatch;
+
+        private static readonly Color[] Presets = new Color[]
+        {
+            Color.FromArgb(231, 76, 60),   // red
+            Color.FromArgb(230, 126, 34),  // orange
+            Color.FromArgb(241, 196, 15),  // yellow
+            Color.FromArgb(46, 204, 113),  // green
+            Color.FromArgb(26, 188, 156),  // teal
+            Color.FromArgb(52, 152, 219),  // blue
+            Color.FromArgb(93, 109, 192),  // indigo
+            Color.FromArgb(155, 89, 182),  // purple
+            Color.FromArgb(233, 30, 99),   // pink
+            Color.FromArgb(141, 110, 99),  // brown
+            Color.FromArgb(149, 165, 166), // gray
+            Color.FromArgb(52, 73, 94)     // dark slate
+        };
+
+        [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
+
+        private AuraDialog(string currentAura, int currentAlpha, string subject)
+        {
+            Settings st = MainForm.CurrentSettings;
+            Color bg = UiPalette.Bg;
+            Color panel = UiPalette.Panel;
+            Color txt = UiPalette.Text;
+            Color dim = UiPalette.Dim;
+
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.StartPosition = FormStartPosition.CenterParent;
+            this.ShowInTaskbar = false;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.BackColor = bg;
+            this.ForeColor = txt;
+            if (st != null) this.Font = Settings.MakeFont(st.FontUiName, st.FontUiSize);
+
+            int fh = this.Font.Height;
+            Font titleFont = Settings.MakeFont(st != null ? st.FontUiName : "Segoe UI", (st != null ? st.FontUiSize : 9) + 1, System.Drawing.FontStyle.Bold);
+            int tfh = titleFont.Height;
+
+            string caption = Loc.S("Aura", "Аура") + (string.IsNullOrEmpty(subject) ? "" : " — " + subject);
+            var title = new Label { Text = caption, Left = 20, Top = 14, Width = 430, Height = tfh + 6, Font = titleFont };
+            this.Controls.Add(title);
+
+            string infoText = Loc.S("Background color of the element; transparency softens it over the panel.",
+                                    "Фоновый цвет элемента; прозрачность делает его мягче поверх панели.");
+            var info = new Label
+            {
+                Text = infoText,
+                Left = 20,
+                Top = title.Bottom + 6,
+                Width = 430,
+                Height = System.Windows.Forms.TextRenderer.MeasureText(infoText, this.Font, new Size(430, 10000), System.Windows.Forms.TextFormatFlags.WordBreak).Height + 4,
+                ForeColor = dim
+            };
+            this.Controls.Add(info);
+
+            int contentTop = info.Bottom + 10;
+
+            // Live preview: a rounded tile-like rect over the panel background.
+            preview = new Panel { Left = 20, Top = contentTop, Width = 110, Height = 86, BackColor = panel };
+            preview.Paint += PreviewPaint;
+            this.Controls.Add(preview);
+
+            // Preset swatches: two rows of six.
+            var swatches = new FlowLayoutPanel
+            {
+                Left = 142,
+                Top = contentTop,
+                Width = 6 * 32 + 4,
+                Height = 2 * 32 + 2,
+                BackColor = bg
+            };
+            foreach (var c in Presets)
+            {
+                var sw = new Button
+                {
+                    Size = new Size(28, 28),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = c,
+                    Margin = new Padding(2),
+                    Tag = c,
+                    Cursor = Cursors.Hand
+                };
+                sw.FlatAppearance.BorderSize = 0;
+                sw.FlatAppearance.MouseOverBackColor = c;
+                sw.Click += (s, e) => PickBaseColor((Color)((Button)s).Tag, (Button)s);
+                swatches.Controls.Add(sw);
+            }
+            this.Controls.Add(swatches);
+
+            transparencyLabel = new Label { Left = 142, Top = swatches.Bottom + 6, Width = 316, Height = fh + 2, ForeColor = txt };
+            this.Controls.Add(transparencyLabel);
+            transparency = new TrackBar
+            {
+                Left = 140,
+                Top = transparencyLabel.Bottom + 2,
+                Width = 318,
+                Minimum = 0,
+                Maximum = 100,
+                TickFrequency = 10,
+                SmallChange = 5,
+                LargeChange = 10
+            };
+            transparency.ValueChanged += (s, e) => UpdateTransparencyLabel();
+            this.Controls.Add(transparency);
+
+            // Initial state: the tile's current aura, or the first preset swatch
+            // so that OK always has a color to store (Reset removes the aura).
+            // The slider starts at the tile's current effective transparency, or
+            // the global default when the tile has no aura yet.
+            Color existing;
+            if (MainForm.TryGetAura(currentAura, out existing))
+            {
+                hasColor = true;
+                baseColor = Color.FromArgb(255, existing);
+                PickBaseColor(baseColor, null);
+            }
+            else
+            {
+                PickBaseColor(Presets[0], swatches.Controls.Count > 0 ? (Button)swatches.Controls[0] : null);
+            }
+            transparency.Value = Math.Max(0, Math.Min(100, MainForm.AuraTransparencyOf(currentAlpha)));
+            UpdateTransparencyLabel();
+
+            var custom = new Button
+            {
+                Text = Loc.S("Custom color...", "Другой цвет..."),
+                Left = 20,
+                Top = preview.Bottom + 8,
+                Width = 110,
+                Height = fh + 12,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panel,
+                ForeColor = txt,
+                Cursor = Cursors.Hand
+            };
+            custom.FlatAppearance.BorderSize = 0;
+            custom.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            custom.Click += (s, e) =>
+            {
+                using (var cd = new ColorDialog { FullOpen = true, Color = hasColor ? baseColor : SystemColors.Control })
+                {
+                    if (cd.ShowDialog(this) == DialogResult.OK)
+                        PickBaseColor(cd.Color, null);
+                }
+            };
+            this.Controls.Add(custom);
+
+            int btnH = fh + 12;
+            int bottom = Math.Max(custom.Bottom + 6, transparency.Bottom + 6);
+            int btnTop = bottom + 12;
+            this.ClientSize = new Size(470, btnTop + btnH + 16);
+            this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
+
+            var reset = new Button { Text = Loc.S("Reset", "Сбросить"), Left = 20, Top = btnTop, Width = 95, Height = btnH, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            reset.FlatAppearance.BorderSize = 0;
+            reset.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            reset.Click += (s, e) => { resetRequested = true; this.Close(); };
+            var cancel = new Button { Text = Loc.S("Cancel", "Отмена"), Left = 250, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.Cancel, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            cancel.FlatAppearance.BorderSize = 0;
+            cancel.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            var ok = new Button { Text = Loc.S("OK", "ОК"), Left = 355, Top = btnTop, Width = 95, Height = btnH, DialogResult = DialogResult.OK, FlatStyle = FlatStyle.Flat, BackColor = panel, ForeColor = txt };
+            ok.FlatAppearance.BorderSize = 0;
+            ok.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            ok.Click += (s, e) =>
+            {
+                accepted = true;
+                result = MainForm.AuraToRgbString(baseColor);
+                // Matching the global setting stores no per-tile override, so
+                // the tile keeps following the setting when it changes.
+                resultAlpha = transparency.Value == MainForm.GlobalAuraTransparency()
+                    ? 0
+                    : MainForm.AuraAlphaOf(transparency.Value);
+            };
+            this.Controls.Add(reset);
+            this.Controls.Add(cancel);
+            this.Controls.Add(ok);
+            this.AcceptButton = ok;
+            this.CancelButton = cancel;
+        }
+
+        private void PickBaseColor(Color c, Button sw)
+        {
+            baseColor = Color.FromArgb(255, c);
+            hasColor = true;
+            if (selectedSwatch != null) selectedSwatch.FlatAppearance.BorderSize = 0;
+            selectedSwatch = sw;
+            if (sw != null) sw.FlatAppearance.BorderSize = 2;
+            preview.Invalidate();
+        }
+
+        private void UpdateTransparencyLabel()
+        {
+            transparencyLabel.Text = Loc.S("Transparency:", "Прозрачность:") + " " + transparency.Value + "%";
+            preview.Invalidate();
+        }
+
+        private void PreviewPaint(object sender, PaintEventArgs e)
+        {
+            try
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var r = new Rectangle(8, 8, preview.Width - 17, preview.Height - 17);
+                using (var p = RoundRect(r, 10))
+                {
+                    if (hasColor)
+                        MainForm.DrawAura(g, p, Color.FromArgb(MainForm.AuraAlphaOf(transparency.Value), baseColor));
+                    using (var pen = new Pen(Color.FromArgb(120, UiPalette.Dim)))
+                        g.DrawPath(pen, p);
+                }
+            }
+            catch { }
+        }
+
+        private static System.Drawing.Drawing2D.GraphicsPath RoundRect(Rectangle r, int radius)
+        {
+            var p = new System.Drawing.Drawing2D.GraphicsPath();
+            int d = radius * 2;
+            p.AddArc(r.Left, r.Top, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        // Returns null on Cancel, "" when the aura is removed, otherwise the
+        // picked color as "RRGGBB"; alphaOverride is 0 (= follow the global
+        // transparency setting) or the tile's own alpha.
+        public static string Show(IWin32Window owner, string currentAura, int currentAlpha, string subject, out int alphaOverride)
+        {
+            alphaOverride = 0;
+            using (var dlg = new AuraDialog(currentAura, currentAlpha, subject))
+            {
+                dlg.ShowDialog(owner);
+                if (dlg.resetRequested) return "";
+                if (!dlg.accepted) return null;
+                alphaOverride = dlg.resultAlpha;
+                return dlg.result;
             }
         }
 

@@ -1,8 +1,10 @@
 name: build
 
 # A v* tag push = release. The workflow builds the tagged sources with the
-# same csc call as build.bat and attaches plain exe files to the release
-# (no zip archive): the universal AnyCPU build plus x86 and x64 variants.
+# same csc call as build.bat and attaches the plain universal exe to the
+# release (no zip archive). The AnyCPU build runs as a 64-bit process on
+# 64-bit Windows and as a 32-bit one on 32-bit Windows, so one file covers
+# everything.
 # GitHub's automatic Source code archives are on the release as well.
 # The release is created with the preinstalled gh CLI (no third-party action:
 # action resolution kept failing on the runner).
@@ -23,18 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Three csc builds also serve as the build verification: any failing
-      # run fails the whole workflow. NOTE: every build.bat MUST be invoked
-      # with "call" - a bare batch invocation from a multi-line cmd script
-      # transfers control and never returns, so the x86/x64 lines silently
-      # never ran (v0.6beta's first run shipped without them for exactly
-      # this reason).
-      - name: Build exes (AnyCPU universal + x86 + x64, same as build.bat)
+      # The build also serves as build verification: a failing run fails the
+      # whole workflow. NOTE: build.bat MUST be invoked with "call" - a bare
+      # batch invocation from a multi-line cmd script transfers control and
+      # never returns.
+      - name: Build the universal exe (same as build.bat)
         shell: cmd
         run: |
           call build.bat || exit /b 1
-          call build.bat x86 || exit /b 1
-          call build.bat x64 || exit /b 1
           dir Tilettes*.exe
 
       # Checksums travel with the release: users can verify what they downloaded
@@ -43,10 +41,10 @@ jobs:
       - name: Compute SHA256 checksums
         shell: bash
         run: |
-          sha256sum Tilettes.exe Tilettes-x86.exe Tilettes-x64.exe > SHA256SUMS.txt
+          sha256sum Tilettes.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Create release and attach exes (tag builds only)
+      - name: Create release and attach the exe (tag builds only)
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
@@ -62,7 +60,7 @@ jobs:
             # on the runner has no --generate-notes, the notes file is used
             # instead on both paths).
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
-            gh release upload "$GITHUB_REF_NAME" "Tilettes.exe" "Tilettes-x86.exe" "Tilettes-x64.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" "Tilettes.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "Tilettes.exe" "Tilettes-x86.exe" "Tilettes-x64.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
+            gh release create "$GITHUB_REF_NAME" "Tilettes.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
           fi

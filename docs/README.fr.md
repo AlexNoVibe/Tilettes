@@ -17,7 +17,7 @@ Un panneau de lancement rapide pour Windows : une grille de tuiles avec raccourc
 
 ![Tilettes — la fenêtre principale](screenshot_main.png)
 
-Version actuelle : **v1.0** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
+Version actuelle : **v1.0.2** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
 
 ## Points forts
 
@@ -214,8 +214,6 @@ Nécessite n'importe quel Windows avec .NET Framework 4.x (le compilateur fait p
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 ou directement :
@@ -224,7 +222,7 @@ ou directement :
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Les versions sont créées automatiquement par GitHub Actions à chaque tag `v*` : le workflow compile les variantes de l'exe avec le même appel csc et attache des fichiers exe simples à la version (AnyCPU universel + x86 + x64 — sans zip) ainsi qu'un `SHA256SUMS.txt` avec les sommes de contrôle des trois exe (les sommes sont également ajoutées aux notes de version) ; les archives « Source code » automatiques de GitHub sont également présentes sur la version. Vous pouvez aussi compiler l'exe vous-même avec `build.bat`.
+Les versions sont créées automatiquement par GitHub Actions à chaque tag `v*` : le workflow compile l'exe universel avec le même appel csc et attache à la version un seul fichier exe simple (sans zip) ainsi qu'un `SHA256SUMS.txt` avec sa somme de contrôle (la somme est également ajoutée aux notes de version) ; les archives « Source code » automatiques de GitHub sont également présentes sur la version. La compilation universelle AnyCPU s'exécute comme processus 64 bits sur Windows 64 bits et comme processus 32 bits sur Windows 32 bits. Vous pouvez aussi compiler l'exe vous-même avec `build.bat`.
 
 ## Faux positifs antivirus
 

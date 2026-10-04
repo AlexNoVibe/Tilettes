@@ -48,7 +48,7 @@ namespace WinPanel
             [PreserveSig] new int QueryContextMenu(IntPtr hmenu, uint indexMenu, uint idCmdFirst, uint idCmdLast, uint uFlags);
             [PreserveSig] new int InvokeCommand(ref CMINVOKECOMMANDINFO pici);
             [PreserveSig] new int GetCommandString(UIntPtr idCmd, uint uType, IntPtr pReserved, StringBuilder pszName, uint cchMax);
-            [PreserveSig] new int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
+            [PreserveSig] int HandleMenuMsg(uint uMsg, IntPtr wParam, IntPtr lParam);
             [PreserveSig] int HandleMenuMsg2(uint uMsg, IntPtr wParam, IntPtr lParam, ref IntPtr plResult);
         }
 
@@ -181,6 +181,7 @@ namespace WinPanel
             Action onOpenMiniExplorer,
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
             Action onRemove, Action onRename, Action onChangeIcon,
+            string auraLabel, Action onAura,
             Action onSize5, Action onSize6,
             string[] moveToTabs, Action<int> onMoveToTab)
         {
@@ -196,7 +197,7 @@ namespace WinPanel
                 ShowOwnMenuFallback(x, y, handle, editMode, descriptionLabel, onEditDescription,
                     canMoveOutOfFolder, onMoveOutOfFolder, onOpenContainingFolder, onOpenMiniExplorer,
                     onSize1, onSize2, onSize3, onSize4, onSize5, onSize6,
-                    onRemove, onRename, onChangeIcon, moveToTabs, onMoveToTab);
+                    onRemove, onRename, onChangeIcon, auraLabel, onAura, moveToTabs, onMoveToTab);
                 return;
             }
 
@@ -254,6 +255,8 @@ namespace WinPanel
 
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 4, Loc.S("Rename"), marker);
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 5, Loc.S("Change Icon"), marker);
+                        if (!string.IsNullOrEmpty(auraLabel) && onAura != null)
+                            InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 15, auraLabel, marker);
                         InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 6, Loc.S("Remove from Panel"), marker);
 
                         // "Move to tab": a submenu listing the other tabs.
@@ -288,7 +291,30 @@ namespace WinPanel
                         ici.hwnd = handle;
                         ici.lpVerb = (IntPtr)(cmd - 1);
                         ici.nShow = 1; // SW_SHOWNORMAL
-                        contextMenu.InvokeCommand(ref ici);
+                        // Explorer's "Open" and friends launch with the item's
+                        // folder as the working directory; pass it explicitly,
+                        // otherwise the child inherits Tilettes' own and a .bat
+                        // loses the files next to it. ANSI-only: the invoke
+                        // info carries no wide directory, so a folder whose
+                        // name does not survive the system ANSI codepage keeps
+                        // the previous behavior (the field stays null).
+                        IntPtr dirPtr = IntPtr.Zero;
+                        try
+                        {
+                            string dir = System.IO.Path.GetDirectoryName(path);
+                            if (!string.IsNullOrEmpty(dir) && System.IO.Directory.Exists(dir))
+                            {
+                                byte[] ansi = Encoding.Default.GetBytes(dir);
+                                if (Encoding.Default.GetString(ansi) == dir)
+                                {
+                                    dirPtr = Marshal.StringToHGlobalAnsi(dir);
+                                    ici.lpDirectory = dirPtr;
+                                }
+                            }
+                        }
+                        catch { }
+                        try { contextMenu.InvokeCommand(ref ici); }
+                        finally { if (dirPtr != IntPtr.Zero) Marshal.FreeHGlobal(dirPtr); }
                     }
                     else if (cmd == customIdStart + 7) { if (onOpenContainingFolder != null) onOpenContainingFolder(); }
                     else if (cmd == customIdStart + 8) { if (onMoveOutOfFolder != null) onMoveOutOfFolder(); }
@@ -303,6 +329,7 @@ namespace WinPanel
                     else if (cmd == customIdStart + 11) { if (onEditDescription != null) onEditDescription(); }
                     else if (cmd == customIdStart + 13) { if (onSize5 != null) onSize5(); }
                     else if (cmd == customIdStart + 14) { if (onSize6 != null) onSize6(); }
+                    else if (cmd == customIdStart + 15) { if (onAura != null) onAura(); }
                     else if (cmd >= customIdStart + 100 && cmd < customIdStart + 100 + 64)
                     {
                         if (onMoveToTab != null) onMoveToTab((int)(cmd - (customIdStart + 100)));
@@ -326,6 +353,7 @@ namespace WinPanel
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
             Action onSize5, Action onSize6,
             Action onRemove, Action onRename, Action onChangeIcon,
+            string auraLabel, Action onAura,
             string[] moveToTabs, Action<int> onMoveToTab)
         {
             try
@@ -355,6 +383,8 @@ namespace WinPanel
                     }
                     if (onRename != null) m.MenuItems.Add(Loc.S("Rename"), (s2, e2) => onRename());
                     if (onChangeIcon != null) m.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => onChangeIcon());
+                    if (!string.IsNullOrEmpty(auraLabel) && onAura != null)
+                        m.MenuItems.Add(auraLabel, (s2, e2) => onAura());
                     if (onRemove != null) m.MenuItems.Add(Loc.S("Remove from Panel"), (s2, e2) => onRemove());
                     if (moveToTabs != null && moveToTabs.Length > 0 && onMoveToTab != null)
                     {

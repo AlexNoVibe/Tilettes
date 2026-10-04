@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Плиточки — главное окно](screenshot_main.png)
 
-Текущая версия: **v1.0** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
+Текущая версия: **v1.0.2** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
 
 ## Фишки
 
@@ -213,8 +213,6 @@ title: Tilettes
 
 ```
 build.bat          rem → Tilettes.exe (универсальный AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 или напрямую:
@@ -223,7 +221,7 @@ build.bat x64      rem → Tilettes-x64.exe
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Релизы создаются автоматически GitHub Actions по каждому тегу `v*`: workflow собирает варианты exe тем же вызовом csc и прикрепляет к релизу обычные exe-файлы (AnyCPU-универсальный + x86 + x64 — без zip), а также `SHA256SUMS.txt` с контрольными суммами всех трёх exe (суммы добавляются и в заметки релиза); автоматические архивы исходников GitHub тоже на месте. exe можно собрать и самому через `build.bat`.
+Релизы создаются автоматически GitHub Actions по каждому тегу `v*`: workflow собирает универсальный exe тем же вызовом csc и прикрепляет к релизу один обычный exe-файл (без zip), а также `SHA256SUMS.txt` с его контрольной суммой (сумма добавляется и в заметки релиза); автоматические архивы исходников GitHub тоже на месте. Универсальная сборка AnyCPU работает как 64-битный процесс на 64-битной Windows и как 32-битный на 32-битной. exe можно собрать и самому через `build.bat`.
 
 ## False positive антивирусов
 

@@ -35,6 +35,8 @@ namespace WinPanel
         // Top bookmarks bar visibility; console height percent (default 40)
         public bool MiniExplorerTopBar { get; set; }
         public int MiniExplorerConsole { get; set; }
+        // Bookmarks panel width in the mini explorer, percent of the window width (default 18)
+        public int MiniExplorerBm { get; set; }
         // Mini explorer console font size, stored x10 (85 = 8.5pt); Ctrl+wheel zooms
         public int ConsoleFontSizeX10 { get; set; }
 
@@ -47,6 +49,11 @@ namespace WinPanel
         // missing file keeps the system default. The folder is passed as the one
         // quoted argument.
         public string FolderOpenProgram { get; set; }
+
+        // Ctrl + right-click on a folder tile runs this command with the folder
+        // as the parameter ("%1" = the quoted folder path), e.g. wt -d "%1".
+        // Empty = the feature is off (the regular context menu shows).
+        public string FolderConsole { get; set; }
 
         // A left click on the taskbar Start button (screen corner) opens the
         // panel instead of the Start menu. Independent of HotkeyWin (the key).
@@ -80,6 +87,9 @@ namespace WinPanel
         public int SearchResultsFontSize { get; set; }
 
         public int GridTransparency { get; set; }
+        // Default aura transparency for all tiles, percent (the per-tile aura
+        // dialog can override the transparency of a single tile).
+        public int AuraTransparency { get; set; }
         public int GridColumns { get; set; }
         public int GridRows { get; set; }
         // Extra tile rows BELOW the visible grid, same cell size; reachable by
@@ -158,9 +168,11 @@ namespace WinPanel
             MiniExplorerBookmarks = true;
             MiniExplorerTopBar = true;
             MiniExplorerConsole = 40;
+            MiniExplorerBm = 18;
             ConsoleFontSizeX10 = 140;
             FolderAutoExitSeconds = 15;
             FolderOpenProgram = "";
+            FolderConsole = "";
             Language = "ru";
             AutoStart = false;
             AutoStartMinimized = false;
@@ -176,6 +188,7 @@ namespace WinPanel
             SearchResultsFontSize = 14;
 
             GridTransparency = 50;
+            AuraTransparency = 55;
             GridColumns = 16;
             GridRows = 16;
             GridExtraRows = 0;
@@ -363,6 +376,8 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("MiniExplorerTopBar"), out mtb)) s.MiniExplorerTopBar = mtb;
                 int mcon;
                 if (int.TryParse(ini.Read("MiniExplorerConsole"), out mcon)) s.MiniExplorerConsole = mcon;
+                int mbm;
+                if (int.TryParse(ini.Read("MiniExplorerBm"), out mbm)) s.MiniExplorerBm = mbm;
                 int cfs;
                 if (int.TryParse(ini.Read("ConsoleFontSizeX10"), out cfs) && cfs >= 60 && cfs <= 280) s.ConsoleFontSizeX10 = cfs;
 
@@ -370,6 +385,8 @@ namespace WinPanel
                 if (int.TryParse(ini.Read("FolderAutoExitSeconds"), out faеx)) s.FolderAutoExitSeconds = faеx;
                 string fop = ini.Read("FolderOpenProgram");
                 if (fop != null) s.FolderOpenProgram = fop;
+                string fcon = ini.Read("FolderConsole");
+                if (fcon != null) s.FolderConsole = fcon;
                 string lang = ini.Read("Language");
                 if (Loc.IsSupported(lang)) s.Language = lang.ToLowerInvariant();
                 bool astr, astrm, tray, ktab;
@@ -392,10 +409,11 @@ namespace WinPanel
                 if (int.TryParse(ini.Read("SearchResultsFontSize"), out srfs)) s.SearchResultsFontSize = srfs;
 
                 if (int.TryParse(ini.Read("GridTransparency"), out gt)) s.GridTransparency = gt;
+                if (int.TryParse(ini.Read("AuraTransparency"), out gt)) s.AuraTransparency = Math.Max(0, Math.Min(100, gt));
                 if (int.TryParse(ini.Read("GridColumns"), out gc)) s.GridColumns = gc;
                 if (int.TryParse(ini.Read("GridRows"), out gr)) s.GridRows = gr;
                 int ger;
-                if (int.TryParse(ini.Read("GridExtraRows"), out ger)) s.GridExtraRows = Math.Max(0, Math.Min(100, ger));
+                if (int.TryParse(ini.Read("GridExtraRows"), out ger)) s.GridExtraRows = Math.Max(0, Math.Min(500, ger));
                 if (int.TryParse(ini.Read("DefaultItemSize"), out dis)) s.DefaultItemSize = dis;
                 if (bool.TryParse(ini.Read("IsLightTheme"), out lt)) s.IsLightTheme = lt;
 
@@ -463,9 +481,11 @@ namespace WinPanel
                 var activeSkin = Skin.Find(s.SkinName);
                 if (Skin.IsActive(activeSkin)) s.IsLightTheme = !activeSkin.IsDark;
             }
-            catch
+            catch (Exception ex)
             {
-                // fallback to defaults
+                // The INI reader itself never throws; an exception here means
+                // something deeper - log it and heal key-by-key from defaults.
+                AppLog.Write("Settings.Load", ex);
             }
             return s;
         }
@@ -493,9 +513,11 @@ namespace WinPanel
                 ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
                 ini.Write("MiniExplorerTopBar", MiniExplorerTopBar.ToString());
                 ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
+                ini.Write("MiniExplorerBm", MiniExplorerBm.ToString());
                 ini.Write("ConsoleFontSizeX10", ConsoleFontSizeX10.ToString());
                 ini.Write("FolderAutoExitSeconds", FolderAutoExitSeconds.ToString());
                 ini.Write("FolderOpenProgram", FolderOpenProgram ?? "");
+                ini.Write("FolderConsole", FolderConsole ?? "");
                 ini.Write("Language", string.IsNullOrEmpty(Language) ? "ru" : Language);
                 ini.Write("AutoStart", AutoStart.ToString());
                 ini.Write("AutoStartMinimized", AutoStartMinimized.ToString());
@@ -511,6 +533,7 @@ namespace WinPanel
                 ini.Write("SearchResultsFontSize", SearchResultsFontSize.ToString());
 
                 ini.Write("GridTransparency", GridTransparency.ToString());
+                ini.Write("AuraTransparency", AuraTransparency.ToString());
                 ini.Write("GridColumns", GridColumns.ToString());
                 ini.Write("GridRows", GridRows.ToString());
                 ini.Write("GridExtraRows", GridExtraRows.ToString());
@@ -555,7 +578,7 @@ namespace WinPanel
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error saving settings: " + ex.Message);
+                AppLog.Write("Settings.Save", ex);
             }
         }
     }

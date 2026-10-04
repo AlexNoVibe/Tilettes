@@ -17,7 +17,7 @@ Panel szybkiego uruchamiania dla Windows: siatka kafelków ze skrótami, foldera
 
 ![Tilettes — okno główne](screenshot_main.png)
 
-Aktualna wersja: **v1.0** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
+Aktualna wersja: **v1.0.2** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
 
 ## Atuty
 
@@ -214,8 +214,6 @@ Wymagany jest dowolny Windows z .NET Framework 4.x (kompilator jest dostarczany 
 
 ```
 build.bat          rem → Tilettes.exe (uniwersalny AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 albo bezpośrednio:
@@ -224,7 +222,7 @@ albo bezpośrednio:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Wydania są tworzone automatycznie przez GitHub Actions przy każdym tagu `v*`: workflow buduje warianty exe tym samym wywołaniem csc i dołącza do wydania zwykłe pliki exe (uniwersalny AnyCPU + x86 + x64 — bez zip); na wydaniu są również automatyczne archiwa kodu źródłowego od GitHuba. exe możesz też zbudować samodzielnie przez `build.bat`.
+Wydania są tworzone automatycznie przez GitHub Actions przy każdym tagu `v*`: workflow buduje uniwersalny exe tym samym wywołaniem csc i dołącza do wydania jeden zwykły plik exe (bez zip) oraz `SHA256SUMS.txt` z jego sumą kontrolną (suma trafia też do notatek wydania); na wydaniu są również automatyczne archiwa kodu źródłowego od GitHuba. Uniwersalna wersja AnyCPU działa jako proces 64-bitowy na 64-bitowym Windows i jako proces 32-bitowy na 32-bitowym Windows. exe możesz też zbudować samodzielnie przez `build.bat`.
 
 ## Fałszywe alarmy antywirusów
 

@@ -16,7 +16,7 @@ Windows 用の高速起動パネル：ショートカット・フォルダー・
 
 ![Tilettes — メインウィンドウ](screenshot_main.png)
 
-現在のバージョン：**v1.0** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴](#changelog)。ステータス：**beta**。
+現在のバージョン：**v1.0.2** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴](#changelog)。ステータス：**beta**。
 
 ## ハイライト
 
@@ -213,8 +213,6 @@ Windows 用の高速起動パネル：ショートカット・フォルダー・
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 または直接：
@@ -223,7 +221,7 @@ build.bat x64      rem → Tilettes-x64.exe
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-リリースは `v*` タグごとに GitHub Actions が自動的に作成します：workflow は同じ csc の呼び出しで exe の各バリアントをビルドし、プレーンな exe ファイルをリリースに添付します（AnyCPU 汎用 + x86 + x64 — zip はありません）。加えて、3 つの exe すべてのチェックサムを含む `SHA256SUMS.txt` も添付されます（チェックサムはリリースノートにも追記されます）。GitHub による自動のソースコードアーカイブもリリース上にあります。exe は `build.bat` で自分でもビルドできます。
+リリースは `v*` タグごとに GitHub Actions が自動的に作成します：workflow は同じ csc の呼び出しで汎用 exe をビルドし、プレーンな exe ファイルを 1 つリリースに添付します（zip はありません）。加えて、そのチェックサムを含む `SHA256SUMS.txt` も添付されます（チェックサムはリリースノートにも追記されます）。GitHub による自動のソースコードアーカイブもリリース上にあります。汎用 AnyCPU ビルドは 64 ビット Windows では 64 ビットプロセスとして、32 ビット Windows では 32 ビットプロセスとして実行されます。exe は `build.bat` で自分でもビルドできます。
 
 ## ウイルス対策ソフトの誤検知
 

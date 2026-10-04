@@ -17,7 +17,7 @@ Um painel de inicialização rápida para Windows: uma grade de mosaicos com ata
 
 ![Tilettes — a janela principal](screenshot_main.png)
 
-Versão atual: **v1.0** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
+Versão atual: **v1.0.2** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
 
 ## Destaques
 
@@ -214,8 +214,6 @@ Requer qualquer Windows com .NET Framework 4.x (o compilador acompanha o sistema
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 ou diretamente:
@@ -224,7 +222,7 @@ ou diretamente:
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila as variantes do exe com a mesma chamada do csc e anexa arquivos exe simples ao release (AnyCPU universal + x86 + x64 — sem zip), além de um `SHA256SUMS.txt` com os checksums dos três exes (as somas também são anexadas às notas do release); os arquivos automáticos de código-fonte do GitHub também estão no release. Você também pode compilar o exe você mesmo com `build.bat`.
+Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila o exe universal com a mesma chamada do csc e anexa ao release um único arquivo exe simples (sem zip), além de um `SHA256SUMS.txt` com o checksum dele (a soma também é anexada às notas do release); os arquivos automáticos de código-fonte do GitHub também estão no release. A compilação universal AnyCPU roda como processo de 64 bits em Windows de 64 bits e como processo de 32 bits em Windows de 32 bits. Você também pode compilar o exe você mesmo com `build.bat`.
 
 ## Falsos positivos de antivírus
 

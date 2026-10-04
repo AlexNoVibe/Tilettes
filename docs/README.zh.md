@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Tilettes — 主窗口](screenshot_main.png)
 
-当前版本：**v1.0** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
+当前版本：**v1.0.2** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
 
 ## 亮点
 
@@ -213,8 +213,6 @@ title: Tilettes
 
 ```
 build.bat          rem → Tilettes.exe (universal AnyCPU)
-build.bat x86      rem → Tilettes-x86.exe
-build.bat x64      rem → Tilettes-x64.exe
 ```
 
 或直接：
@@ -223,7 +221,7 @@ build.bat x64      rem → Tilettes-x64.exe
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
 ```
 
-发布版本由 GitHub Actions 在每个 `v*` 标签上自动创建：工作流使用相同的 csc 调用构建各 exe 变体，并把纯 exe 文件附加到发布页（AnyCPU 通用版 + x86 + x64——不带 zip），另附包含全部三个 exe 校验和的 `SHA256SUMS.txt`（校验和也会追加到发布说明中）；GitHub 自动生成的源码压缩包同样在发布页上。你也可以用 `build.bat` 自行构建 exe。
+发布版本由 GitHub Actions 在每个 `v*` 标签上自动创建：工作流使用相同的 csc 调用构建通用 exe，并把单个纯 exe 文件附加到发布页（不带 zip），另附其校验和的 `SHA256SUMS.txt`（校验和也会追加到发布说明中）；GitHub 自动生成的源码压缩包同样在发布页上。通用 AnyCPU 版本在 64 位 Windows 上以 64 位进程运行，在 32 位 Windows 上以 32 位进程运行。你也可以用 `build.bat` 自行构建 exe。
 
 ## 杀毒软件误报
 

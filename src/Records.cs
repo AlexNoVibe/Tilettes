@@ -23,6 +23,11 @@ namespace WinPanel
         public string Src { get; set; }
         // UWP / Store app (launched through shell:AppsFolder, icon via the shell).
         public bool IsUwp { get; set; }
+        // Per-tile background color ("aura"): "RRGGBB" hex (legacy records may
+        // still carry "AARRGGBB"); empty = no aura. AuraAlpha is the tile's own
+        // transparency override (alpha 30..255); 0 = follow the global setting.
+        public string AuraColor { get; set; }
+        public int AuraAlpha { get; set; }
         public List<ShortcutItem> Children { get; set; }
 
         public ShortcutItem()
@@ -77,8 +82,11 @@ namespace WinPanel
                     return r;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // The damaged file is renamed aside (kept, not deleted), the
+                // panel starts on defaults and the user is told once.
+                DataGuard.OnReadFailure(path, "Records.Load", ex);
                 return GetDefaultRecords();
             }
         }
@@ -101,7 +109,7 @@ namespace WinPanel
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error saving records: " + ex.Message);
+                AppLog.Write("Records.Save", ex);
             }
         }
     }
