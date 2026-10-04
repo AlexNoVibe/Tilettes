@@ -17,7 +17,7 @@ Ein Schnellstart-Panel für Windows: ein Kachelraster mit Verknüpfungen, Ordner
 
 ![Tilettes — das Hauptfenster](screenshot_main.png)
 
-Aktuelle Version: **v1.0.2** — Download über [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **Beta**.
+Aktuelle Version: **v1.1.0** — Download über [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **Beta**.
 
 ## Highlights
 

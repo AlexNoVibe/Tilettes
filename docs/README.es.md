@@ -16,7 +16,7 @@ Un panel de inicio rápido para Windows: una cuadrícula de mosaicos con accesos
 
 ![Tilettes — ventana principal](screenshot_main.png)
 
-Versión actual: **v1.0.2** — descarga: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Registro de cambios](#changelog). Estado: **beta**.
+Versión actual: **v1.1.0** — descarga: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Registro de cambios](#changelog). Estado: **beta**.
 
 ## Lo mejor
 

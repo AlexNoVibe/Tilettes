@@ -16,7 +16,7 @@ Un pannello di avvio rapido per Windows: una griglia di tessere con scorciatoie,
 
 ![Tilettes — la finestra principale](screenshot_main.png)
 
-Versione attuale: **v1.0.2** — download da [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Stato: **beta**.
+Versione attuale: **v1.1.0** — download da [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Stato: **beta**.
 
 ## Punti di forza
 

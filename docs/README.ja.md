@@ -16,7 +16,7 @@ Windows 用の高速起動パネル：ショートカット・フォルダー・
 
 ![Tilettes — メインウィンドウ](screenshot_main.png)
 
-現在のバージョン：**v1.0.2** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴](#changelog)。ステータス：**beta**。
+現在のバージョン：**v1.1.0** — ダウンロード：[Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [更新履歴](#changelog)。ステータス：**beta**。
 
 ## ハイライト
 

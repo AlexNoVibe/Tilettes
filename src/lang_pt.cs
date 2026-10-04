@@ -35,6 +35,8 @@ namespace WinPanel
             { "Apps (system)", "Aplicativos (sistema)" },
             { "Aura Transp. (%):", "Transp. da aura (%):" },
             { "Aura transparency of all tiles (0 = solid color, 100 = almost invisible). A single tile can set its own in the aura color dialog.", "Transparência da aura de todos os blocos (0 = cor sólida, 100 = quase invisível). Um bloco individual pode definir a sua na janela de cor da aura." },
+            { "Standard value", "Valor padrão" },
+            { "Value from settings", "Valor das configurações" },
             { "Autostart & tray", "Inicialização e bandeja" },
             { "Autostart with Windows", "Iniciar com o Windows" },
             { "BOOKMARKS", "FAVORITOS" },

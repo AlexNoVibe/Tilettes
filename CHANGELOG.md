@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.0 — 2026-10-05
+
+- **Aura look**: back to the solid translucent fill — one uniform tint with a hard rounded edge, the way the Windows 10 Start tiles are tinted — instead of the v1.0.2 soft glow; the lightest available tint is lighter now (the transparency floor dropped to ~5% opacity), so the very light auras of that kind are reachable.
+- **Aura dialog**: the slider's leftmost position is now "Value from settings" — the tile follows the global transparency setting again; the line under the slider and the live preview say so, and a "Standard value" button jumps there. Making the slider match the global value by hand no longer secretly stores "follow" — it keeps an honest override.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.0.2...v1.1.0
+
 ## v1.0.2 — 2026-10-04
 
 - **Damaged data files**: if records.xml (or bookmarks, file-type rules, search history) cannot be read, the broken file is kept next to the exe as `<name>.broken-<date-time>`, a fresh default is created in its place, and the user is told once, briefly — a tray balloon when the icon is around, a small dialog otherwise; details go to log.txt. Save failures are logged now too.

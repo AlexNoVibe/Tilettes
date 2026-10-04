@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Плиточки — главное окно](screenshot_main.png)
 
-Текущая версия: **v1.0.2** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
+Текущая версия: **v1.1.0** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
 
 ## Фишки
 

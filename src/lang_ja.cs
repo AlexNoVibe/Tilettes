@@ -35,6 +35,8 @@ namespace WinPanel
             { "Apps (system)", "アプリ（システム）" },
             { "Aura Transp. (%):", "オーラの透明度（%）:" },
             { "Aura transparency of all tiles (0 = solid color, 100 = almost invisible). A single tile can set its own in the aura color dialog.", "すべてのタイルのオーラの透明度（0 = ベタ塗り、100 = ほぼ見えない）。個々のタイルはオーラの色ダイアログで独自の値を設定できます。" },
+            { "Standard value", "標準値" },
+            { "Value from settings", "設定の値" },
             { "Autostart & tray", "自動起動とトレイ" },
             { "Autostart with Windows", "Windows 起動時に自動起動" },
             { "BOOKMARKS", "ブックマーク" },

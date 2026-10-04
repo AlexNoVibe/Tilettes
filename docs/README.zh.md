@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Tilettes — 主窗口](screenshot_main.png)
 
-当前版本：**v1.0.2** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
+当前版本：**v1.1.0** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
 
 ## 亮点
 

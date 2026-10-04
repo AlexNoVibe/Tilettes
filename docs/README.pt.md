@@ -17,7 +17,7 @@ Um painel de inicialização rápida para Windows: uma grade de mosaicos com ata
 
 ![Tilettes — a janela principal](screenshot_main.png)
 
-Versão atual: **v1.0.2** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
+Versão atual: **v1.1.0** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
 
 ## Destaques
 

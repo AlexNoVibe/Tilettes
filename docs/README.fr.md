@@ -17,7 +17,7 @@ Un panneau de lancement rapide pour Windows : une grille de tuiles avec raccourc
 
 ![Tilettes — la fenêtre principale](screenshot_main.png)
 
-Version actuelle : **v1.0.2** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
+Version actuelle : **v1.1.0** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
 
 ## Points forts
 

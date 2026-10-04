@@ -12,7 +12,7 @@ A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, b
 
 ![Tilettes — the main window](docs/screenshot_main.png)
 
-Current version: **v1.0.2** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+Current version: **v1.1.0** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
 
 ## Highlights
 

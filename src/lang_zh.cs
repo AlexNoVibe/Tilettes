@@ -35,6 +35,8 @@ namespace WinPanel
             { "Apps (system)", "应用（系统）" },
             { "Aura Transp. (%):", "光晕透明度（%）:" },
             { "Aura transparency of all tiles (0 = solid color, 100 = almost invisible). A single tile can set its own in the aura color dialog.", "所有磁贴的光晕透明度（0 = 实色，100 = 几乎不可见）。单个磁贴可在光晕颜色对话框中设置自己的透明度。" },
+            { "Standard value", "标准值" },
+            { "Value from settings", "设置中的值" },
             { "Autostart & tray", "自启动与托盘" },
             { "Autostart with Windows", "随 Windows 自启动" },
             { "BOOKMARKS", "书签" },

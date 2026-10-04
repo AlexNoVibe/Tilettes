@@ -17,7 +17,7 @@ Panel szybkiego uruchamiania dla Windows: siatka kafelków ze skrótami, foldera
 
 ![Tilettes — okno główne](screenshot_main.png)
 
-Aktualna wersja: **v1.0.2** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
+Aktualna wersja: **v1.1.0** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
 
 ## Atuty
 

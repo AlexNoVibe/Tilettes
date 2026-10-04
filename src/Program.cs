@@ -5623,24 +5623,27 @@ namespace WinPanel
         // "default" too); any other legacy value keeps acting as that tile's
         // own override. Painted by TileControl.OnPaint / PopupTile.OnPaint.
 
-        // The slider is "transparency" 0..100%; the stored alpha keeps a small
-        // floor so a tile never turns fully invisible.
+        // The slider is "transparency" 1..100%; the aura dialog's leftmost
+        // position (0) is its own "from settings" state. The stored alpha
+        // keeps a small floor so a tile never turns fully invisible - the
+        // lightest tint is meant to match the very light tiles of the
+        // Windows 10 Start menu.
         internal const int DefaultAuraTransparency = 55;
-        private const int MinAuraAlpha = 30;
+        private const int MinAuraAlpha = 12;
         // Alpha baked into aura colors by pre-v1.0.2 records ("AARRGGBB" with
         // the then-default transparency).
         private const int LegacyDefaultAuraAlpha = 132;
 
         internal static int AuraAlphaOf(int transparencyPct)
         {
-            int a = 255 - transparencyPct * 225 / 100;
+            int a = 255 - transparencyPct * 243 / 100;
             if (a < MinAuraAlpha) a = MinAuraAlpha;
             return a;
         }
 
         internal static int AuraTransparencyOf(int alpha)
         {
-            int t = (255 - alpha) * 100 / 225;
+            int t = (255 - alpha) * 100 / 243;
             if (t < 0) t = 0;
             if (t > 100) t = 100;
             return t;
@@ -5692,6 +5695,21 @@ namespace WinPanel
             catch { return false; }
         }
 
+        // Slider seed for the aura dialog: 0 = the tile follows the global
+        // transparency setting (the dialog's leftmost "from settings"
+        // position); otherwise the tile's own alpha - an explicit AuraAlpha
+        // or a legacy alpha baked into an 8-digit color (anything but the
+        // old default).
+        internal static int AuraSeedAlpha(ShortcutItem item)
+        {
+            if (item == null) return 0;
+            if (item.AuraAlpha > 0) return item.AuraAlpha;
+            string h = (item.AuraColor ?? "").Trim().TrimStart('#');
+            Color c;
+            if (h.Length == 8 && TryGetAura(h, out c) && c.A != LegacyDefaultAuraAlpha) return c.A;
+            return 0;
+        }
+
         internal static string AuraToString(Color c)
         {
             return c.A.ToString("X2", System.Globalization.CultureInfo.InvariantCulture) +
@@ -5707,17 +5725,13 @@ namespace WinPanel
                    c.B.ToString("X2", System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        // The soft "glow" fill of a tile aura: strongest in the middle, melting
-        // to transparent at the rounded edge (a radial gradient with a plateau
-        // under the icon), instead of a hard-edged solid fill.
+        // Solid translucent fill of a tile aura: one uniform tint with a hard
+        // rounded edge, the way the Windows 10 Start tiles are tinted - no
+        // gradient.
         internal static void DrawAura(Graphics g, System.Drawing.Drawing2D.GraphicsPath path, Color aura)
         {
-            using (var brush = new System.Drawing.Drawing2D.PathGradientBrush(path))
+            using (var brush = new SolidBrush(aura))
             {
-                brush.CenterColor = aura;
-                brush.SurroundColors = new Color[] { Color.FromArgb(0, aura) };
-                // Plateau: the icon/label area keeps the full tint before the fade.
-                brush.FocusScales = new PointF(0.62f, 0.62f);
                 g.FillPath(brush, path);
             }
         }
@@ -5727,10 +5741,9 @@ namespace WinPanel
         private void EditItemAura(ShortcutItem item, Control tileToInvalidate)
         {
             int alpha;
-            // Seed the slider with what the tile is actually painted with now.
-            Color eff;
-            int effAlpha = TryGetAura(item, out eff) ? eff.A : GlobalAuraAlpha();
-            string r = AuraDialog.Show(this, item.AuraColor, effAlpha, item.Name, out alpha);
+            // The slider seeds at the tile's own alpha, or at 0 - the dialog's
+            // "from settings" position - when the tile follows the setting.
+            string r = AuraDialog.Show(this, item.AuraColor, AuraSeedAlpha(item), item.Name, out alpha);
             if (r == null) return;
             item.AuraColor = r;
             item.AuraAlpha = r.Length == 0 ? 0 : alpha;
@@ -6060,9 +6073,7 @@ namespace WinPanel
                     if (targets.Count == 0) return;
                     string subject = targets.Count + " " + Loc.S("selected", "выбрано");
                     int alpha;
-                    Color eff;
-                    int effAlpha = MainForm.TryGetAura(targets[0], out eff) ? eff.A : MainForm.GlobalAuraAlpha();
-                    string r = AuraDialog.Show(this, targets[0].AuraColor, effAlpha, subject, out alpha);
+                    string r = AuraDialog.Show(this, targets[0].AuraColor, MainForm.AuraSeedAlpha(targets[0]), subject, out alpha);
                     if (r == null) return;
                     foreach (var it in targets)
                     {
@@ -6522,9 +6533,7 @@ namespace WinPanel
                 menu.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) =>
                 {
                     int alpha;
-                    Color eff;
-                    int effAlpha = MainForm.TryGetAura(child, out eff) ? eff.A : MainForm.GlobalAuraAlpha();
-                    string r = AuraDialog.Show(this, child.AuraColor, effAlpha, child.Name, out alpha);
+                    string r = AuraDialog.Show(this, child.AuraColor, MainForm.AuraSeedAlpha(child), child.Name, out alpha);
                     if (r == null) return;
                     child.AuraColor = r;
                     child.AuraAlpha = r.Length == 0 ? 0 : alpha;
@@ -7951,9 +7960,11 @@ namespace WinPanel
     }
 
     // Themed picker for the per-tile background color ("aura"): preset swatches,
-    // a custom color via the system color dialog, a transparency slider and a
-    // live preview. Returns null on Cancel, "" when the aura is removed and the
-    // "AARRGGBB" string otherwise (stored in ShortcutItem.AuraColor).
+    // a custom color via the system color dialog, a transparency slider (the
+    // leftmost position = the global setting's value) and a live preview.
+    // Returns null on Cancel, "" when the aura is removed, otherwise the
+    // picked "RRGGBB" plus alphaOverride (0 = follow the global transparency
+    // setting, otherwise the tile's own alpha).
     public class AuraDialog : Form
     {
         private Color baseColor;      // picked color; alpha always comes from the slider
@@ -7963,7 +7974,8 @@ namespace WinPanel
         private string result;
         private int resultAlpha;      // 0 = follow the global transparency setting
         private TrackBar transparency;
-        private Label transparencyLabel;
+        private Label transparencyLabel;   // static caption above the slider
+        private Label valueLabel;          // the value line under the slider
         private Panel preview;
         private Button selectedSwatch;
 
@@ -8058,7 +8070,7 @@ namespace WinPanel
             }
             this.Controls.Add(swatches);
 
-            transparencyLabel = new Label { Left = 142, Top = swatches.Bottom + 6, Width = 316, Height = fh + 2, ForeColor = txt };
+            transparencyLabel = new Label { Text = Loc.S("Transparency:", "Прозрачность:"), Left = 142, Top = swatches.Bottom + 6, Width = 316, Height = fh + 2, ForeColor = txt };
             this.Controls.Add(transparencyLabel);
             transparency = new TrackBar
             {
@@ -8073,6 +8085,10 @@ namespace WinPanel
             };
             transparency.ValueChanged += (s, e) => UpdateTransparencyLabel();
             this.Controls.Add(transparency);
+            // The value line under the slider: a percentage, or the leftmost
+            // position's own name - "the value from the settings".
+            valueLabel = new Label { Left = 142, Top = transparency.Bottom + 2, Width = 316, Height = fh + 2, ForeColor = txt };
+            this.Controls.Add(valueLabel);
 
             // Initial state: the tile's current aura, or the first preset swatch
             // so that OK always has a color to store (Reset removes the aura).
@@ -8089,7 +8105,14 @@ namespace WinPanel
             {
                 PickBaseColor(Presets[0], swatches.Controls.Count > 0 ? (Button)swatches.Controls[0] : null);
             }
-            transparency.Value = Math.Max(0, Math.Min(100, MainForm.AuraTransparencyOf(currentAlpha)));
+            // A seed of 0 means the tile follows the global transparency
+            // setting: the slider starts at its leftmost "from settings"
+            // position. An explicit alpha seeds the slider itself; one that
+            // maps to 0 (fully opaque) sits at 1 - the same look, and the
+            // position stays distinct from the "from settings" state.
+            transparency.Value = currentAlpha <= 0
+                ? 0
+                : Math.Max(1, Math.Min(100, MainForm.AuraTransparencyOf(currentAlpha)));
             UpdateTransparencyLabel();
 
             var custom = new Button
@@ -8116,8 +8139,27 @@ namespace WinPanel
             };
             this.Controls.Add(custom);
 
+            // Jumps to the leftmost position: the tile follows the global
+            // transparency setting again.
+            var standard = new Button
+            {
+                Text = Loc.S("Standard value", "Стандартное значение"),
+                Left = 140,
+                Top = valueLabel.Bottom + 4,
+                Width = 190,
+                Height = fh + 12,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panel,
+                ForeColor = txt,
+                Cursor = Cursors.Hand
+            };
+            standard.FlatAppearance.BorderSize = 0;
+            standard.FlatAppearance.MouseOverBackColor = UiPalette.Hover;
+            standard.Click += (s, e) => { transparency.Value = 0; };
+            this.Controls.Add(standard);
+
             int btnH = fh + 12;
-            int bottom = Math.Max(custom.Bottom + 6, transparency.Bottom + 6);
+            int bottom = Math.Max(custom.Bottom + 6, standard.Bottom + 6);
             int btnTop = bottom + 12;
             this.ClientSize = new Size(470, btnTop + btnH + 16);
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
@@ -8136,9 +8178,9 @@ namespace WinPanel
             {
                 accepted = true;
                 result = MainForm.AuraToRgbString(baseColor);
-                // Matching the global setting stores no per-tile override, so
-                // the tile keeps following the setting when it changes.
-                resultAlpha = transparency.Value == MainForm.GlobalAuraTransparency()
+                // The leftmost position stores no per-tile override, so the
+                // tile keeps following the global setting when it changes.
+                resultAlpha = transparency.Value == 0
                     ? 0
                     : MainForm.AuraAlphaOf(transparency.Value);
             };
@@ -8161,7 +8203,12 @@ namespace WinPanel
 
         private void UpdateTransparencyLabel()
         {
-            transparencyLabel.Text = Loc.S("Transparency:", "Прозрачность:") + " " + transparency.Value + "%";
+            // The leftmost position is not 0% transparency - it is the state
+            // where the tile follows the global setting; the preview paints
+            // it with that value.
+            valueLabel.Text = transparency.Value == 0
+                ? Loc.S("Value from settings", "Значение из настроек")
+                : transparency.Value + "%";
             preview.Invalidate();
         }
 
@@ -8175,7 +8222,12 @@ namespace WinPanel
                 using (var p = RoundRect(r, 10))
                 {
                     if (hasColor)
-                        MainForm.DrawAura(g, p, Color.FromArgb(MainForm.AuraAlphaOf(transparency.Value), baseColor));
+                    {
+                        int a = transparency.Value == 0
+                            ? MainForm.GlobalAuraAlpha()
+                            : MainForm.AuraAlphaOf(transparency.Value);
+                        MainForm.DrawAura(g, p, Color.FromArgb(a, baseColor));
+                    }
                     using (var pen = new Pen(Color.FromArgb(120, UiPalette.Dim)))
                         g.DrawPath(pen, p);
                 }
