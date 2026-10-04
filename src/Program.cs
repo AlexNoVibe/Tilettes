@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -2728,6 +2728,7 @@ namespace WinPanel
         private bool winChord;     // another key was pressed while Win was held
         private bool winReinject;  // our own keybd_event Win re-injection, pass through
 
+#pragma warning disable 0649
         private struct KBDLLHOOKSTRUCT
         {
             public uint vkCode;
@@ -2736,6 +2737,7 @@ namespace WinPanel
             public uint time;
             public IntPtr dwExtraInfo;
         }
+#pragma warning restore 0649
 
         private delegate IntPtr LowLevelHookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -2850,6 +2852,7 @@ namespace WinPanel
         private const int WM_MOUSE_LDOWN_LL = 0x0201;
         private const int WM_MOUSE_LUP_LL = 0x0202;
 
+#pragma warning disable 0649
         private struct MSLLHOOKSTRUCT
         {
             public System.Drawing.Point pt;
@@ -2858,6 +2861,7 @@ namespace WinPanel
             public uint time;
             public IntPtr dwExtraInfo;
         }
+#pragma warning restore 0649
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, EntryPoint = "FindWindowW", SetLastError = true)]
         private static extern IntPtr FindWindowNative(string cls, string title);
