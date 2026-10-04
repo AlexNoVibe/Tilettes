@@ -218,6 +218,33 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool DestroyWindow(IntPtr hWnd);
 
+        // DWM cloak (DWMWA_CLOAK, Windows 8+): the window stays alive and paints,
+        // but DWM stops compositing it onto the screen. Used around the show/restore
+        // so the first frame the user sees is already fully painted.
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+        private const int DWMWA_CLOAK = 13;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+        private const uint RDW_INVALIDATE = 0x1;
+        private const uint RDW_ERASE = 0x4;
+        private const uint RDW_ALLCHILDREN = 0x80;
+        private const uint RDW_UPDATENOW = 0x100;
+
+        // Returns the raw HRESULT (0 = cloaked) so the show path can log it;
+        // any failure means "no cloaking available" and the caller falls back
+        // to the plain show behavior.
+        private static int CloakWindow(IntPtr hwnd, bool cloaked)
+        {
+            try
+            {
+                int v = cloaked ? 1 : 0;
+                return DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, ref v, 4);
+            }
+            catch { return -1; }
+        }
+
         // Active decorative skin (null/"None" id = classic behavior).
         private Skin skin = Skin.None;
 
@@ -1350,18 +1377,75 @@ namespace WinPanel
             // even the plain showing (SW_SHOW) activates, and activating a
             // foreign-desktop window switches the view mid-flight.
             this.TopMost = true;
-            if (!this.Visible) ShowWindow(this.Handle, 8); // SW_SHOWNA
-            EnsureOnCurrentDesktop();
-            this.WindowState = FormWindowState.Normal;
-            // A plain Activate() can be denied foreground rights when another
-            // app owns the focus (this path runs from a hotkey or the Win-key
-            // hook): the panel then stayed BEHIND. Raise it into the topmost
-            // band for an instant and force the foreground; dropping TOPMOST
-            // right away keeps it above the windows it was raised over without
-            // pinning it permanently.
-            this.Activate();
-            ForceForeground();
-            this.TopMost = false;
+            // A freshly shown or restored window composites its stale (black)
+            // surface for several frames until the first WM_PAINT lands - the
+            // ugly black flash on the Win-key show. When the surface is stale
+            // (panel hidden or minimized) the whole show therefore happens off
+            // screen: hide the window first (so the desktop re-home cannot pop
+            // a freshly recreated, unpainted window onto the screen - WinForms
+            // recreates handles VISIBLE), cloak the current handle, only then
+            // show/restore it, paint it synchronously with all children, and
+            // uncloak - the first frame on screen is already the finished
+            // panel. Cloaking an already visible panel would just blink it,
+            // so the visible path keeps the plain behavior. Systems without
+            // DWM cloaking fall back to the plain show too.
+            bool staleSurface = !this.Visible || this.WindowState == FormWindowState.Minimized;
+            bool cloaked = false;
+            System.Diagnostics.Stopwatch showSw = null;
+            try
+            {
+                if (staleSurface)
+                {
+                    showSw = System.Diagnostics.Stopwatch.StartNew();
+                    IntPtr handleBefore = this.Handle;
+                    this.Visible = false;          // a re-home recreate (if any) stays invisible
+                    EnsureOnCurrentDesktop();
+                    bool recreated = this.Handle != handleBefore;
+                    int cloakHr = CloakWindow(this.Handle, true);
+                    cloaked = cloakHr == 0;
+                    this.Visible = true;           // born cloaked
+                    this.WindowState = FormWindowState.Normal;
+                    // Finish the whole first paint now, off screen, synchronously
+                    // (children included) so uncloaking presents a complete frame.
+                    int paintMs = -1;
+                    if (cloaked)
+                    {
+                        System.Diagnostics.Stopwatch paintSw = System.Diagnostics.Stopwatch.StartNew();
+                        RedrawWindow(this.Handle, IntPtr.Zero, IntPtr.Zero,
+                            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+                        paintMs = (int)paintSw.ElapsedMilliseconds;
+                    }
+                    showSw.Stop();
+                    AppLog.Write(string.Format("Show: recreate={0} cloak={1} paint={2}ms total={3}ms",
+                        recreated ? 1 : 0, cloakHr, paintMs, showSw.ElapsedMilliseconds));
+                }
+                else
+                {
+                    EnsureOnCurrentDesktop();
+                }
+                // A plain Activate() can be denied foreground rights when another
+                // app owns the focus (this path runs from a hotkey or the Win-key
+                // hook): the panel then stayed BEHIND. Raise it into the topmost
+                // band for an instant and force the foreground; dropping TOPMOST
+                // right away keeps it above the windows it was raised over without
+                // pinning it permanently.
+                this.Activate();
+                ForceForeground();
+            }
+            finally
+            {
+                if (cloaked) CloakWindow(this.Handle, false);
+                this.TopMost = false;
+            }
+            if (cloaked)
+            {
+                // The pre-uncloak paint can land before DWM binds the fresh
+                // surface of a recreated window - the presented surface would
+                // stay black until the next repaint. Paint once more, now that
+                // the window is definitely on screen (same pixels when all is
+                // well, a full repaint otherwise).
+                try { this.Invalidate(true); this.Update(); } catch { }
+            }
             try { if (trayIcon != null) trayIcon.Visible = settings.TrayIconAlways; } catch { }
         }
 
@@ -1382,6 +1466,7 @@ namespace WinPanel
             {
                 if (this.Handle == IntPtr.Zero) return;
                 if (MoveToCurrentDesktop(this.Handle)) return;
+                AppLog.Write("Desktop move fell back to handle recreation");
                 bool wasTopMost = this.TopMost;
                 RecreateHandle();
                 this.TopMost = wasTopMost;
@@ -1402,7 +1487,7 @@ namespace WinPanel
             if (hwnd == IntPtr.Zero) return false;
             IVirtualDesktopManager mgr = null;
             try { mgr = (IVirtualDesktopManager)new CVirtualDesktopManager(); }
-            catch { mgr = null; }
+            catch (Exception ex) { AppLog.Write("Desktop move: COM manager unavailable: " + ex.Message); mgr = null; }
             if (mgr == null)
             {
                 // No COM class: virtual desktops can still exist (stripped
@@ -1423,14 +1508,24 @@ namespace WinPanel
             try
             {
                 probe = CreateDesktopProbeWindow();
-                if (probe == null) return false;
+                if (probe == null) { AppLog.Write("Desktop move: probe window failed"); return false; }
                 Guid mine, current;
-                if (mgr.GetWindowDesktopId(hwnd, out mine) != 0) return false;
-                if (mgr.GetWindowDesktopId(probe.Handle, out current) != 0) return false;
+                if (mgr.GetWindowDesktopId(hwnd, out mine) != 0)
+                {
+                    AppLog.Write("Desktop move: GetWindowDesktopId failed for the panel");
+                    return false;
+                }
+                if (mgr.GetWindowDesktopId(probe.Handle, out current) != 0)
+                {
+                    AppLog.Write("Desktop move: GetWindowDesktopId failed for the probe");
+                    return false;
+                }
                 if (mine == current) return true; // already on the user's desktop
-                return mgr.MoveWindowToDesktop(hwnd, ref current) == 0;
+                bool moved = mgr.MoveWindowToDesktop(hwnd, ref current) == 0;
+                if (!moved) AppLog.Write("Desktop move: MoveWindowToDesktop refused");
+                return moved;
             }
-            catch { return false; }
+            catch (Exception ex) { AppLog.Write("Desktop move: " + ex.Message); return false; }
             finally
             {
                 if (probe != null) { try { probe.ReleaseHandle(); } catch { } }
