@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Tilettes — 主窗口](screenshot_main.png)
 
-当前版本：**v1.1.0** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
+当前版本：**v1.1.1** — 从 [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) 下载 · [更新日志](#changelog)。状态：**beta**。
 
 ## 亮点
 
@@ -212,16 +212,17 @@ title: Tilettes
 需要任意装有 .NET Framework 4.x 的 Windows（编译器随系统自带）：
 
 ```
-build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-bit)
 ```
 
 或直接：
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-发布版本由 GitHub Actions 在每个 `v*` 标签上自动创建：工作流使用相同的 csc 调用构建通用 exe，并把单个纯 exe 文件附加到发布页（不带 zip），另附其校验和的 `SHA256SUMS.txt`（校验和也会追加到发布说明中）；GitHub 自动生成的源码压缩包同样在发布页上。通用 AnyCPU 版本在 64 位 Windows 上以 64 位进程运行，在 32 位 Windows 上以 32 位进程运行。你也可以用 `build.bat` 自行构建 exe。
+发布版本由 GitHub Actions 在每个 `v*` 标签上自动创建：工作流使用与 `build.bat` 相同的 csc 调用构建两个平台的 exe，并把 `Tilettes_x86.exe`（32 位）和 `Tilettes_x64.exe`（64 位）两个纯 exe 文件附加到发布页（不带 zip），另附其校验和的 `SHA256SUMS.txt`（校验和也会追加到发布说明中）；GitHub 自动生成的源码压缩包同样在发布页上。你也可以用 `build.bat` 自行构建 exe。
 
 ## 杀毒软件误报
 

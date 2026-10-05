@@ -1,10 +1,9 @@
 name: build
 
 # A v* tag push = release. The workflow builds the tagged sources with the
-# same csc call as build.bat and attaches the plain universal exe to the
-# release (no zip archive). The AnyCPU build runs as a 64-bit process on
-# 64-bit Windows and as a 32-bit one on 32-bit Windows, so one file covers
-# everything.
+# same csc calls as build.bat and attaches the two plain platform exes to
+# the release (no zip archive): Tilettes_x86.exe (32-bit) and
+# Tilettes_x64.exe (64-bit).
 # GitHub's automatic Source code archives are on the release as well.
 # The release is created with the preinstalled gh CLI (no third-party action:
 # action resolution kept failing on the runner).
@@ -29,7 +28,7 @@ jobs:
       # whole workflow. NOTE: build.bat MUST be invoked with "call" - a bare
       # batch invocation from a multi-line cmd script transfers control and
       # never returns.
-      - name: Build the universal exe (same as build.bat)
+      - name: Build the platform exes (same as build.bat)
         shell: cmd
         run: |
           call build.bat || exit /b 1
@@ -41,7 +40,7 @@ jobs:
       - name: Compute SHA256 checksums
         shell: bash
         run: |
-          sha256sum Tilettes.exe > SHA256SUMS.txt
+          sha256sum Tilettes_x86.exe Tilettes_x64.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create release and attach the exe (tag builds only)
@@ -60,7 +59,7 @@ jobs:
             # on the runner has no --generate-notes, the notes file is used
             # instead on both paths).
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
-            gh release upload "$GITHUB_REF_NAME" "Tilettes.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" "Tilettes_x86.exe" "Tilettes_x64.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "Tilettes.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
+            gh release create "$GITHUB_REF_NAME" "Tilettes_x86.exe" "Tilettes_x64.exe" "SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --title "Tilettes $GITHUB_REF_NAME" --notes-file release_notes.md
           fi

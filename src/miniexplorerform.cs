@@ -2419,35 +2419,21 @@ namespace WinPanel
             shell = null;
         }
 
-        // Interrupts the command running in the console: kills the whole shell
-        // process tree (taskkill /T — cmd.exe and everything it spawned: ping,
-        // powershell, docker stats...) and starts a fresh shell. A graceful
-        // Ctrl+C was tried first via GenerateConsoleCtrlEvent, but on redirected
-        // child consoles the API reports success while delivering nothing — or
-        // kills only cmd.exe and orphans the command. The tree kill always works.
+        // Interrupts the command running in the console: the cmd.exe shell
+        // process is killed directly (StopShell) and a fresh one is started, so
+        // the console keeps working. A graceful Ctrl+C was tried first via
+        // GenerateConsoleCtrlEvent, but on redirected child consoles the API
+        // reports success while delivering nothing. A full tree kill via the
+        // external taskkill tool was dropped deliberately: spawning a
+        // force-kill process is exactly what antivirus machine-learning
+        // heuristics weigh. A command the shell spawned dies on its own at the
+        // next write to the now-broken output pipe (ping -t, progress bars); a
+        // silent one can be closed by hand.
         private void StopConsoleCommand()
         {
             bool dead = true;
             try { dead = shell == null || shell.HasExited; } catch { dead = true; }
             if (dead) return;
-            int shellId = 0;
-            try { shellId = shell.Id; } catch (Exception ex) { AppLog.Write("Stop: no shell id", ex); return; }
-            HardStopShell(shellId);
-        }
-
-        // Kills the shell and everything it spawned and starts a fresh shell so
-        // the console keeps working.
-        private void HardStopShell(int shellId)
-        {
-            try
-            {
-                using (var tk = Process.Start(new ProcessStartInfo("taskkill", "/PID " + shellId + " /T /F")
-                { CreateNoWindow = true, UseShellExecute = false }))
-                {
-                    if (!tk.WaitForExit(3000)) AppLog.Write("Stop: taskkill timed out");
-                }
-            }
-            catch (Exception ex) { AppLog.Write("Stop: taskkill failed", ex); }
             StopShell();
             AppendConsole(Loc.S("[stopped]", "[остановлено]"), dimColor);
             StartShell();

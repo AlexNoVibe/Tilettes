@@ -134,9 +134,6 @@ namespace WinPanel
             var cmd = new ExplorerBookmark();
             cmd.Kind = "group";
             cmd.Name = "CMD";
-            cmd.Children.Add(Command("tasklist", "tasklist"));
-            cmd.Children.Add(Command("ipconfig /all", "ipconfig /all"));
-            cmd.Children.Add(Command("netstat -ano", "netstat -ano"));
             cmd.Children.Add(Command("systeminfo", "systeminfo"));
             cmd.Children.Add(Command("ping 8.8.8.8 -n 5", "ping 8.8.8.8 -n 5"));
             cmd.Children.Add(Command("dir /a", "dir /a"));
@@ -148,23 +145,13 @@ namespace WinPanel
             var ps = new ExplorerBookmark();
             ps.Kind = "group";
             ps.Name = "PowerShell";
-            ps.Children.Add(Command("Top processes by CPU", "powershell -NoProfile -Command \"Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, CPU, Id\""));
-            ps.Children.Add(Command("Running services", "powershell -NoProfile -Command \"Get-Service | Where-Object {$_.Status -eq 'Running'} | Format-Table -AutoSize\""));
-            ps.Children.Add(Command("IPv4 addresses", "powershell -NoProfile -Command \"Get-NetIPAddress -AddressFamily IPv4 | Format-Table IPAddress, InterfaceAlias -AutoSize\""));
             ps.Children.Add(Command("Disk free space", "powershell -NoProfile -Command \"Get-PSDrive -PSProvider FileSystem | Format-Table Name, Used, Free -AutoSize\""));
             ps.Children.Add(Command("Open PowerShell here (window)", "start powershell -NoExit -Command \"Set-Location -LiteralPath .\""));
-
-            var tar = new ExplorerBookmark();
-            tar.Kind = "group";
-            tar.Name = "tar";
-            tar.Children.Add(Command("tar --version", "tar --version"));
-            tar.Children.Add(Command("tar: list archive contents (edit name)", "tar -tf archive.tar"));
 
             var list = new List<ExplorerBookmark>();
             list.Add(docker);
             list.Add(cmd);
             list.Add(ps);
-            list.Add(tar);
             return list;
         }
     }

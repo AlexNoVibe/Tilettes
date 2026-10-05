@@ -17,7 +17,7 @@ Um painel de inicialização rápida para Windows: uma grade de mosaicos com ata
 
 ![Tilettes — a janela principal](screenshot_main.png)
 
-Versão atual: **v1.1.0** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
+Versão atual: **v1.1.1** — download: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Histórico de alterações](#changelog). Status: **beta**.
 
 ## Destaques
 
@@ -213,16 +213,17 @@ Qualquer comando `cmd.exe` de uma única linha pode ser digitado e executado (En
 Requer qualquer Windows com .NET Framework 4.x (o compilador acompanha o sistema operacional):
 
 ```
-build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-bit)
 ```
 
 ou diretamente:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila o exe universal com a mesma chamada do csc e anexa ao release um único arquivo exe simples (sem zip), além de um `SHA256SUMS.txt` com o checksum dele (a soma também é anexada às notas do release); os arquivos automáticos de código-fonte do GitHub também estão no release. A compilação universal AnyCPU roda como processo de 64 bits em Windows de 64 bits e como processo de 32 bits em Windows de 32 bits. Você também pode compilar o exe você mesmo com `build.bat`.
+Os releases são criados automaticamente pelo GitHub Actions a cada tag `v*`: o workflow compila os dois exes de plataforma com as mesmas chamadas do csc do `build.bat` e anexa ao release dois arquivos exe simples (sem zip) — `Tilettes_x86.exe` (32 bits) e `Tilettes_x64.exe` (64 bits) — além de um `SHA256SUMS.txt` com os checksums deles (as somas também são anexadas às notas do release); os arquivos automáticos de código-fonte do GitHub também estão no release. Você também pode compilar os exes você mesmo com `build.bat`.
 
 ## Falsos positivos de antivírus
 

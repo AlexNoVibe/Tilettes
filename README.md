@@ -12,7 +12,7 @@ A fast-launch panel for Windows: a tile grid with shortcuts, folders and tabs, b
 
 ![Tilettes — the main window](docs/screenshot_main.png)
 
-Current version: **v1.1.0** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
+Current version: **v1.1.1** — download from [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Changelog](#changelog). Status: **beta**.
 
 ## Highlights
 
@@ -208,16 +208,17 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 Requires any Windows with .NET Framework 4.x (the compiler ships with the OS):
 
 ```
-build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-bit)
 ```
 
 or directly:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the universal exe with the same csc call and attaches it to the release as a plain exe file (no zip) plus a `SHA256SUMS.txt` with its checksum (the sum is appended to the release notes as well); GitHub's automatic Source code archives are on the release as well. You can also build the exe yourself with `build.bat`. The universal AnyCPU build runs as a 64-bit process on 64-bit Windows and as a 32-bit one on 32-bit Windows.
+Releases are created automatically by GitHub Actions on every `v*` tag: the workflow builds the two platform exes with the same csc calls as `build.bat` and attaches them to the release as plain exe files (no zip) — `Tilettes_x86.exe` (32-bit) and `Tilettes_x64.exe` (64-bit) — plus a `SHA256SUMS.txt` with their checksums (the sums are appended to the release notes as well); GitHub's automatic Source code archives are on the release as well. You can also build the exes yourself with `build.bat`.
 
 ## Antivirus false positives
 

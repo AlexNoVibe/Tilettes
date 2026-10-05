@@ -17,7 +17,7 @@ Panel szybkiego uruchamiania dla Windows: siatka kafelków ze skrótami, foldera
 
 ![Tilettes — okno główne](screenshot_main.png)
 
-Aktualna wersja: **v1.1.0** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
+Aktualna wersja: **v1.1.1** — pobieranie: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Dziennik zmian](#changelog). Status: **beta**.
 
 ## Atuty
 
@@ -213,16 +213,17 @@ Dowolne jednowierszowe polecenie `cmd.exe` można wpisać i wykonać (Enter albo
 Wymagany jest dowolny Windows z .NET Framework 4.x (kompilator jest dostarczany wraz z systemem):
 
 ```
-build.bat          rem → Tilettes.exe (uniwersalny AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-bit)
 ```
 
 albo bezpośrednio:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-Wydania są tworzone automatycznie przez GitHub Actions przy każdym tagu `v*`: workflow buduje uniwersalny exe tym samym wywołaniem csc i dołącza do wydania jeden zwykły plik exe (bez zip) oraz `SHA256SUMS.txt` z jego sumą kontrolną (suma trafia też do notatek wydania); na wydaniu są również automatyczne archiwa kodu źródłowego od GitHuba. Uniwersalna wersja AnyCPU działa jako proces 64-bitowy na 64-bitowym Windows i jako proces 32-bitowy na 32-bitowym Windows. exe możesz też zbudować samodzielnie przez `build.bat`.
+Wydania są tworzone automatycznie przez GitHub Actions przy każdym tagu `v*`: workflow buduje dwa exe platformowe tymi samymi wywołaniami csc co `build.bat` i dołącza do wydania dwa zwykłe pliki exe (bez zip) — `Tilettes_x86.exe` (32-bit) i `Tilettes_x64.exe` (64-bit) — oraz `SHA256SUMS.txt` z ich sumami kontrolnymi (sumy trafiają też do notatek wydania); na wydaniu są również automatyczne archiwa kodu źródłowego od GitHuba. exe możesz też zbudować samodzielnie przez `build.bat`.
 
 ## Fałszywe alarmy antywirusów
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1 — 2026-10-05
+
+- **Fewer antivirus false positives**: the console interrupt kills the shell process directly instead of spawning `taskkill /T /F`; the recon-style default bookmarks are gone (process list, ipconfig, netstat, IPv4 addresses, running services, tar); the show-time DWM cloak now wraps only freshly recreated window handles.
+- **Platform exes**: releases now ship `Tilettes_x86.exe` and `Tilettes_x64.exe` instead of one universal AnyCPU build; `build.bat` produces the same pair.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.0...v1.1.1
+
 ## v1.1.0 — 2026-10-05
 
 - **No more black flash on show**: showing the panel from a minimized state (hotkey, Win key, tray) used to composite its stale surface for several frames — a black block where the tiles go — until the first paint landed. Worse, on machines where the virtual-desktop COM class is not registered (0x80040154), the re-home to the current desktop falls back to recreating the window, and a freshly recreated window used to pop up unpainted. The whole show now happens off screen: the window is hidden first (so a recreation stays invisible), cloaked (DWM cloaking: invisible to the desktop, but alive and painting), shown and restored, force-painted synchronously with all its children, and only then uncloaked — plus one more full paint right after the uncloak, so a freshly bound DWM surface can never present black. The first frame on screen is already the finished panel. An already visible panel skips all of this (cloaking it would just blink), systems without DWM cloaking fall back to the plain show, and log.txt gains a one-line "Show:" diagnostic (recreate/cloak/paint ms) for this path.

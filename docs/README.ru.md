@@ -16,7 +16,7 @@ title: Tilettes
 
 ![Плиточки — главное окно](screenshot_main.png)
 
-Текущая версия: **v1.1.0** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
+Текущая версия: **v1.1.1** — загрузка: [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Ченжлог](#чangelog). Статус: **бета**.
 
 ## Фишки
 
@@ -212,16 +212,17 @@ title: Tilettes
 Нужна любая Windows с .NET Framework 4.x (компилятор входит в состав системы):
 
 ```
-build.bat          rem → Tilettes.exe (универсальный AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-бит)
 ```
 
 или напрямую:
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-Релизы создаются автоматически GitHub Actions по каждому тегу `v*`: workflow собирает универсальный exe тем же вызовом csc и прикрепляет к релизу один обычный exe-файл (без zip), а также `SHA256SUMS.txt` с его контрольной суммой (сумма добавляется и в заметки релиза); автоматические архивы исходников GitHub тоже на месте. Универсальная сборка AnyCPU работает как 64-битный процесс на 64-битной Windows и как 32-битный на 32-битной. exe можно собрать и самому через `build.bat`.
+Релизы создаются автоматически GitHub Actions по каждому тегу `v*`: workflow собирает два платформенных exe теми же вызовами csc, что и `build.bat`, и прикрепляет к релизу два обычных exe-файла (без zip) — `Tilettes_x86.exe` (32-битный) и `Tilettes_x64.exe` (64-битный), а также `SHA256SUMS.txt` с их контрольными суммами (суммы добавляются и в заметки релиза); автоматические архивы исходников GitHub тоже на месте. exe можно собрать и самому через `build.bat`.
 
 ## False positive антивирусов
 

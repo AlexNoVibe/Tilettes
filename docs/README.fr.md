@@ -17,7 +17,7 @@ Un panneau de lancement rapide pour Windows : une grille de tuiles avec raccourc
 
 ![Tilettes — la fenêtre principale](screenshot_main.png)
 
-Version actuelle : **v1.1.0** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
+Version actuelle : **v1.1.1** — téléchargement : [Releases](https://github.com/AlexNoVibe/Tilettes/releases/latest) · [Journal des modifications](#changelog). Statut : **bêta**.
 
 ## Points forts
 
@@ -213,16 +213,17 @@ N'importe quelle commande `cmd.exe` sur une seule ligne peut être saisie et ex�
 Nécessite n'importe quel Windows avec .NET Framework 4.x (le compilateur fait partie du système) :
 
 ```
-build.bat          rem → Tilettes.exe (universal AnyCPU)
+build.bat          rem → Tilettes_x86.exe + Tilettes_x64.exe (32/64-bit)
 ```
 
 ou directement :
 
 ```
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x86 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x86.exe src\*.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:app.ico /win32manifest:app.manifest /keyfile:Tilettes.snk /out:Tilettes_x64.exe src\*.cs
 ```
 
-Les versions sont créées automatiquement par GitHub Actions à chaque tag `v*` : le workflow compile l'exe universel avec le même appel csc et attache à la version un seul fichier exe simple (sans zip) ainsi qu'un `SHA256SUMS.txt` avec sa somme de contrôle (la somme est également ajoutée aux notes de version) ; les archives « Source code » automatiques de GitHub sont également présentes sur la version. La compilation universelle AnyCPU s'exécute comme processus 64 bits sur Windows 64 bits et comme processus 32 bits sur Windows 32 bits. Vous pouvez aussi compiler l'exe vous-même avec `build.bat`.
+Les versions sont créées automatiquement par GitHub Actions à chaque tag `v*` : le workflow compile les deux exes de plateforme avec les mêmes appels csc que `build.bat` et attache à la version deux fichiers exe simples (sans zip) — `Tilettes_x86.exe` (32 bits) et `Tilettes_x64.exe` (64 bits) — ainsi qu'un `SHA256SUMS.txt` avec leurs sommes de contrôle (les sommes sont également ajoutées aux notes de version) ; les archives « Source code » automatiques de GitHub sont également présentes sur la version. Vous pouvez aussi compiler les exes vous-même avec `build.bat`.
 
 ## Faux positifs antivirus
 

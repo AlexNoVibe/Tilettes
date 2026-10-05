@@ -1383,12 +1383,14 @@ namespace WinPanel
             // (panel hidden or minimized) the whole show therefore happens off
             // screen: hide the window first (so the desktop re-home cannot pop
             // a freshly recreated, unpainted window onto the screen - WinForms
-            // recreates handles VISIBLE), cloak the current handle, only then
-            // show/restore it, paint it synchronously with all children, and
-            // uncloak - the first frame on screen is already the finished
-            // panel. Cloaking an already visible panel would just blink it,
-            // so the visible path keeps the plain behavior. Systems without
-            // DWM cloaking fall back to the plain show too.
+            // recreates handles VISIBLE), cloak the freshly recreated handle
+            // (cloaking is reserved for that case), only then show/restore it,
+            // paint it synchronously with all children, and uncloak - the
+            // first frame on screen is already the finished panel. A re-show
+            // without a recreate keeps the previous surface and skips both.
+            // Cloaking an already visible panel would just blink it, so the
+            // visible path keeps the plain behavior. Systems without DWM
+            // cloaking fall back to the plain show too.
             bool staleSurface = !this.Visible || this.WindowState == FormWindowState.Minimized;
             bool cloaked = false;
             System.Diagnostics.Stopwatch showSw = null;
@@ -1401,14 +1403,24 @@ namespace WinPanel
                     this.Visible = false;          // a re-home recreate (if any) stays invisible
                     EnsureOnCurrentDesktop();
                     bool recreated = this.Handle != handleBefore;
-                    int cloakHr = CloakWindow(this.Handle, true);
-                    cloaked = cloakHr == 0;
-                    this.Visible = true;           // born cloaked
+                    // Cloaking is reserved for a freshly recreated handle - the
+                    // only case that needs it. A plain re-show composites the
+                    // previous painted surface, and the cloak call itself is
+                    // exotic enough for antivirus ML heuristics to weigh.
+                    int cloakHr = -1;
+                    if (recreated)
+                    {
+                        cloakHr = CloakWindow(this.Handle, true);
+                        cloaked = cloakHr == 0;
+                    }
+                    this.Visible = true;           // a recreated handle comes back under the cloak
                     this.WindowState = FormWindowState.Normal;
                     // Finish the whole first paint now, off screen, synchronously
                     // (children included) so uncloaking presents a complete frame.
+                    // Needed after a recreate only - with or without a working
+                    // cloak; a plain re-show keeps its old surface.
                     int paintMs = -1;
-                    if (cloaked)
+                    if (recreated)
                     {
                         System.Diagnostics.Stopwatch paintSw = System.Diagnostics.Stopwatch.StartNew();
                         RedrawWindow(this.Handle, IntPtr.Zero, IntPtr.Zero,
