@@ -2984,7 +2984,21 @@ namespace WinPanel
         // protocol, see LaunchItem).
         private const string StartMenuPath = "startmenu:";
 
+        // The four built-in power tiles: virtual "power:" paths the launch
+        // dispatcher (LaunchItem) turns into the system power actions. Never
+        // real files, so every file-path pipeline must route them out.
+        private const string PowerShutdownPath = "power:shutdown";
+        private const string PowerRestartPath = "power:restart";
+        private const string PowerSleepPath = "power:sleep";
+        private const string PowerHibernatePath = "power:hibernate";
+
+        private static bool IsPowerTilePath(string path)
+        {
+            return path != null && path.StartsWith("power:", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static Image startMenuIcon;
+        private static readonly Dictionary<string, Image> powerIcons = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
 
         // The Start glyph: four rounded squares in the Windows accent blue, drawn
         // once and shared (crisp at any tile size, no shell resource to hunt for).
@@ -3019,6 +3033,187 @@ namespace WinPanel
             }
             try { return (Image)startMenuIcon.Clone(); }
             catch { return SystemIcons.Application.ToBitmap(); }
+        }
+
+        // The power-tile glyphs, drawn once and shared (the Start-glyph
+        // technique): plain geometric signs in the Windows accent blue. Drawn
+        // by hand instead of font glyphs so the power sign looks the same on
+        // every system (Segoe UI Symbol gained U+23FB only in Windows 8).
+        internal static Image GetPowerIcon(string path)
+        {
+            Image cached;
+            lock (powerIcons)
+            {
+                if (powerIcons.TryGetValue(path ?? "", out cached) && cached != null) return (Image)cached.Clone();
+            }
+            Image made = null;
+            try
+            {
+                int s = 128;
+                var bmp = new Bitmap(s, s);
+                using (var g = Graphics.FromImage(bmp))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    using (var pen = new Pen(Color.FromArgb(0, 120, 215), s / 9f))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        int d = s * 66 / 100;               // ring diameter
+                        int o = (s - d) / 2;                // ring offset
+                        if (string.Equals(path, PowerShutdownPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // The classic power sign: a ring with a gap on
+                            // top and a vertical stem through the gap.
+                            g.DrawArc(pen, o, o, d, d, -45, 270);
+                            g.DrawLine(pen, s / 2, s * 10 / 100, s / 2, s * 46 / 100);
+                        }
+                        else if (string.Equals(path, PowerRestartPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Circular arrow: a 300-degree arc plus a
+                            // triangular head at its clockwise end.
+                            g.DrawArc(pen, o, o, d, d, -60, 300);
+                            double endRad = 240.0 * Math.PI / 180.0; // -60 + 300
+                            double ex = s / 2.0 + d / 2.0 * Math.Cos(endRad);
+                            double ey = s / 2.0 + d / 2.0 * Math.Sin(endRad);
+                            double tx = -Math.Sin(endRad), ty = Math.Cos(endRad); // clockwise tangent
+                            float ah = s * 15 / 100f;       // arrowhead size
+                            var pts = new[]
+                            {
+                                new PointF((float)(ex + tx * ah), (float)(ey + ty * ah)),
+                                new PointF((float)(ex - tx * ah * 0.35 - ty * ah * 0.6), (float)(ey - ty * ah * 0.35 + tx * ah * 0.6)),
+                                new PointF((float)(ex - tx * ah * 0.35 + ty * ah * 0.6), (float)(ey - ty * ah * 0.35 - tx * ah * 0.6))
+                            };
+                            using (var br = new SolidBrush(pen.Color)) g.FillPolygon(br, pts);
+                        }
+                        else if (string.Equals(path, PowerSleepPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Crescent moon: a full disc minus an offset disc.
+                            using (var moon = new System.Drawing.Drawing2D.GraphicsPath())
+                            using (var cut = new System.Drawing.Drawing2D.GraphicsPath())
+                            {
+                                moon.AddEllipse(s * 18 / 100, s * 12 / 100, s * 64 / 100, s * 64 / 100);
+                                cut.AddEllipse(s * 40 / 100, s * 2 / 100, s * 64 / 100, s * 64 / 100);
+                                using (var reg = new Region(moon))
+                                {
+                                    reg.Exclude(cut);
+                                    using (var br = new SolidBrush(pen.Color)) g.FillRegion(br, reg);
+                                }
+                            }
+                        }
+                        else // hibernate
+                        {
+                            using (var f = new Font("Segoe UI", s * 34 / 100f, FontStyle.Bold, GraphicsUnit.Pixel))
+                            using (var br = new SolidBrush(pen.Color))
+                            using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                            {
+                                g.DrawString("Zz", f, br, new RectangleF(0, 0, s, s), sf);
+                            }
+                        }
+                    }
+                }
+                made = bmp;
+            }
+            catch { }
+            lock (powerIcons) { powerIcons[path ?? ""] = made; }
+            return made == null ? null : (Image)made.Clone();
+        }
+
+        // Adds the four built-in power tiles (shut down, restart, sleep,
+        // hibernate) to the mirrored Start tab. Created once as a whole set:
+        // a tile the user deleted stays away until all four are gone (a fresh
+        // install or a brand-new Start tab receives the full set again).
+        // Names follow the current language, like the "Open Start menu" tile.
+        // Called from LoadTabs, so a language switch re-labels the existing
+        // tiles for free.
+        private void EnsurePowerTiles()
+        {
+            try
+            {
+                TabData startTab = null;
+                foreach (var t in records.Tabs)
+                    if (t.Kind == "startmenu") { startTab = t; break; }
+                if (startTab == null) return;
+
+                string nShut = Loc.S("Shut down", "Завершение работы");
+                string nRestart = Loc.S("Restart", "Перезагрузка");
+                string nSleep = Loc.S("Sleep", "Спящий режим");
+                string nHib = Loc.S("Hibernate", "Гибернация");
+
+                bool changed = false;
+                foreach (var it in startTab.Items)
+                {
+                    string want = null;
+                    if (string.Equals(it.Path, PowerShutdownPath, StringComparison.OrdinalIgnoreCase)) want = nShut;
+                    else if (string.Equals(it.Path, PowerRestartPath, StringComparison.OrdinalIgnoreCase)) want = nRestart;
+                    else if (string.Equals(it.Path, PowerSleepPath, StringComparison.OrdinalIgnoreCase)) want = nSleep;
+                    else if (string.Equals(it.Path, PowerHibernatePath, StringComparison.OrdinalIgnoreCase)) want = nHib;
+                    if (want != null && !string.Equals(it.Name, want, StringComparison.Ordinal)) { it.Name = want; changed = true; }
+                }
+
+                bool any = false;
+                foreach (var it in startTab.Items)
+                    if (IsPowerTilePath(it.Path)) { any = true; break; }
+
+                if (!any)
+                {
+                    int cols = Math.Max(1, settings.GridColumns);
+                    int rows = Math.Max(1, settings.GridRows);
+                    foreach (var p in new[]
+                    {
+                        new { Name = nShut, Path = PowerShutdownPath, Src = "builtin:power-shutdown" },
+                        new { Name = nRestart, Path = PowerRestartPath, Src = "builtin:power-restart" },
+                        new { Name = nSleep, Path = PowerSleepPath, Src = "builtin:power-sleep" },
+                        new { Name = nHib, Path = PowerHibernatePath, Src = "builtin:power-hibernate" }
+                    })
+                    {
+                        var item = new ShortcutItem { Name = p.Name, Path = p.Path, Src = p.Src, Size = ClampItemSize(settings.DefaultItemSize) };
+                        PlaceIntoGridStatic(startTab.Items, item, cols, rows);
+                        startTab.Items.Add(item);
+                    }
+                    changed = true;
+                }
+                if (changed) records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("EnsurePowerTiles", ex); }
+        }
+
+        // The power-tile dispatcher: a virtual "power:" path into the system
+        // power action. Shut down and restart ask once (a mis-click must not
+        // power off the machine); sleep and hibernate are instantly
+        // reversible and go straight away.
+        private static void RunPowerAction(string path)
+        {
+            bool shutdown = string.Equals(path, PowerShutdownPath, StringComparison.OrdinalIgnoreCase);
+            bool restart = string.Equals(path, PowerRestartPath, StringComparison.OrdinalIgnoreCase);
+            bool ok = true;
+            if (shutdown || restart)
+            {
+                string title = shutdown ? Loc.S("Shut down", "Завершение работы") : Loc.S("Restart", "Перезагрузка");
+                string question = shutdown ? Loc.S("Shut down the computer?", "Выключить компьютер?")
+                                           : Loc.S("Restart the computer?", "Перезагрузить компьютер?");
+                ok = ConfirmDialog.ShowConfirm(ActivePanelForm(), title, question, null, title);
+            }
+            if (!ok) return;
+            bool started = false;
+            try
+            {
+                if (shutdown) started = PowerActions.Shutdown();
+                else if (restart) started = PowerActions.Restart();
+                else if (string.Equals(path, PowerSleepPath, StringComparison.OrdinalIgnoreCase)) started = PowerActions.Sleep();
+                else if (string.Equals(path, PowerHibernatePath, StringComparison.OrdinalIgnoreCase)) started = PowerActions.Hibernate();
+            }
+            catch (Exception ex) { AppLog.Write("Power action", ex); }
+            if (!started) AppLog.Write("Power action did not start: " + path);
+        }
+
+        private static IWin32Window ActivePanelForm()
+        {
+            foreach (Form f in Application.OpenForms)
+            {
+                var mf = f as MainForm;
+                if (mf != null && !mf.IsDisposed) return mf;
+            }
+            return null;
         }
 
         // Adds the "Open Start menu" tile to the mirrored Start tab once (the
@@ -3404,6 +3599,10 @@ namespace WinPanel
                 // would only fail.
                 if (string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase))
                     return GetStartMenuIcon();
+                // The built-in power tiles: virtual paths too - draw the
+                // matching sign instead of an extraction that would only fail.
+                if (IsPowerTilePath(item.Path))
+                    return GetPowerIcon(item.Path);
                 // 2) icon assigned to the file type
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
@@ -3445,7 +3644,8 @@ namespace WinPanel
                 // synchronous path anyway.) The built-in startmenu: tile too —
                 // an older build may have cached a failed-extraction icon for it.
                 if (IsMediaFile(item.Path) || item.IsFolder || IsFolderPathCached(item.Path) ||
-                    string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase)) return false;
+                    string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase) ||
+                    IsPowerTilePath(item.Path)) return false;
                 if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
                     return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
@@ -3715,6 +3915,13 @@ namespace WinPanel
             {
                 if (SuppressDoubleLaunch(StartMenuPath)) return;
                 OpenRealStartMenu();
+                return;
+            }
+            // The built-in power tiles: virtual paths into system power actions.
+            if (IsPowerTilePath(path))
+            {
+                if (SuppressDoubleLaunch(path)) return;
+                RunPowerAction(path);
                 return;
             }
             if (SuppressDoubleLaunch("item:" + path)) return;
@@ -4154,6 +4361,7 @@ namespace WinPanel
 
         private void LoadTabs()
         {
+            EnsurePowerTiles();
             try { if (panelSearchActive) HidePanelSearch(); } catch { }
             if (panelSearchRow != null)
             {

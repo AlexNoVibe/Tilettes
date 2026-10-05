@@ -8,6 +8,12 @@ namespace WinPanel
     {
         public static readonly Dictionary<string, string> Table = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            { "Shut down", "Arrêter" },
+            { "Restart", "Redémarrer" },
+            { "Sleep", "Mettre en veille" },
+            { "Hibernate", "Mettre en veille prolongée" },
+            { "Shut down the computer?", "Éteindre l'ordinateur ?" },
+            { "Restart the computer?", "Redémarrer l'ordinateur ?" },
             { " and more...", " et plus..." },
             { " at (", " à (" },
             { " is already in use by another program.", " est déjà utilisé par un autre programme." },
