@@ -49,11 +49,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Notes = CHANGELOG.md + a SHA256 block built from SHA256SUMS.txt
-          cp CHANGELOG.md release_notes.md
-          printf '\n## SHA256\n```\n' >> release_notes.md
-          cat SHA256SUMS.txt >> release_notes.md
-          printf '```\n' >> release_notes.md
+          # Notes = only the current version's section of CHANGELOG.md (the
+          # whole file grew too long to scroll through on a release page),
+          # a download hint on top, and a SHA256 block from SHA256SUMS.txt.
+          # awk prints from the first "## v" heading up to (excluding) the
+          # next one.
+          awk '/^## v/{n++} n==1' CHANGELOG.md > release_body.md
+          {
+            printf 'Download: **Tilettes_x86.exe** (32-bit) or **Tilettes_x64.exe** (64-bit) - attached below. Full history: [CHANGELOG.md](https://github.com/%s/blob/master/CHANGELOG.md).\n\n' "$GITHUB_REPOSITORY"
+            cat release_body.md
+            printf '\n## SHA256\n```\n'
+            cat SHA256SUMS.txt
+            printf '```\n'
+          } > release_notes.md
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             # edit: refresh the title and the notes from CHANGELOG.md (older gh
             # on the runner has no --generate-notes, the notes file is used

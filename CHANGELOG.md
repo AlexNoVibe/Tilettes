@@ -4,6 +4,7 @@
 
 - **Fewer antivirus false positives**: the console interrupt kills the shell process directly instead of spawning `taskkill /T /F`; the recon-style default bookmarks are gone (process list, ipconfig, netstat, IPv4 addresses, running services, tar); the show-time DWM cloak now wraps only freshly recreated window handles.
 - **Platform exes**: releases now ship `Tilettes_x86.exe` and `Tilettes_x64.exe` instead of one universal AnyCPU build; `build.bat` produces the same pair.
+- **Compact release pages**: a release's notes now carry only its own changelog section with a download hint on top and checksums, not the whole multi-page changelog.
 
 **Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.0...v1.1.1
 
