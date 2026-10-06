@@ -306,7 +306,15 @@ namespace WinPanel
             { "selected", "sélectionnés" },
             { "Stop", "Arrêter" },
                         { "Stop the running command", "Arrêter la commande en cours" },
-            { "[stopped]", "[arrêté]" }
+            { "[stopped]", "[arrêté]" },
+            { "Sync user Start", "Synchroniser le Démarrage de l'utilisateur" },
+            { "Close & sync user Start", "Fermer et synchroniser le Démarrage de l'utilisateur" },
+            { "Could not export the Start layout - see log.txt.", "Impossible d'exporter la disposition du menu Démarrer - voir log.txt." },
+            { "No Start tiles found - Windows 11 or the Start menu layer is damaged.", "Aucune tuile du menu Démarrer trouvée - Windows 11 ou couche du menu Démarrer endommagée." },
+            { "Added: {0}", "Ajoutées : {0}" },
+            { "Skipped (pinned sites, tile folders): {0}", "Ignorées (sites épinglés, dossiers de tuiles) : {0}" },
+            { "Missing on this computer: {0}", "Absentes de cet ordinateur : {0}" },
+            { "User Start", "Démarrage de l'utilisateur" }
         };
     }
 }

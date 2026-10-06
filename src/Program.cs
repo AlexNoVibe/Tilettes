@@ -1077,8 +1077,9 @@ namespace WinPanel
                     LoadTabs();
 
                     // "Do it now" requests from the settings dialog.
-                    if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, BackupNotify.Everything);
+                    if (sf.RunBackupNow) BackupManager.RunBackup(this, this.settings, BackupNotify.FailureOnly);
                     if (sf.RunSyncNow) StartMenuSync.Run(this, this.settings, true);
+                    if (sf.RunSyncUserStartNow) ImportStartTiles();
                     if (sf.RunWelcomeAgain) RunFirstStartWelcome();
                     if (sf.RebuildIconsNow) RebuildAllIcons();
                     if (sf.RunCheckNow)
@@ -1150,10 +1151,12 @@ namespace WinPanel
             {
                 bool wasFirstRun = !settings.FirstRunDone;
                 bool createExamples = false;
+                bool syncUserStart = false;
                 using (var wf = new WelcomeForm(settings))
                 {
                     wf.ShowDialog(this);
                     createExamples = wf.CreateExamples;
+                    syncUserStart = wf.SyncUserStart;
                 }
                 // Standard settings land in settings.ini right on the first start,
                 // together with the welcome answers (language, update check).
@@ -1174,6 +1177,9 @@ namespace WinPanel
 
                 if (createExamples) CreateExampleTiles();
                 LoadTabs();
+                // The welcome's "close & sync" answer: the panel is up and the
+                // tabs are loaded, the import can run right away.
+                if (syncUserStart) ImportStartTiles();
 
                 // Only schedules a network check when the user allowed it in the
                 // welcome window; the interval (and the "first check later" stamp
@@ -1348,6 +1354,98 @@ namespace WinPanel
                 LoadTabs();
             }
             catch (Exception ex) { AppLog.Write("OnDataExternallyChanged", ex); }
+        }
+
+        // ---------- Start tiles import ----------
+
+        // "Sync user Start" (the Settings button and the welcome window's
+        // close & sync answer). One PowerShell call exports the pinned Start
+        // layout (a hard 20 s timeout wraps it - Export-StartLayout hangs
+        // forever on systems with a broken Start layer), the tiles are
+        // resolved and laid out into the "User Start" tab (Kind = null: no
+        // sync ever touches it). No confirmation prompts: the action is
+        // repeatable (it rebuilds the same tab) and the report at the end
+        // tells what happened.
+        private void ImportStartTiles()
+        {
+            string title = Loc.S("Sync user Start", "Синхронизировать пользовательский Пуск");
+
+            Cursor = Cursors.WaitCursor;
+            string layoutXml, nameCsv;
+            bool exported;
+            try { exported = StartLayoutImport.ExportLayout(out layoutXml, out nameCsv); }
+            finally { Cursor = Cursors.Default; }
+            if (!exported)
+            {
+                ConfirmDialog.ShowInfo(this, Loc.S("Could not export the Start layout - see log.txt.",
+                    "Не удалось экспортировать раскладку Пуска — подробности в log.txt."), title);
+                return;
+            }
+
+            StartLayoutImport.Result res;
+            try
+            {
+                var names = StartLayoutImport.ParseNameCsv(nameCsv);
+                var lnks = StartLayoutImport.BuildLnkIndex();
+                res = StartLayoutImport.BuildTab(layoutXml, names, lnks, settings.GridColumns);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("Start import: build", ex);
+                ConfirmDialog.ShowInfo(this, Loc.S("Could not export the Start layout - see log.txt.",
+                    "Не удалось экспортировать раскладку Пуска — подробности в log.txt."), title);
+                return;
+            }
+
+            if (res == null || res.Tab == null || res.Added == 0)
+            {
+                ConfirmDialog.ShowInfo(this, Loc.S("No Start tiles found - Windows 11 or the Start menu layer is damaged.",
+                    "Плитки не найдены — Windows 11 или слой Пуска повреждён."), title);
+                return;
+            }
+
+            // Idempotent re-run: drop the previous import tab, rebuild it.
+            int maxRow = 0;
+            foreach (var t in records.Tabs) if (t.Row > maxRow) maxRow = t.Row;
+            records.Tabs.RemoveAll(IsStartImportTab);
+            res.Tab.Row = maxRow + 1;
+            records.Tabs.Add(res.Tab);
+            records.Save(recordsPath);
+            OnDataExternallyChanged();
+            WarmAllSearchMeta(true);
+            AppLog.Write("Start import: tab '" + res.Tab.Name + "' rebuilt with " + res.Added + " tiles (" +
+                res.Skipped + " skipped, " + res.Unresolved + " unresolved)");
+
+            string msg = string.Format(Loc.S("Added: {0}", "Добавлено: {0}"), res.Added);
+            if (res.Skipped > 0)
+                msg += "\n" + string.Format(Loc.S("Skipped (pinned sites, tile folders): {0}",
+                    "Пропущено (закреплённые сайты, папки плиток): {0}"), NameList(res.SkippedNames));
+            if (res.Unresolved > 0)
+                msg += "\n" + string.Format(Loc.S("Missing on this computer: {0}",
+                    "Нет на этом компьютере: {0}"), NameList(res.UnresolvedNames));
+            ConfirmDialog.ShowInfo(this, msg, title);
+        }
+
+        // Matches the import tab in any UI language it could have been baked
+        // with, including the v1.1.3-test names ("Windows Start" /
+        // "Пуск Windows") - a re-sync replaces that tab instead of adding a
+        // second one.
+        private static bool IsStartImportTab(TabData t)
+        {
+            if (t == null || string.IsNullOrEmpty(t.Name)) return false;
+            return t.Name == "Windows Start" || t.Name == "Пуск Windows" ||
+                   t.Name == "User Start" || t.Name == "Пользовательский Пуск" ||
+                   t.Name == Loc.S(StartLayoutImport.TabNameEn, StartLayoutImport.TabNameRu);
+        }
+
+        // A comma list capped at six entries, then "and more...".
+        private static string NameList(List<string> names)
+        {
+            const int max = 6;
+            if (names.Count <= max) return string.Join(", ", names.ToArray());
+            string[] head = new string[max];
+            for (int i = 0; i < max; i++) head[i] = names[i];
+            return string.Join(", ", head) + Loc.S(" and more...", " и др...");
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -3206,6 +3304,39 @@ namespace WinPanel
             if (!started) AppLog.Write("Power action did not start: " + path);
         }
 
+        // v1.1.2 briefly shipped built-in Calculator / Alarms & Clock tiles in
+        // the Start tab root; the idea is gone (the apps live only in the
+        // "Apps (system)" folder of the mirrored Start tab, with the ordinary
+        // icon pipeline), and tiles a v1.1.2 build already saved are removed
+        // here. Runs from LoadTabs; a no-op once nothing matches.
+        private void RemoveLegacyUwpTiles()
+        {
+            try
+            {
+                bool changed = false;
+                foreach (var t in records.Tabs)
+                    if (StripLegacyUwpTiles(t.Items)) changed = true;
+                if (changed) records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("RemoveLegacyUwpTiles", ex); }
+        }
+
+        private static bool StripLegacyUwpTiles(List<ShortcutItem> items)
+        {
+            bool changed = false;
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                var it = items[i];
+                if (it.Children != null && it.Children.Count > 0 && StripLegacyUwpTiles(it.Children)) changed = true;
+                if (it.Src != null && it.Src.StartsWith("builtin:uwp-", StringComparison.OrdinalIgnoreCase))
+                {
+                    items.RemoveAt(i);
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
         private static IWin32Window ActivePanelForm()
         {
             foreach (Form f in Application.OpenForms)
@@ -3926,6 +4057,16 @@ namespace WinPanel
             }
             if (SuppressDoubleLaunch("item:" + path)) return;
 
+            // Packaged apps (the built-in Calculator / Alarms & Clock tiles and
+            // the "Apps (system)" folder items): an AppsFolder AUMID is
+            // activated through the shell, never opened as a file.
+            if (UwpApps.IsAppsFolderAumid(path))
+            {
+                if (!UwpApps.LaunchAumid(path))
+                    ReportLaunchError(ShortLaunchNotice(path));
+                return;
+            }
+
             // File-type rule: open with the program assigned to this extension (if any).
             string target = path;
             string args = null;
@@ -4362,6 +4503,7 @@ namespace WinPanel
         private void LoadTabs()
         {
             EnsurePowerTiles();
+            RemoveLegacyUwpTiles();
             try { if (panelSearchActive) HidePanelSearch(); } catch { }
             if (panelSearchRow != null)
             {

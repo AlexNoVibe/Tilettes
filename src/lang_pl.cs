@@ -306,7 +306,15 @@ namespace WinPanel
             { "selected", "wybranych" },
             { "Stop", "Zatrzymaj" },
                         { "Stop the running command", "Zatrzymaj działające polecenie" },
-            { "[stopped]", "[zatrzymano]" }
+            { "[stopped]", "[zatrzymano]" },
+            { "Sync user Start", "Synchronizuj Start użytkownika" },
+            { "Close & sync user Start", "Zamknij i synchronizuj Start użytkownika" },
+            { "Could not export the Start layout - see log.txt.", "Nie można wyeksportować układu menu Start - zobacz log.txt." },
+            { "No Start tiles found - Windows 11 or the Start menu layer is damaged.", "Nie znaleziono kafelków menu Start - Windows 11 albo uszkodzona warstwa menu Start." },
+            { "Added: {0}", "Dodano: {0}" },
+            { "Skipped (pinned sites, tile folders): {0}", "Pominięto (przypięte witryny, foldery kafelków): {0}" },
+            { "Missing on this computer: {0}", "Brak na tym komputerze: {0}" },
+            { "User Start", "Start użytkownika" }
         };
     }
 }

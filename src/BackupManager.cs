@@ -5,10 +5,11 @@ using System.Windows.Forms;
 
 namespace WinPanel
 {
-    // What to tell the user about a finished backup: a manual "Backup now"
-    // confirms success and failure, the scheduled backup stays silent on
-    // success (the log.txt line is enough) and only warns when it failed.
-    public enum BackupNotify { None, FailureOnly, Everything }
+    // What to tell the user about a finished backup: nothing on success for
+    // any kind of backup (a Windows toast for a routine backup just litters
+    // the notification center; the log.txt line is enough), a warning only
+    // when it failed.
+    public enum BackupNotify { None, FailureOnly }
 
     // Scheduled full backups of everything the panel persists (settings,
     // shortcuts/records, bookmarks, file-type rules, search history and the exe
@@ -104,7 +105,6 @@ namespace WinPanel
 
                 PruneOld(dir, 30);
                 AppLog.Write("Backup created: " + zipPath + " (" + files.Count + " files)");
-                if (notify == BackupNotify.Everything) Notify(form, Loc.S("Backup created:", "Бэкап создан:") + " " + Path.GetFileName(zipPath));
                 return zipPath;
             }
             catch (Exception ex)

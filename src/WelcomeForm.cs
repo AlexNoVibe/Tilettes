@@ -17,6 +17,9 @@ namespace WinPanel
     {
         private readonly Settings settings;
         public bool CreateExamples { get; private set; }
+        // The "close & sync user Start" answer: the panel copies the user's
+        // pinned Start tiles into the "User Start" tab right after closing.
+        public bool SyncUserStart { get; private set; }
 
         private readonly Color bgColor, panelColor, hoverColor, textColor, dimColor;
         private readonly Font mainFont, titleFont, smallFont;
@@ -25,7 +28,7 @@ namespace WinPanel
         private Label lblGreet, lblNote, lblIssuePrompt, lblHow, lblEditHint, lblLang, lblSupport;
         private LinkLabel linkIssues, linkDonate;
         private CheckBox chkUpdates;
-        private Button btnClose, btnExamples;
+        private Button btnClose, btnExamples, btnSyncUser;
         private readonly List<FlagButton> flags = new List<FlagButton>();
         private Panel ill, flagRow;
         private int winW;
@@ -217,8 +220,23 @@ namespace WinPanel
             btnExamples.FlatAppearance.MouseOverBackColor = hoverColor;
             btnExamples.Click += (s, e) => { CreateExamples = true; this.Close(); };
 
+            btnSyncUser = new Button
+            {
+                FlatStyle = FlatStyle.Flat,
+                BackColor = bgColor,
+                ForeColor = textColor,
+                Cursor = Cursors.Hand,
+                Height = bh,
+                Font = mainFont
+            };
+            btnSyncUser.FlatAppearance.BorderSize = 1;
+            btnSyncUser.FlatAppearance.BorderColor = panelColor;
+            btnSyncUser.FlatAppearance.MouseOverBackColor = hoverColor;
+            btnSyncUser.Click += (s, e) => { SyncUserStart = true; this.Close(); };
+
             this.Controls.Add(btnClose);
             this.Controls.Add(btnExamples);
+            this.Controls.Add(btnSyncUser);
 
             ApplyLanguage(); // sets all captions, then flows the whole layout
             this.MinimumSize = new Size(420, 300);
@@ -266,11 +284,16 @@ namespace WinPanel
             int bh = Math.Max(32, lh + 8);
             btnClose.Height = bh;
             btnExamples.Height = bh;
+            btnSyncUser.Height = bh;
             btnClose.Width = TextRenderer.MeasureText(btnClose.Text, mainFont).Width + 30;
             btnExamples.Width = TextRenderer.MeasureText(btnExamples.Text, mainFont).Width + 30;
+            btnSyncUser.Width = TextRenderer.MeasureText(btnSyncUser.Text, mainFont).Width + 30;
             btnClose.Location = new Point(w - 22 - btnClose.Width, y);
             btnExamples.Location = new Point(btnClose.Left - 12 - btnExamples.Width, y);
-            y += bh + 16;
+            // The sync button gets its own row below the exit pair: the three
+            // captions together are wider than the window in several languages.
+            btnSyncUser.Location = new Point(w - 22 - btnSyncUser.Width, y + bh + 8);
+            y += bh + 8 + bh + 16;
 
             this.ClientSize = new Size(w, y);
         }
@@ -370,6 +393,7 @@ namespace WinPanel
             lblSupport.Text = Loc.S("Support the author", "Поддержать автора");
             btnClose.Text = Loc.S("Close", "Закрыть");
             btnExamples.Text = Loc.S("Close & create example tiles", "Закрыть и создать примеры");
+            btnSyncUser.Text = Loc.S("Close & sync user Start", "Закрыть и синхронизировать пользовательский Пуск");
             LayoutContents();
         }
 

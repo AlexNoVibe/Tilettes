@@ -90,6 +90,9 @@ namespace WinPanel
         private CheckBox chkAutoInstall;
         public bool RunBackupNow { get; private set; }
         public bool RunSyncNow { get; private set; }
+        // "Sync user Start": copies the user's pinned Start tiles into the
+        // "User Start" tab (rebuilding it).
+        public bool RunSyncUserStartNow { get; private set; }
         // Maintenance: re-check tile paths, drop the icon cache, re-extract icons.
         public bool RebuildIconsNow { get; private set; }
         // "Do it now" flags for the update section: a manual GitHub check and a
@@ -650,6 +653,23 @@ namespace WinPanel
             btnRebuildIcons.Click += (s, e) => { RebuildIconsNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
             Tip(btnRebuildIcons, "Re-check every tile's path, drop the icon cache and re-extract all icons",
                 "Перепроверить пути всех плиток, сбросить кеш иконок и извлечь все значки заново");
+            // Own row: the four captions together are wider than the window.
+            y += 30;
+            var btnSyncUserStart = new Button
+            {
+                Text = Loc.S("Sync user Start", "Синхронизировать пользовательский Пуск"),
+                UseMnemonic = false,
+                Left = 20,
+                Top = y - 3,
+                Width = 280,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = panelColor,
+                ForeColor = textColor
+            };
+            btnSyncUserStart.FlatAppearance.BorderSize = 0;
+            btnSyncUserStart.Click += (s, e) => { RunSyncUserStartNow = true; this.DialogResult = DialogResult.OK; this.Close(); };
+            Tip(btnSyncUserStart, "Copy the pinned Start menu tiles (groups, sizes, positions) into the \"User Start\" tab; re-running rebuilds it",
+                "Скопировать закреплённые плитки Пуска (группы, размеры, позиции) во вкладку «Пользовательский Пуск»; повторный запуск пересобирает её");
             scrollPanel.Controls.Add(lblSkin);
             scrollPanel.Controls.Add(cmbSkin);
             scrollPanel.Controls.Add(lblBackupDays);
@@ -659,7 +679,8 @@ namespace WinPanel
             scrollPanel.Controls.Add(btnRunBackup);
             scrollPanel.Controls.Add(btnRunSync);
             scrollPanel.Controls.Add(btnRebuildIcons);
-            y += 30;
+            scrollPanel.Controls.Add(btnSyncUserStart);
+            y += 60;
 
             btnBackup = new Button { Text = Loc.S("Save backup (zip)", "Сохранить бэкап (zip)"), Left = 20, Top = y, Width = 190, FlatStyle = FlatStyle.Flat, BackColor = panelColor, ForeColor = textColor };
             btnBackup.FlatAppearance.BorderSize = 0;

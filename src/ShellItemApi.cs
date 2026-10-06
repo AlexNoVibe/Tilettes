@@ -58,6 +58,11 @@ namespace WinPanel
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         private static extern int SHGetKnownFolderPath(ref Guid rfid, uint dwFlags, IntPtr hToken, out IntPtr ppszPath);
 
+        // Resolves indirect strings ("@{package?ms-resource:...}") into the
+        // actual localized text; used by the registry fallback enumerator.
+        [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHLoadIndirectString(string pszSource, StringBuilder pszOutBuf, int cchOutBuf, IntPtr ppvReserved);
+
         [DllImport("gdi32.dll")]
         private static extern int GetObject(IntPtr hgdiobj, int cbBuffer, ref BITMAP lpvObject);
 
@@ -111,7 +116,24 @@ namespace WinPanel
         }
 
         // Lists every app in shell:AppsFolder. May take a moment; call off the UI thread.
+        // When the shell view enumerates as empty (it does on some locked-down
+        // systems, even Windows' own Get-StartApps comes back empty there), the
+        // per-user package repository in the registry takes over.
         public static List<UwpApp> EnumerateApps()
+        {
+            var res = EnumerateAppsFromShell();
+            if (res.Count == 0)
+            {
+                AppLog.Write("EnumerateApps: shell view empty - trying the registry fallback");
+                var fromRegistry = EnumerateAppsFromRegistry();
+                if (fromRegistry.Count > 0) return fromRegistry;
+            }
+            return res;
+        }
+
+        // The shell-view enumerator: bind the known folder (or its plain parse
+        // name) and walk the items. Returns an empty list on any failure.
+        private static List<UwpApp> EnumerateAppsFromShell()
         {
             var res = new List<UwpApp>();
             try
@@ -182,8 +204,138 @@ namespace WinPanel
                 }
                 Marshal.ReleaseComObject(enumItems);
             }
-            catch (Exception ex) { AppLog.Write("EnumerateApps", ex); }
+            catch (Exception ex) { AppLog.Write("EnumerateAppsFromShell", ex); }
             return res;
+        }
+
+        // Fallback enumerator for systems where the AppsFolder view is empty:
+        // every installed packaged app is registered under HKCU's package
+        // repository. Two layouts coexist there - the newer one keeps the
+        // applications under "Applications" (their subkey names are full
+        // AUMIDs), the legacy one puts the AppId key directly under the
+        // package ("App", or a key named after the app). Frameworks and
+        // resource packages have neither and drop out on their own.
+        private static List<UwpApp> EnumerateAppsFromRegistry()
+        {
+            var res = new List<UwpApp>();
+            try
+            {
+                using (var root = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(UwpApps.PackagesKey))
+                {
+                    if (root == null)
+                    {
+                        AppLog.Write("EnumerateApps: registry fallback found no package repository");
+                        return res;
+                    }
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var full in root.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            string family = UwpApps.FamilyOf(full);
+                            if (family == null) continue;
+                            string namePart = full.Substring(0, full.IndexOf('_'));
+                            // System-infrastructure packages whose entries never
+                            // show in Start: the Windows Feature Experience Pack
+                            // components and the out-of-box network flows.
+                            if (namePart.StartsWith("MicrosoftWindows.Client.CBS", StringComparison.OrdinalIgnoreCase) ||
+                                namePart.StartsWith("Microsoft.Windows.OOBENetwork", StringComparison.OrdinalIgnoreCase)) continue;
+                            using (var pkg = root.OpenSubKey(full))
+                            {
+                                if (pkg == null) continue;
+                                string pkgName = PackageDisplayName(pkg, full);
+
+                                // Newer layout: Applications\<aumid-or-appid>.
+                                using (var apps = pkg.OpenSubKey("Applications"))
+                                {
+                                    var appIds = apps == null ? null : apps.GetSubKeyNames();
+                                    if (appIds != null)
+                                        foreach (var appId in appIds)
+                                        {
+                                            // A subkey name with "!" already is the full AUMID.
+                                            string aumid = appId.IndexOf('!') >= 0 ? appId : family + "!" + appId;
+                                            AddUwpApp(res, seen, aumid, pkg, appId, pkgName);
+                                        }
+                                }
+
+                                // Legacy layout: the AppId key sits directly under
+                                // the package. Only "App" and a key named after the
+                                // package itself are accepted - service/bridge
+                                // records (LocalBridge and friends) stay out.
+                                foreach (var child in pkg.GetSubKeyNames())
+                                {
+                                    if (string.Equals(child, "Applications", StringComparison.OrdinalIgnoreCase)) continue;
+                                    if (!string.Equals(child, "App", StringComparison.OrdinalIgnoreCase) &&
+                                        !string.Equals(child, namePart, StringComparison.OrdinalIgnoreCase)) continue;
+                                    AddUwpApp(res, seen, family + "!" + child, pkg, child, pkgName);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                AppLog.Write("EnumerateApps: registry fallback found " + res.Count + " app(s)");
+            }
+            catch (Exception ex) { AppLog.Write("EnumerateAppsFromRegistry", ex); }
+            return res;
+        }
+
+        // Appends one registry-found app unless it is a duplicate or a hidden
+        // system entry (the Global.* AppIds of the Windows experience packages
+        // never show in the real AppsFolder). The display name comes from the
+        // application's own DisplayName value when present, the package's one
+        // otherwise.
+        private static void AddUwpApp(List<UwpApp> res, HashSet<string> seen, string aumid,
+                                      Microsoft.Win32.RegistryKey pkg, string appIdKey, string pkgName)
+        {
+            if (string.IsNullOrEmpty(aumid)) return;
+            int bang = aumid.IndexOf('!');
+            if (bang < 0 || bang == aumid.Length - 1) return;
+            if (aumid.Substring(bang + 1).StartsWith("Global.", StringComparison.OrdinalIgnoreCase)) return;
+            if (!seen.Add(aumid)) return;
+
+            string name = null;
+            try
+            {
+                using (var app = pkg.OpenSubKey(appIdKey))
+                {
+                    if (app != null)
+                        name = app.GetValue("DisplayName") as string;
+                }
+            }
+            catch { }
+            if (string.IsNullOrEmpty(name)) name = pkgName;
+            var u = new UwpApp();
+            u.Name = name;
+            u.ParsingName = "shell:AppsFolder\\" + aumid;
+            res.Add(u);
+        }
+
+        // Display name of a package: the DisplayName registry value is usually
+        // an indirect string ("@{...?ms-resource:...}") that
+        // SHLoadIndirectString resolves against the package's own resources;
+        // anything it cannot resolve falls back to the bare package name.
+        private static string PackageDisplayName(Microsoft.Win32.RegistryKey pkg, string fullName)
+        {
+            try
+            {
+                string raw = pkg.GetValue("DisplayName") as string;
+                if (!string.IsNullOrEmpty(raw))
+                {
+                    var sb = new StringBuilder(1024);
+                    if (SHLoadIndirectString(raw, sb, sb.Capacity, IntPtr.Zero) == 0)
+                    {
+                        string resolved = sb.ToString();
+                        if (!string.IsNullOrEmpty(resolved) &&
+                            resolved[0] != '@' &&
+                            !resolved.StartsWith("ms-resource", StringComparison.OrdinalIgnoreCase))
+                            return resolved;
+                    }
+                }
+            }
+            catch { }
+            int nameEnd = fullName.IndexOf('_');
+            return nameEnd > 0 ? fullName.Substring(0, nameEnd) : fullName;
         }
 
         // Icon of any shell item (works for UWP apps and normal paths alike).

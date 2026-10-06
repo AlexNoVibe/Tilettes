@@ -306,7 +306,15 @@ namespace WinPanel
             { "selected", "件を選択中" },
             { "Stop", "停止" },
                         { "Stop the running command", "実行中のコマンドを停止" },
-            { "[stopped]", "[停止しました]" }
+            { "[stopped]", "[停止しました]" },
+            { "Sync user Start", "ユーザーのスタートを同期" },
+            { "Close & sync user Start", "閉じてユーザーのスタートを同期" },
+            { "Could not export the Start layout - see log.txt.", "スタートのレイアウトをエクスポートできませんでした - log.txt を参照してください。" },
+            { "No Start tiles found - Windows 11 or the Start menu layer is damaged.", "スタートのタイルが見つかりません - Windows 11 か、スタートメニュー層が壊れています。" },
+            { "Added: {0}", "追加: {0}" },
+            { "Skipped (pinned sites, tile folders): {0}", "スキップ（ピン留めされたサイト、タイル フォルダー）: {0}" },
+            { "Missing on this computer: {0}", "このコンピューターにない: {0}" },
+            { "User Start", "ユーザーのスタート" }
         };
     }
 }

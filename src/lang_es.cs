@@ -306,7 +306,15 @@ namespace WinPanel
             { "selected", "seleccionados" },
             { "Stop", "Detener" },
                         { "Stop the running command", "Detener el comando en ejecución" },
-            { "[stopped]", "[detenido]" }
+            { "[stopped]", "[detenido]" },
+            { "Sync user Start", "Sincronizar el Inicio del usuario" },
+            { "Close & sync user Start", "Cerrar y sincronizar el Inicio del usuario" },
+            { "Could not export the Start layout - see log.txt.", "No se pudo exportar el diseño de Inicio - consulte log.txt." },
+            { "No Start tiles found - Windows 11 or the Start menu layer is damaged.", "No se encontraron iconos de Inicio - es Windows 11 o la capa del menú Inicio está dañada." },
+            { "Added: {0}", "Agregados: {0}" },
+            { "Skipped (pinned sites, tile folders): {0}", "Omitidos (sitios anclados, carpetas de iconos): {0}" },
+            { "Missing on this computer: {0}", "No están en este equipo: {0}" },
+            { "User Start", "Inicio del usuario" }
         };
     }
 }

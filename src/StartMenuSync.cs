@@ -202,9 +202,17 @@ namespace WinPanel
                         {
                             string name = Path.GetFileName(file);
                             if (name.StartsWith("desktop.ini", StringComparison.OrdinalIgnoreCase)) continue;
+                            // Only shortcuts are mirrored (a non-shortcut file in a
+                            // Start Menu folder is not an app entry).
+                            if (!file.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) continue;
                             string target = ResolveShortcutTarget(sh, file);
                             // Dead link: the .lnk names a target that no longer exists.
-                            if (target != null && !File.Exists(target) && !Directory.Exists(target)) continue;
+                            // An empty or undetermined target stays: those are advertised
+                            // and UWP shortcuts (shell:AppsFolder apps resolve TargetPath
+                            // to "") and launching them still works - the same mercy the
+                            // COM-unavailable case gets (CreateShell returns null shell,
+                            // every target comes back empty).
+                            if (!string.IsNullOrEmpty(target) && !File.Exists(target) && !Directory.Exists(target)) continue;
                             var n = new Node();
                             n.Name = Path.GetFileNameWithoutExtension(file);
                             n.Src = "file:" + file.ToLowerInvariant();
@@ -258,9 +266,11 @@ namespace WinPanel
         }
 
         // .lnk target via the shared WScript.Shell instance (reflection, no
-        // dynamic). Returns null when the path is not a shortcut or the target
-        // cannot be determined (advertised shortcuts stay: launching them still
-        // works).
+        // dynamic). Returns "" when the target cannot be determined - COM
+        // unavailable, or an advertised / UWP shortcut (shell:AppsFolder apps
+        // resolve TargetPath to an empty string). The caller keeps such
+        // shortcuts: launching them still works. Non-shortcut paths never get
+        // here (the caller filters them out before).
         private static string ResolveShortcutTarget(object sh, string path)
         {
             try

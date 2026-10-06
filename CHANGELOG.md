@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.3 — 2026-10-06
+
+- **"Sync user Start"**: a button in Settings (next to the Start Menu sync) and a "close & sync" answer in the first-start welcome window copy your pinned Windows 10 Start tiles — groups, sizes, positions — into a new ordinary tab ("User Start" / «Пользовательский Пуск»; running it again rebuilds that tab). The layout comes from one PowerShell call (`Export-StartLayout` + `Get-StartApps` in a single process, hard 20 s timeout because `Export-StartLayout` hangs forever on systems with a broken Start layer), tile targets resolve to native shortcuts when one exists (a Start Menu scan matches shortcuts by their AppUserModel ID), UWP tiles go through `shell:AppsFolder` paths the panel already launches and icons, Windows tile shapes map onto the square grid (small→1, medium→2, wide→3, large→4), and groups stack in their original order with collisions moved to the nearest free cell. Windows 11 (no tiles) answers with an explanation; pinned Edge sites and Start tile folders cannot be exported by Windows at all and are reported in the final count. No confirmation dialogs on the way: the button does its thing and the report tells what happened. Localized in ten languages.
+- **Quieter backups**: a finished backup no longer posts a Windows notification — routine success toasts just piled up in the notification center. The zip name lands in log.txt; failures still warn (both scheduled and manual backups).
+
+## v1.1.2 — 2026-10-06
+
+- **UWP apps in the Start-menu clone on locked-down systems**: on machines where the shell serves an empty AppsFolder (Windows' own Get-StartApps comes back empty there too), the mirror's "Apps (system)" folder used to stay empty silently. When the shell view enumerates as empty, a registry fallback lists the per-user package repository instead — package family and AppId from the two registry layouts (the newer `Applications\<AUMID>` one and the legacy AppId-key one), display names resolved through SHLoadIndirectString, system-only packages and hidden `Global.*` entries filtered out — and log.txt now records why the shell view came up empty. Launches of the mirrored apps go through a three-step chain (the Windows 8+ ApplicationActivationManager COM, then plain ShellExecute, then an explorer.exe relay), each attempt logged, instead of a plain file open that cannot work for ACL-locked packaged apps.
+- **UWP shortcuts survive the sync**: a .lnk whose target resolves to an empty string — how shortcuts to packaged apps resolve — was dropped as a dead link on every Start-menu sync, so copied Calculator/Alarms shortcuts never made it into the clone. An empty target now keeps the shortcut (launching it still works); only a shortcut naming a real missing file is filtered, and the mirror keeps skipping non-shortcut files exactly as before.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.1...v1.1.2
+
 ## v1.1.1 — 2026-10-05
 
 - **Fewer antivirus false positives**: the console interrupt kills the shell process directly instead of spawning `taskkill /T /F`; the recon-style default bookmarks are gone (process list, ipconfig, netstat, IPv4 addresses, running services, tar); the show-time DWM cloak now wraps only freshly recreated window handles.

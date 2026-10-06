@@ -306,7 +306,15 @@ namespace WinPanel
             { "selected", "个已选" },
             { "Stop", "停止" },
                         { "Stop the running command", "停止正在运行的命令" },
-            { "[stopped]", "[已停止]" }
+            { "[stopped]", "[已停止]" },
+            { "Sync user Start", "同步用户开始屏幕" },
+            { "Close & sync user Start", "关闭并同步用户开始屏幕" },
+            { "Could not export the Start layout - see log.txt.", "无法导出「开始」屏幕布局 - 详情见 log.txt。" },
+            { "No Start tiles found - Windows 11 or the Start menu layer is damaged.", "未找到「开始」屏幕磁贴 - 可能是 Windows 11，或「开始」菜单组件已损坏。" },
+            { "Added: {0}", "已添加: {0}" },
+            { "Skipped (pinned sites, tile folders): {0}", "已跳过（固定的网站、磁贴文件夹）: {0}" },
+            { "Missing on this computer: {0}", "此计算机上没有: {0}" },
+            { "User Start", "用户开始屏幕" }
         };
     }
 }
