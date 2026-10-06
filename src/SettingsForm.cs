@@ -364,8 +364,8 @@ namespace WinPanel
             var lblFolderConsole = new Label { Text = Loc.S("Ctrl+Rt-click console:", "Ctrl+ПКМ консоль:"), Left = 20, Top = y, Width = 130 };
             txtFolderConsole = new TextBox { Left = 150, Top = y - 2, Width = 380, Text = settings.FolderConsole ?? "", BorderStyle = BorderStyle.FixedSingle, BackColor = panelColor, ForeColor = textColor };
             Tip(txtFolderConsole,
-                "Ctrl + right-click on a folder tile runs this command. %1 = the folder path, e.g. wt -d \"%1\" (Windows Terminal) or cmd /K cd /d \"%1\". Empty = off (the regular menu shows).",
-                "Ctrl + правый клик по плитке папки выполняет эту команду. %1 — путь к папке, например wt -d \"%1\" (Windows Terminal) или cmd /K cd /d \"%1\". Пусто = выключено (обычное меню).");
+                "Ctrl + right-click on a folder tile runs this command. %1 = the folder path, e.g. wt -d \"%1\" (Windows Terminal) or cmd /K cd /d \"%1\". Empty = the mini explorer opens on the folder.",
+                "Ctrl + правый клик по плитке папки выполняет эту команду. %1 — путь к папке, например wt -d \"%1\" (Windows Terminal) или cmd /K cd /d \"%1\". Пусто = открывается мини-проводник по папке.");
             scrollPanel.Controls.Add(lblFolderConsole);
             scrollPanel.Controls.Add(txtFolderConsole);
             y += 30;

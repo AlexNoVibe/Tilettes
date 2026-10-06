@@ -4191,6 +4191,152 @@ namespace WinPanel
             return LaunchFolderConsoleCmd(settings, folder);
         }
 
+        // The Ctrl + right-click action on a folder tile. With the console
+        // command configured it runs it; with the command EMPTY the mini
+        // explorer opens on the folder (it used to fall through to the
+        // regular menu). A shortcut to a folder resolves to its target, so
+        // .lnk tiles act like real folder tiles here. Returns false — and
+        // the regular menu shows — when no directory is reachable or the
+        // launch fails.
+        private bool LaunchFolderConsoleOrMini(ShortcutItem item)
+        {
+            try
+            {
+                string folder = ResolveShortcutFolder(item == null ? null : item.Path);
+                if (string.IsNullOrEmpty(folder)) return false;
+                if (!string.IsNullOrWhiteSpace(settings != null ? settings.FolderConsole : null))
+                    return LaunchFolderConsole(folder);
+                OpenMiniExplorer(new ShortcutItem { Path = folder });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("LaunchFolderConsoleOrMini", ex);
+                return false;
+            }
+        }
+
+        // The folder a Ctrl + right-click acts on: the path itself when it is
+        // a directory, otherwise — for a .lnk shortcut — the directory its
+        // target points at. Null when no directory is reachable. Every
+        // attempt lands one line in log.txt, so a failed reveal always has a
+        // reason on record.
+        internal static string ResolveShortcutFolder(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            try
+            {
+                if (Directory.Exists(path)) return path;
+                if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Binary parse first: WScript.Shell (the COM path
+                    // PanelSearch uses) can be dead on machines with a broken
+                    // shell COM layer — this dev box logs E_NOINTERFACE and
+                    // REGDB_E_CLASSNOTREG from several shell classes — and the
+                    // folder open must not depend on COM.
+                    string target = ParseLnkLocalBasePath(path);
+                    if (string.IsNullOrEmpty(target))
+                    {
+                        try { target = PanelSearch.ResolveTarget(path); }
+                        catch { target = null; }
+                    }
+                    if (!string.IsNullOrEmpty(target) && Directory.Exists(target))
+                    {
+                        AppLog.Write("ResolveShortcutFolder: " + path + " -> " + target);
+                        return target;
+                    }
+                    AppLog.Write("ResolveShortcutFolder: no directory for " + path);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("ResolveShortcutFolder: " + ex.Message);
+            }
+            return null;
+        }
+
+        // COM-free .lnk target parse: reads LocalBasePath straight out of the
+        // Shell Link binary (MS-SHLLINK). Returns null for shortcuts that
+        // carry no local target (UWP-style empty targets, network-only).
+        internal static string ParseLnkLocalBasePath(string lnkPath)
+        {
+            try
+            {
+                byte[] b = File.ReadAllBytes(lnkPath);
+                if (b.Length < 0x4C) return null;
+                if (b[0] != 0x4C || b[1] != 0 || b[2] != 0 || b[3] != 0) return null; // shell link signature
+                int flags = b[0x14] | (b[0x15] << 8) | (b[0x16] << 16) | (b[0x17] << 24);
+                int off = 0x4C;
+                if ((flags & 0x01) != 0) // HasLinkTargetIDList: skip the item-id list
+                {
+                    while (off + 2 <= b.Length)
+                    {
+                        int sz = b[off] | (b[off + 1] << 8);
+                        off += 2 + sz;
+                        if (sz == 0) break;
+                    }
+                }
+                if ((flags & 0x02) == 0) return null; // no LinkInfo: target lives in the ID list only
+                if (off + 0x1C > b.Length) return null;
+                int localBasePathOffset = b[off + 0x10] | (b[off + 0x11] << 8) | (b[off + 0x12] << 16) | (b[off + 0x13] << 24);
+                int p = off + localBasePathOffset;
+                if (p <= off || p >= b.Length) return null;
+                int end = p;
+                while (end < b.Length && b[end] != 0) end++;
+                string basePath = System.Text.Encoding.Default.GetString(b, p, end - p);
+                if (string.IsNullOrEmpty(basePath))
+                {
+                    // Non-conformant shortcut: real .lnk files exist whose
+                    // LinkInfo block is absent while the shell still resolves
+                    // the target through the string data (eng1-style). Scan
+                    // the raw bytes for a UTF-16 absolute path instead.
+                    basePath = ScanUtf16AbsolutePath(b);
+                    if (string.IsNullOrEmpty(basePath)) return null;
+                }
+                if (basePath.EndsWith("\\", StringComparison.Ordinal))
+                {
+                    // drive roots keep the rest in CommonPathSuffix ("C:\" + "Windows")
+                    int commonOffset = b[off + 0x18] | (b[off + 0x19] << 8) | (b[off + 0x1A] << 16) | (b[off + 0x1B] << 24);
+                    int q = off + commonOffset;
+                    if (q > off && q < b.Length)
+                    {
+                        int end2 = q;
+                        while (end2 < b.Length && b[end2] != 0) end2++;
+                        basePath += System.Text.Encoding.Default.GetString(b, q, end2 - q);
+                    }
+                }
+                return basePath;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("ParseLnkLocalBasePath: " + ex.Message);
+                return null;
+            }
+        }
+
+        // Scans raw .lnk bytes for a UTF-16 absolute path ("X:\..." or
+        // "\\server\..."): non-conformant shortcuts on this machine carry
+        // the target only as strings while their LinkInfo block is absent
+        // or unreadable (garbage offsets beyond the file), and the shell
+        // still resolves them through the ID list — so the folder open
+        // must scan the raw bytes too instead of trusting the spec layout.
+        internal static string ScanUtf16AbsolutePath(byte[] b)
+        {
+            for (int i = 0x14; i + 12 <= b.Length; i += 2)
+            {
+                bool drive = b[i] >= 'A' && b[i] <= 'Z' && b[i + 1] == 0 && b[i + 2] == ':' && b[i + 3] == 0 && b[i + 4] == '\\' && b[i + 5] == 0;
+                bool unc = b[i] == '\\' && b[i + 1] == 0 && b[i + 2] == '\\' && b[i + 3] == 0 && b[i + 4] != 0 && b[i + 5] != 0;
+                if (!drive && !unc) continue;
+                int end = drive ? i + 6 : i + 4;
+                while (end + 1 < b.Length && !(b[end] == 0 && b[end + 1] == 0)) end += 2;
+                if (end + 2 > b.Length) continue;
+                string s = System.Text.Encoding.Unicode.GetString(b, i, end - i);
+                if (s.Length < 3 || s.IndexOfAny(Path.GetInvalidPathChars()) >= 0) continue;
+                if (Directory.Exists(s)) return s;
+            }
+            return null;
+        }
+
         // Core shared with the folder popup (which carries its own settings).
         internal static bool LaunchFolderConsoleCmd(Settings st, string folder)
         {
@@ -5757,8 +5903,10 @@ namespace WinPanel
                         return;
                     }
                     // Ctrl + right-click on a folder tile: open it in the console
-                    // command from the settings (empty = the regular menu below).
-                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && LaunchFolderConsole(item.Path))
+                    // command from the settings; with the command empty the mini
+                    // explorer opens on the folder instead (the regular menu
+                    // below stays for non-directories and failed launches).
+                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && LaunchFolderConsoleOrMini(item))
                         return;
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
@@ -6034,7 +6182,8 @@ namespace WinPanel
                 {
                     records.Save(recordsPath);
                     RenderCurrentFolder(panel, tabData);
-                });
+                },
+                OpenMiniExplorer);
             popup.Show(this);
         }
 
@@ -6271,21 +6420,28 @@ namespace WinPanel
         }
 
         // Tooltip text for any item: 1) the description has priority (first
-        // line); 2) the full (untruncated) name is added only when the tile
-        // face shows the label abbreviated ("head…tail"). A tile without a
-        // description whose name already fits shows NO tooltip at all — there
-        // is nothing to reveal. No paths: they made the tip noisy.
+        // line); 2) the full (untruncated) name is added whenever the tile
+        // face does not show it in full — the label is abbreviated
+        // ("head…tail") or there is no label band at all (tiles below 56px,
+        // every 1x1: the icon is all the face has, the tooltip is the only
+        // place the name exists). A tile whose name is fully visible and has
+        // no description shows NO tooltip — there is nothing to reveal.
+        // Never returns empty/whitespace: an empty tip balloon is worse than
+        // no tip. No paths: they made the tip noisy.
         internal static string BuildItemTooltipText(ShortcutItem item, bool labelPartial)
         {
             try
             {
                 if (item == null) return null;
                 string desc = item.ShortDescription;
-                bool hasDesc = !string.IsNullOrEmpty(desc);
-                if (!hasDesc && !labelPartial) return null;
-                if (!hasDesc) return UiText.TileLabel(item.Name, item.Path, true, true);
-                if (!labelPartial) return desc;
-                return desc + "\n" + UiText.TileLabel(item.Name, item.Path, true, true);
+                bool hasDesc = !string.IsNullOrWhiteSpace(desc);
+                string label = null;
+                if (labelPartial || hasDesc)
+                    label = UiText.TileLabel(item.Name, item.Path, true, true);
+                if (string.IsNullOrWhiteSpace(label)) label = null;
+                if (!hasDesc) return label;
+                if (!labelPartial || label == null) return desc.Trim();
+                return desc.Trim() + "\n" + label;
             }
             catch { return null; }
         }
@@ -6641,6 +6797,7 @@ namespace WinPanel
         private bool editMode;
         private Action<ShortcutItem> onMoveOutOfFolder;
         private Action onChanged;
+        private Action<ShortcutItem> onOpenMini;
         private Color bgColor;
         private Color panelColor;
         private Color hoverColor;
@@ -6704,13 +6861,14 @@ namespace WinPanel
         public static extern bool ReleaseCapture();
 
         public FolderPopupForm(ShortcutItem folderItem, Point screenPos, Settings settings, bool editMode,
-            Action<ShortcutItem> onMoveOutOfFolder, Action onChanged)
+            Action<ShortcutItem> onMoveOutOfFolder, Action onChanged, Action<ShortcutItem> onOpenMini)
         {
             this.folder = folderItem;
             this.settings = settings;
             this.editMode = editMode;
             this.onMoveOutOfFolder = onMoveOutOfFolder;
             this.onChanged = onChanged;
+            this.onOpenMini = onOpenMini;
 
             // UiPalette: follows the active skin, falls back to the classic
             // light/dark colors without one (used to branch on IsLightTheme,
@@ -7046,7 +7204,22 @@ namespace WinPanel
 
         private bool OpenFolderConsole(ShortcutItem child)
         {
-            return MainForm.LaunchFolderConsoleCmd(settings, child == null ? null : child.Path);
+            // Empty console command: the mini explorer opens on the folder
+            // through the main window (the popup carries no window of its
+            // own). A shortcut to a folder resolves to its target like on
+            // the panel; non-directories keep the regular tile menu.
+            string folder = MainForm.ResolveShortcutFolder(child == null ? null : child.Path);
+            if (string.IsNullOrWhiteSpace(settings != null ? settings.FolderConsole : null))
+            {
+                if (onOpenMini != null && !string.IsNullOrEmpty(folder))
+                {
+                    onOpenMini(new ShortcutItem { Path = folder });
+                    return true;
+                }
+                return false;
+            }
+            if (string.IsNullOrEmpty(folder)) return false;
+            return MainForm.LaunchFolderConsoleCmd(settings, folder);
         }
 
         private void ShowTileMenu(PopupTile tile, ShortcutItem child, Point location)
@@ -7526,9 +7699,11 @@ namespace WinPanel
             return 20;
         }
 
-        // True when OnPaint has to abbreviate this tile's label ("head…tail")
-        // at the current tile size — the hover tooltip then carries the full
-        // name. Uses the same label text, font and band logic as OnPaint.
+        // True when the face does not show this tile's full label: either
+        // OnPaint abbreviates it ("head…tail") or there is no label band at
+        // all (tiles below 56px — every 1x1). The hover tooltip then carries
+        // the full name; on a band-less tile it is the only place the name
+        // exists. Uses the same label text, font and band logic as OnPaint.
         public bool IsLabelShownPartial()
         {
             try
@@ -7538,7 +7713,7 @@ namespace WinPanel
                 string label = UiText.TileLabel(Item.Name, Item.Path,
                     cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
                 int labelSpace = GetTextSpace();
-                if (labelSpace <= 0) return false; // no label band: the face shows no truncated text
+                if (labelSpace <= 0) return true; // no label band: the face shows no name at all
                 string fontName = cfg != null ? cfg.FontItemsName : null;
                 int fontSize = cfg != null ? cfg.FontItemsSize : 0;
                 Font font = fontName != null ? GetSharedLabelFont(fontName, fontSize) : FallbackLabelFont;

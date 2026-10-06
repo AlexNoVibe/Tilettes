@@ -68,8 +68,50 @@ namespace WinPanel
                         if (fi.Exists && fi.Length > 512 * 1024) fi.Delete();
                     }
                     catch { }
-                    File.AppendAllText(p, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + (message ?? "") + Environment.NewLine, Encoding.UTF8);
+                    AppendResilient(p, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + (message ?? ""));
                 }
+            }
+            catch { }
+        }
+
+        private static string fallbackNoted;
+
+        // Appends one line; when the primary log is locked (an editor holds
+        // it open while the user gathers logs) or read-only (a restored
+        // backup attribute), clears the attribute and retries, then falls
+        // back to log2.txt with the reason recorded — diagnostics must never
+        // vanish silently (the empty-log bug: icon rebuilds ran while every
+        // write was swallowed without a trace).
+        private static void AppendResilient(string p, string line)
+        {
+            try
+            {
+                File.AppendAllText(p, line + Environment.NewLine, Encoding.UTF8);
+                return;
+            }
+            catch { }
+            try
+            {
+                var fi = new FileInfo(p);
+                if (fi.Exists && (fi.Attributes & FileAttributes.ReadOnly) != 0)
+                    fi.Attributes = FileAttributes.Normal;
+            }
+            catch { }
+            try
+            {
+                File.AppendAllText(p, line + Environment.NewLine, Encoding.UTF8);
+                return;
+            }
+            catch { }
+            try
+            {
+                string fb = Path.Combine(Path.GetDirectoryName(p), "log2.txt");
+                if (fallbackNoted != p)
+                {
+                    fallbackNoted = p;
+                    File.AppendAllText(fb, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] primary log.txt is locked or read-only — writing diagnostics here", Encoding.UTF8);
+                }
+                File.AppendAllText(fb, line + Environment.NewLine, Encoding.UTF8);
             }
             catch { }
         }

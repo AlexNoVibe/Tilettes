@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.5 — 2026-10-06
+
+- **Hover tooltips on small tiles**: tiles without a label band (every 1×1) always carry the name in the tooltip — the face shows only an icon, so the tip was the only place the name existed — and whitespace-only descriptions no longer produce an empty balloon.
+- **Ctrl+right-click on folder tiles**: with the console command empty the mini explorer opens on the folder (the regular menu used to show); a shortcut to a folder resolves to its target — the target is parsed straight out of the .lnk binary, with a raw-bytes scan for shortcuts whose LinkInfo block is malformed, so resolution no longer depends on WScript.Shell.
+- **Logging never disappears silently**: when log.txt is locked or read-only, the read-only bit is cleared and the write retried, then entries fall back to log2.txt with the reason recorded.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.4...v1.1.5
+
 ## v1.1.4 — 2026-10-06
 
 - **Bulk actions in the red multi-select mode**: the right-click menu over selected tiles gains four items — "Description..." opens one dialog (titled "N selected", seeded from the first selected tile) and lands the text on every selected tile; "Size" carries the same 1×1–6×6 submenu a single folder tile has, applied to all selected (grid tiles are re-fitted into their cells); "Change Icon" picks one icon file and assigns it to every selected tile with the usual copy-into-ico consolidation; "Open containing folder" reveals where the selection lives — one Explorer window per distinct parent folder, so ten tiles from one directory open one window, not ten. Selected tiles now also carry a red checkmark badge (a red disc with a white check, scaling with the tile) in the top-right corner next to the red outline. All items reuse existing menu strings, so the ten languages are covered without new keys.
