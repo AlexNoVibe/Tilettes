@@ -1488,7 +1488,13 @@ namespace WinPanel
             // without a recreate keeps the previous surface and skips both.
             // Cloaking an already visible panel would just blink it, so the
             // visible path keeps the plain behavior. Systems without DWM
-            // cloaking fall back to the plain show too.
+            // cloaking fall back to the plain show too. The desktop re-home
+            // itself is opt-in (MoveToCurrentDesktopOnShow): with the setting
+            // off there is no COM attempt and no recreate at all, and the
+            // re-show always pays for the synchronous repaint - the window is
+            // its own, so the anti-black-frame paint stays cheap; with the
+            // setting on and a working COM layer a recreate-free re-show
+            // still skips the paint, as in 07056a2.
             bool staleSurface = !this.Visible || this.WindowState == FormWindowState.Minimized;
             bool cloaked = false;
             System.Diagnostics.Stopwatch showSw = null;
@@ -1499,7 +1505,7 @@ namespace WinPanel
                     showSw = System.Diagnostics.Stopwatch.StartNew();
                     IntPtr handleBefore = this.Handle;
                     this.Visible = false;          // a re-home recreate (if any) stays invisible
-                    EnsureOnCurrentDesktop();
+                    if (settings.MoveToCurrentDesktopOnShow) EnsureOnCurrentDesktop();
                     bool recreated = this.Handle != handleBefore;
                     // Cloaking is reserved for a freshly recreated handle - the
                     // only case that needs it. A plain re-show composites the
@@ -1515,10 +1521,12 @@ namespace WinPanel
                     this.WindowState = FormWindowState.Normal;
                     // Finish the whole first paint now, off screen, synchronously
                     // (children included) so uncloaking presents a complete frame.
-                    // Needed after a recreate only - with or without a working
-                    // cloak; a plain re-show keeps its old surface.
+                    // Always on the light path (no re-home attempted, so any
+                    // stale surface must be repainted); with the setting on -
+                    // needed after a recreate only, a plain re-show keeps its
+                    // old surface.
                     int paintMs = -1;
-                    if (recreated)
+                    if (recreated || !settings.MoveToCurrentDesktopOnShow)
                     {
                         System.Diagnostics.Stopwatch paintSw = System.Diagnostics.Stopwatch.StartNew();
                         RedrawWindow(this.Handle, IntPtr.Zero, IntPtr.Zero,
@@ -1531,7 +1539,7 @@ namespace WinPanel
                 }
                 else
                 {
-                    EnsureOnCurrentDesktop();
+                    if (settings.MoveToCurrentDesktopOnShow) EnsureOnCurrentDesktop();
                 }
                 // A plain Activate() can be denied foreground rights when another
                 // app owns the focus (this path runs from a hotkey or the Win-key

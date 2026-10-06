@@ -47,6 +47,7 @@ namespace WinPanel
     private TextBox txtFolderOpenProgram;
     private TextBox txtFolderConsole;
     private CheckBox chkWinClick;
+    private CheckBox chkMoveToDesktop;
 
     // A bold section subtitle: the settings are split into blocks. Returns the
     // y for the first row of the section. UseMnemonic=false keeps the "&" of
@@ -443,6 +444,34 @@ namespace WinPanel
                 "Левый клик по кнопке Пуск в углу экрана открывает панель вместо меню Пуск"));
             scrollPanel.Controls.Add(chkWinClick);
             y += 30;
+            // Moving the panel to the current virtual desktop is opt-in: on
+            // systems without the desktop COM component the re-home falls
+            // back to recreating the window handle on every show, so the
+            // checkbox carries a visible warning about the flicker.
+            chkMoveToDesktop = new CheckBox
+            {
+                Text = Loc.S("Move the panel to the current virtual desktop when shown", "Переставлять панель на текущий виртуальный стол при показе"),
+                Left = 20,
+                Top = y,
+                Width = 460,
+                Checked = settings.MoveToCurrentDesktopOnShow,
+                ForeColor = textColor
+            };
+            scrollPanel.Controls.Add(chkMoveToDesktop);
+            y += 30;
+            var lblMtdHint = new Label
+            {
+                Text = Loc.S("Uses the desktop COM component; when it is unavailable the window is recreated on every show - heavier and can make other windows flicker. Leave off unless you use several virtual desktops.",
+                    "Использует COM-компоненту рабочих столов; если она недоступна, окно пересоздаётся при каждом показе - это тяжелее и может заставлять другие окна мерцать. Держите выключенным, если не пользуетесь несколькими виртуальными столами."),
+                Left = 20,
+                Top = y,
+                Width = 480,
+                ForeColor = settings.IsLightTheme ? Color.FromArgb(120, 120, 120) : Color.FromArgb(150, 150, 155)
+            };
+            lblMtdHint.Height = TextRenderer.MeasureText(lblMtdHint.Text, lblMtdHint.Font,
+                new Size(lblMtdHint.Width, int.MaxValue), TextFormatFlags.WordBreak).Height + 2;
+            scrollPanel.Controls.Add(lblMtdHint);
+            y += lblMtdHint.Height + 8;
 
             y = AddSection("Fonts", "Шрифты", y);
             // Font rows: [size] [color] [family] — one row per group
@@ -1089,6 +1118,7 @@ namespace WinPanel
 
             settings.HotkeyWin = chkWinKey.Checked;
             settings.HotkeyStartClick = chkWinClick.Checked;
+            settings.MoveToCurrentDesktopOnShow = chkMoveToDesktop.Checked;
             settings.TilesOpenByDoubleClick = cmbTileOpen.SelectedIndex == 1;
             settings.SearchOpenByDoubleClick = cmbSearchOpen.SelectedIndex == 1;
             settings.SearchSaveHistory = chkSaveHistory.Checked;

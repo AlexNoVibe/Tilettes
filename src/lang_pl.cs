@@ -284,6 +284,8 @@ namespace WinPanel
             { "Extra rows below:", "Dodatkowe rzędy na dole:" },
             { "Like Tilettes? Support the author:", "Podoba Ci się Tilettes? Wesprzyj autora:" },
             { "Opens the donate section on GitHub", "Otwiera sekcję dotacji na GitHubie" },
+            { "Move the panel to the current virtual desktop when shown", "Przenoś panel na bieżące wirtualne biurko przy pokazywaniu" },
+            { "Uses the desktop COM component; when it is unavailable the window is recreated on every show - heavier and can make other windows flicker. Leave off unless you use several virtual desktops.", "Używa komponentu COM biurek; gdy jest niedostępny, okno jest odtwarzane przy każdym pokazaniu - to cięższe i może powodować miganie innych okien. Zostaw wyłączone, jeśli nie używasz kilku wirtualnych biurek." },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "Dodatkowe rzędy kafelków pod widoczną siatką, ten sam rozmiar; dostępne po przewinięciu w dół (0 = wył.)" },
             { "Past search", "Poprzednie wyszukiwania" },

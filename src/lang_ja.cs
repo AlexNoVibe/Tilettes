@@ -284,6 +284,8 @@ namespace WinPanel
             { "Extra rows below:", "下部の追加行:" },
             { "Like Tilettes? Support the author:", "Tilettes を気に入りましたか？作者を支援してください：" },
             { "Opens the donate section on GitHub", "GitHub のドナート（寄付）セクションを開きます" },
+            { "Move the panel to the current virtual desktop when shown", "表示時にパネルを現在の仮想デスクトップへ移動する" },
+            { "Uses the desktop COM component; when it is unavailable the window is recreated on every show - heavier and can make other windows flicker. Leave off unless you use several virtual desktops.", "デスクトップ用 COM コンポーネントを使用します。利用できない場合、表示のたびにウィンドウを再作成するため動作が重く、他のウィンドウが点滅することがあります。複数の仮想デスクトップを使わない場合はオフのままにしてください。" },
             { "Extra tile rows under the visible grid, same cell size; scroll down to reach them (0 = off)",
               "表示グリッドの下に追加するタイル行（同じサイズ）。下にスクロールして到達 (0 = オフ)" },
             { "Past search", "過去の検索" },
