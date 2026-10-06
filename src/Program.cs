@@ -8269,13 +8269,25 @@ namespace WinPanel
         private void ShowSizeMenu()
         {
             var m = new ContextMenu();
-            m.MenuItems.Add(new MenuItem(Loc.S("Group size: auto", "Размер группы: авто"), delegate
+            // The current state readout: auto axes or which ones are pinned.
+            string state;
+            if (Group.FixedW > 0 && Group.FixedH > 0)
+                state = string.Format(Loc.S("Now: width {0} and height {1} fixed", "Сейчас: ширина {0} и высота {1} зафиксированы"), Math.Max(1, Group.W), Math.Max(1, Group.H));
+            else if (Group.FixedW > 0)
+                state = string.Format(Loc.S("Now: width {0} fixed, height auto", "Сейчас: ширина {0} зафиксирована, высота авто"), Math.Max(1, Group.W));
+            else
+                state = string.Format(Loc.S("Now: auto ({0}x{1})", "Сейчас: авто ({0}x{1})"), Math.Max(1, Group.W), Math.Max(1, Group.H));
+            var stateItem = m.MenuItems.Add(state);
+            stateItem.Enabled = false;
+            var autoItem = new MenuItem(Loc.S("Group size: auto", "Размер группы: авто"), delegate
             {
                 Group.FixedW = 0;
                 Group.FixedH = 0;
                 if (SaveAndRelayout != null) SaveAndRelayout();
-            }));
-            m.MenuItems.Add(new MenuItem(Loc.S("Fix width...", "Зафиксировать ширину..."), delegate
+            });
+            autoItem.Checked = Group.FixedW <= 0;
+            m.MenuItems.Add(autoItem);
+            var fixWItem = new MenuItem(Loc.S("Fix width...", "Зафиксировать ширину..."), delegate
             {
                 string v = Prompt.ShowDialog(Loc.S("Width in cells", "Ширина в ячейках"),
                     Loc.S("Fix width...", "Зафиксировать ширину..."), Math.Max(1, Group.W).ToString());
@@ -8286,8 +8298,10 @@ namespace WinPanel
                     Group.W = w;
                     if (SaveAndRelayout != null) SaveAndRelayout();
                 }
-            }));
-            m.MenuItems.Add(new MenuItem(Loc.S("Fix width and height...", "Зафиксировать ширину и высоту..."), delegate
+            });
+            fixWItem.Checked = Group.FixedW > 0 && Group.FixedH <= 0;
+            m.MenuItems.Add(fixWItem);
+            var fixWHItem = new MenuItem(Loc.S("Fix width and height...", "Зафиксировать ширину и высоту..."), delegate
             {
                 string v = Prompt.ShowDialog(Loc.S("Size as WxH, e.g. 8x3", "Размер ШxВ, например 8x3"),
                     Loc.S("Fix width and height...", "Зафиксировать ширину и высоту..."),
@@ -8303,7 +8317,9 @@ namespace WinPanel
                     Group.H = h;
                     if (SaveAndRelayout != null) SaveAndRelayout();
                 }
-            }));
+            });
+            fixWHItem.Checked = Group.FixedW > 0 && Group.FixedH > 0;
+            m.MenuItems.Add(fixWHItem);
             m.MenuItems.Add("-");
             m.MenuItems.Add(new MenuItem(Loc.S("Rename group", "Переименовать группу"), delegate { BeginEdit(); }));
             m.MenuItems.Add(new MenuItem(Loc.S("Delete group", "Удалить группу"), delegate

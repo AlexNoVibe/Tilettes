@@ -323,7 +323,10 @@ namespace WinPanel
             { "Fix width...", "固定宽度..." },
             { "Fix width and height...", "固定宽度和高度..." },
             { "Width in cells", "宽度（单元格数）" },
-            { "Size as WxH, e.g. 8x3", "尺寸如 宽x高，例如 8x3" }
+            { "Size as WxH, e.g. 8x3", "尺寸如 宽x高，例如 8x3" },
+            { "Now: auto ({0}x{1})", "当前：自动 ({0}x{1})" },
+            { "Now: width {0} fixed, height auto", "当前：宽度 {0} 已固定，高度自动" },
+            { "Now: width {0} and height {1} fixed", "当前：宽度 {0} 和高度 {1} 已固定" }
         };
     }
 }

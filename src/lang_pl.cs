@@ -323,7 +323,10 @@ namespace WinPanel
             { "Fix width...", "Fixuj szerokość..." },
             { "Fix width and height...", "Fixuj szerokość i wysokość..." },
             { "Width in cells", "Szerokość w komórkach" },
-            { "Size as WxH, e.g. 8x3", "Rozmiar jako SxW, np. 8x3" }
+            { "Size as WxH, e.g. 8x3", "Rozmiar jako SxW, np. 8x3" },
+            { "Now: auto ({0}x{1})", "Teraz: automatycznie ({0}x{1})" },
+            { "Now: width {0} fixed, height auto", "Teraz: szerokość {0} fixowana, wysokość automatyczna" },
+            { "Now: width {0} and height {1} fixed", "Teraz: szerokość {0} i wysokość {1} fixowane" }
         };
     }
 }
