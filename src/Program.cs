@@ -167,9 +167,6 @@ namespace WinPanel
         private TileGroup previewGroup;
         private Rectangle previewRect;        // cells
         private GroupSurface previewSurface;
-        // Live pixel offsets of groups being dragged by their header: the body
-        // plates are painted by the panel, which must follow the move.
-        internal readonly Dictionary<TileGroup, Point> groupDragOffsets = new Dictionary<TileGroup, Point>();
 
         // Deferred (non-blocking) icon loading
         private readonly Queue<Action> iconQueue = new Queue<Action>();
@@ -5670,8 +5667,7 @@ namespace WinPanel
                             GetCols = () => Math.Max(1, settings.GridColumns),
                             GetRows = () => Math.Max(1, settings.GridRows),
                             SaveAndRelayout = () => { records.Save(recordsPath); ReflowGridTiles(layoutPanel, tabData); layoutPanel.Invalidate(); },
-                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp),
-                            DragOffsets = groupDragOffsets
+                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp)
                         };
                         surface.Build();
                     }
@@ -6334,29 +6330,12 @@ namespace WinPanel
                 }
             }
 
-            // Group body plates: a clean surface under the member tiles, so the
-            // grid markup (and its intersection squares) does not show between
-            // the tiles inside a group. Same int cell math as the tiles and the
-            // group chrome use; during a group drag it follows the live offset.
-            if (tabNavigations[tabData].Count == 0 && tabData.Groups != null && tabData.Groups.Count > 0)
-            {
-                int cellWi = Math.Max(1, panel.ClientSize.Width / cols);
-                int cellHi = Math.Max(1, panel.ClientSize.Height / rows);
-                using (var b = new SolidBrush(panel.BackColor))
-                {
-                    foreach (var g in tabData.Groups)
-                    {
-                        Point off;
-                        if (!groupDragOffsets.TryGetValue(g, out off)) off = Point.Empty;
-                        var bodyRect = new Rectangle(
-                            g.X * cellWi + scroll.X + off.X,
-                            g.Y * cellHi + scroll.Y + off.Y,
-                            Math.Max(1, g.W) * cellWi,
-                            Math.Max(1, g.H) * cellHi);
-                        e.Graphics.FillRectangle(b, bodyRect);
-                    }
-                }
-            }
+            // The dashed grid runs through the groups too: the user wants the
+            // markup independent of grouping - a group reveals itself through
+            // its header strip and frame edges (chrome windows), the interior
+            // keeps the normal grid. (An earlier build painted a background
+            // "body plate" over the group's rect here, which read as the grid
+            // being erased in every empty cell the group spanned.)
         }
 
         private void AddShortcutControl(Panel panel, ShortcutItem item, TabData tabData)
@@ -8254,9 +8233,10 @@ namespace WinPanel
     // body leaves that body to nobody (the parent clips child windows by
     // their rectangles), and every region switch let the panel repaint its
     // dashed grid right over the tiles inside the group. The composite:
-    //   - the body plate is painted by the panel itself, under the tiles
-    //     (LayoutPanel_Paint), so the markup and its intersection squares do
-    //     not show between the tiles of a group;
+    //   - the dashed grid runs through the group interior unchanged - the
+    //     user wants the markup independent of grouping (an earlier build
+    //     painted a background body plate over the group's rect, which read
+    //     as the grid being erased in the group's empty cells);
     //   - the header strip floats above the tiles: editable name, the size
     //     menu on the right, grabbing it moves the whole group with its
     //     tiles; it redraws its own share of the dashed grid, so the markup
@@ -8271,9 +8251,8 @@ namespace WinPanel
         public Color MainTextColor;
         public Func<int> GetCols;
         public Func<int> GetRows;
-        public Action SaveAndRelayout; // save + tile reflow + panel invalidate (the body plates live on the panel)
+        public Action SaveAndRelayout; // save + tile reflow + panel invalidate
         public Action DeleteAction;
-        public Dictionary<TileGroup, Point> DragOffsets; // live pixel offset of a dragged group (the panel plate follows it)
 
         internal TextBox nameBox;
         private GroupPart header, bottom, left, right;
@@ -8467,7 +8446,10 @@ namespace WinPanel
             if (dx == 0 && dy == 0) return;
             // The whole group - header, three frame strips, member tiles -
             // slides in one atomic reposition (see MoveWindowsDeferred); the
-            // fallback re-moves them one by one.
+            // fallback re-moves them one by one. The grid underneath is
+            // panel-painted and position-independent, so the moving chrome
+            // windows need no explicit panel repaints: every exposed strip is
+            // invalidated by the window manager and repaints with the grid.
             var batch = new List<Control>(4 + dragTiles.Count);
             batch.Add(header);
             batch.Add(bottom);
@@ -8485,23 +8467,6 @@ namespace WinPanel
                     dragTiles[i].Left += dx;
                     dragTiles[i].Top += dy;
                 }
-            }
-            // The body plate is panel-painted: move it along and have the
-            // panel repaint the strips of surface it slid between - only the
-            // exposed difference of the two positions, never their union (the
-            // union repaints about twice the group's area on every single
-            // mouse move; the difference is a few pixels wide).
-            Point off;
-            if (!DragOffsets.TryGetValue(Group, out off)) off = Point.Empty;
-            DragOffsets[Group] = new Point(off.X + dx, off.Y + dy);
-            var scroll = OwnerPanel.AutoScrollPosition;
-            var oldRect = new Rectangle(Group.X * cellW + scroll.X + off.X, Group.Y * cellH + scroll.Y + off.Y,
-                Math.Max(1, Group.W) * cellW, Math.Max(1, Group.H) * cellH);
-            var fresh = new Rectangle(oldRect.X + dx, oldRect.Y + dy, oldRect.Width, oldRect.Height);
-            using (var reg = new Region(oldRect))
-            {
-                reg.Xor(fresh);
-                OwnerPanel.Invalidate(reg);
             }
         }
 
@@ -8525,7 +8490,6 @@ namespace WinPanel
             int dcy = (int)Math.Round((header.Top - headerStart.Y) / (double)cellH);
             for (int i = 0; i < dragTiles.Count; i++)
                 dragTiles[i].Location = dragStarts[i]; // snap back; the relayout re-snaps to the grid
-            DragOffsets.Remove(Group);
             OwnerPanel.ResumeLayout(true); // the drag held the layout suspended
             if (dcx != 0 || dcy != 0)
             {
@@ -8540,7 +8504,7 @@ namespace WinPanel
             }
             else
             {
-                OwnerPanel.Invalidate(); // the plate slid back onto itself: clean up the strip it left
+                OwnerPanel.Invalidate(); // the chrome snapped back onto itself: one clean repaint of the grid
             }
             Relayout();
             InvalidateAll();
