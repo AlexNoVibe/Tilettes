@@ -154,6 +154,14 @@ namespace WinPanel
         // move to another tab. Cleared when the tab or the mode changes.
         private readonly List<ShortcutItem> multiSelection = new List<ShortcutItem>();
 
+        // Group drag in the multi-select mode: dragging a selected tile moves the
+        // whole selection as one block. dragTiles holds every selected tile
+        // (the grabbed one first); startPos is the grabbed tile's physical
+        // position at mouse-down, from which the cell delta is derived on drop.
+        private bool groupDrag = false;
+        private List<TileControl> groupDragTiles = null;
+        private Point groupDragStartPos;
+
         // Deferred (non-blocking) icon loading
         private readonly Queue<Action> iconQueue = new Queue<Action>();
         private System.Windows.Forms.Timer iconTimer;
@@ -5396,13 +5404,15 @@ namespace WinPanel
         }
 
         // Finds the nearest free cell to (preferX, preferY) that fits a size x size item.
-        // Returns the preferred cell when it is free.
-        private Point FindFreeGridCell(List<ShortcutItem> items, ShortcutItem skip, int size, int cols, int rows, int preferX, int preferY)
+        // Returns the preferred cell when it is free. skipSet (optional) excludes a
+        // whole group - the moving multi-selection does not collide with itself.
+        private Point FindFreeGridCell(List<ShortcutItem> items, ShortcutItem skip, int size, int cols, int rows, int preferX, int preferY, List<ShortcutItem> skipSet = null)
         {
             var occ = new bool[rows, cols];
             foreach (var it in items)
             {
                 if (ReferenceEquals(it, skip)) continue;
+                if (skipSet != null && skipSet.Contains(it)) continue;
                 int s = Math.Min(ClampItemSize(it.Size), Math.Min(cols, rows));
                 int gx = Math.Max(0, Math.Min(cols - s, it.GridX));
                 int gy = Math.Max(0, Math.Min(rows - s, it.GridY));
@@ -5450,6 +5460,86 @@ namespace WinPanel
             {
                 item.GridX = cell.X;
                 item.GridY = cell.Y;
+            }
+        }
+
+        // Moves a whole multi-selection block by (dxCells, dyCells) cells. Every
+        // tile keeps its relative position when all the target slots are free at
+        // once (the group does not collide with itself); otherwise each blocked
+        // tile shifts to the nearest free cell from its preferred slot, while the
+        // tiles placed before it act as obstacles for the rest.
+        private void PlaceGroupInGrid(TabData tabData, List<TileControl> tiles, int dxCells, int dyCells, int cols, int rowsTotal)
+        {
+            var current = GetCurrentItems(tabData);
+            var group = new List<ShortcutItem>();
+            foreach (var t in tiles) group.Add(t.Item);
+
+            // Stable placement order: reading order of the current positions.
+            var ordered = new List<TileControl>(tiles);
+            ordered.Sort(delegate(TileControl a, TileControl b)
+            {
+                int r = a.Item.GridY.CompareTo(b.Item.GridY);
+                return r != 0 ? r : a.Item.GridX.CompareTo(b.Item.GridX);
+            });
+
+            // All-or-nothing first: the group keeps its shape when every
+            // preferred slot is free at once (the group vacates its own cells).
+            var occ = new bool[rowsTotal, cols];
+            foreach (var it in current)
+            {
+                if (group.Contains(it)) continue;
+                int os = Math.Min(ClampItemSize(it.Size), Math.Min(cols, rowsTotal));
+                int gx = Math.Max(0, Math.Min(cols - os, it.GridX));
+                int gy = Math.Max(0, Math.Min(rowsTotal - os, it.GridY));
+                for (int dy = 0; dy < os; dy++)
+                    for (int dx = 0; dx < os; dx++)
+                        if (gy + dy < rowsTotal && gx + dx < cols) occ[gy + dy, gx + dx] = true;
+            }
+            bool allFit = true;
+            foreach (var t in ordered)
+            {
+                int s = ClampItemSize(t.Item.Size);
+                if (!CellFits(occ, cols, rowsTotal, t.Item.GridX + dxCells, t.Item.GridY + dyCells, s))
+                {
+                    allFit = false;
+                    break;
+                }
+            }
+            if (allFit)
+            {
+                foreach (var t in ordered)
+                {
+                    t.Item.GridX += dxCells;
+                    t.Item.GridY += dyCells;
+                }
+                return;
+            }
+
+            // Something blocks: place tile by tile from each preferred slot;
+            // pending holds the members not yet placed, so their old cells do
+            // not block the search, while the placed ones protect their new cells.
+            var pending = new List<ShortcutItem>(group);
+            foreach (var t in ordered)
+            {
+                var it = t.Item;
+                int s = ClampItemSize(it.Size);
+                int px = it.GridX + dxCells;
+                int py = it.GridY + dyCells;
+                Point cell = FindFreeGridCell(current, null, s, cols, rowsTotal, px, py, pending);
+                if (cell.X < 0)
+                    cell = FindFreeGridCell(current, null, s, cols, Math.Max(rowsTotal, s) * 3, px, py, pending);
+                if (cell.X >= 0)
+                {
+                    it.GridX = cell.X;
+                    it.GridY = cell.Y;
+                }
+                else
+                {
+                    // Grid completely full: keep the preferred slot, clamped.
+                    it.GridX = Math.Max(0, Math.Min(cols - s, px));
+                    it.GridY = Math.Max(0, py);
+                }
+                pending.Remove(it);
             }
         }
 
@@ -5893,6 +5983,24 @@ namespace WinPanel
                     draggingTile = tile;
                     draggingItem = item;
                     tile.BringToFront();
+                    // Multi-select mode: grabbing a selected tile drags the whole
+                    // selection as one block; a grab of an unselected tile (or a
+                    // single-item selection) stays a plain single-tile drag.
+                    groupDrag = editState == 2 && multiSelection.Count > 1 && multiSelection.Contains(item);
+                    groupDragTiles = null;
+                    if (groupDrag)
+                    {
+                        groupDragTiles = new List<TileControl>();
+                        groupDragTiles.Add(tile);
+                        foreach (Control c in panel.Controls)
+                        {
+                            var gt = c as TileControl;
+                            if (gt != null && !ReferenceEquals(gt, tile) && multiSelection.Contains(gt.Item))
+                                groupDragTiles.Add(gt);
+                        }
+                        foreach (var gt in groupDragTiles) gt.BringToFront();
+                        groupDragStartPos = new Point(tile.Left, tile.Top);
+                    }
                 }
                 else if (e.Button == MouseButtons.Right)
                 {
@@ -5981,8 +6089,23 @@ namespace WinPanel
                     if (!isEditMode) return;
                     if (dragFired)
                     {
+                        int oldLeft = tile.Left;
+                        int oldTop = tile.Top;
                         tile.Left = tile.Left + e.X - dragStartPoint.X;
                         tile.Top = tile.Top + e.Y - dragStartPoint.Y;
+                        // The captured mouse sends every MouseMove here, so the
+                        // rest of the selection just follows the grabbed tile.
+                        if (groupDrag && groupDragTiles != null)
+                        {
+                            int dx = tile.Left - oldLeft;
+                            int dy = tile.Top - oldTop;
+                            foreach (var gt in groupDragTiles)
+                            {
+                                if (ReferenceEquals(gt, tile)) continue;
+                                gt.Left += dx;
+                                gt.Top += dy;
+                            }
+                        }
                     }
                 }
             };
@@ -5991,6 +6114,10 @@ namespace WinPanel
             {
                 if (e.Button == MouseButtons.Left && isDragging && draggingTile == tile)
                 {
+                    bool wasGroupDrag = groupDrag && groupDragTiles != null && groupDragTiles.Count > 1;
+                    List<TileControl> dragTiles = groupDragTiles;
+                    groupDrag = false;
+                    groupDragTiles = null;
                     isDragging = false;
                     if (dragFired)
                     {
@@ -5998,20 +6125,45 @@ namespace WinPanel
 
                         var ptClient = panel.PointToClient(Cursor.Position);
                         ShortcutItem targetFolder = null;
-                        foreach (Control c in panel.Controls)
+                        if (!wasGroupDrag)
                         {
-                            var otherTile = c as TileControl;
-                            if (otherTile != null && otherTile != tile && otherTile.Item.IsFolder)
+                            foreach (Control c in panel.Controls)
                             {
-                                if (otherTile.Bounds.Contains(ptClient))
+                                var otherTile = c as TileControl;
+                                if (otherTile != null && otherTile != tile && otherTile.Item.IsFolder)
                                 {
-                                    targetFolder = otherTile.Item;
-                                    break;
+                                    if (otherTile.Bounds.Contains(ptClient))
+                                    {
+                                        targetFolder = otherTile.Item;
+                                        break;
+                                    }
                                 }
                             }
                         }
 
-                        if (targetFolder != null)
+                        if (wasGroupDrag)
+                        {
+                            // The whole selection was moved: keep the relative
+                            // positions where the targets are free, push the
+                            // blocked ones to the nearest free cell. Dropping
+                            // the block onto a folder tile just places it there
+                            // (bulk folder merge stays a menu action).
+                            if (tabData.IsGridLayout)
+                            {
+                                int dxCells = (int)Math.Round((tile.Left - groupDragStartPos.X) / (double)cellWidth);
+                                int dyCells = (int)Math.Round((tile.Top - groupDragStartPos.Y) / (double)cellHeight);
+                                PlaceGroupInGrid(tabData, dragTiles, dxCells, dyCells, cols, rowsTotal);
+                            }
+                            else
+                            {
+                                foreach (var gt in dragTiles)
+                                {
+                                    gt.Item.X = gt.Left - panel.DisplayRectangle.X;
+                                    gt.Item.Y = gt.Top - panel.DisplayRectangle.Y;
+                                }
+                            }
+                        }
+                        else if (targetFolder != null)
                         {
                             var navStack = tabNavigations[tabData];
                             var currentList = navStack.Count > 0 ? navStack.Peek().Children : tabData.Items;
