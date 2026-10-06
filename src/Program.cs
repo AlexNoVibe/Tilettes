@@ -4022,6 +4022,42 @@ namespace WinPanel
             }
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr BeginDeferWindowPos(int n);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr DeferWindowPos(IntPtr hd, IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool EndDeferWindowPos(IntPtr hd);
+
+        // Moves a block of child windows in ONE atomic reposition: N separate
+        // SetWindowPos calls each run the full changing/changed round-trip and
+        // schedule their own recomposition, and a group or multi-select drag
+        // issues such a call per tile per mouse event. Deferred, the whole
+        // block slides in a single composition step. WinForms re-syncs every
+        // Control's cached bounds from the WM_WINDOWPOSCHANGED the native move
+        // delivers, and the panel layout stays suspended for the drag's
+        // duration, so no layout cascade follows. False when the batch could
+        // not even be built - the caller falls back to plain per-control moves.
+        internal static bool MoveWindowsDeferred(System.Collections.Generic.IList<Control> ctrls, int dx, int dy)
+        {
+            if (ctrls == null || ctrls.Count == 0 || (dx == 0 && dy == 0)) return true;
+            foreach (Control c in ctrls)
+            {
+                if (c == null || !c.IsHandleCreated) return false; // never a partial batch
+            }
+            IntPtr hd = BeginDeferWindowPos(ctrls.Count);
+            if (hd == IntPtr.Zero) return false;
+            const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_NOOWNERZORDER = 0x0200;
+            for (int i = 0; i < ctrls.Count; i++)
+            {
+                Control c = ctrls[i];
+                hd = DeferWindowPos(hd, c.Handle, IntPtr.Zero, c.Left + dx, c.Top + dy, c.Width, c.Height,
+                                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+                if (hd == IntPtr.Zero) return false;
+            }
+            return EndDeferWindowPos(hd);
+        }
+
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
         {
             if (tile.IsDisposed) return;
@@ -8413,28 +8449,47 @@ namespace WinPanel
         {
             header.Cursor = e.X >= header.Width - 26 ? Cursors.Hand : Cursors.SizeAll;
             if (!dragging) return;
-            int oldLeft = header.Left, oldTop = header.Top;
-            header.Left += e.X - grabPoint.X;
-            header.Top += e.Y - grabPoint.Y;
-            int dx = header.Left - oldLeft, dy = header.Top - oldTop;
+            int dx = e.X - grabPoint.X;
+            int dy = e.Y - grabPoint.Y;
             if (dx == 0 && dy == 0) return;
-            bottom.Left += dx; bottom.Top += dy;
-            left.Left += dx; left.Top += dy;
-            right.Left += dx; right.Top += dy;
-            for (int i = 0; i < dragTiles.Count; i++)
+            // The whole group - header, three frame strips, member tiles -
+            // slides in one atomic reposition (see MoveWindowsDeferred); the
+            // fallback re-moves them one by one.
+            var batch = new List<Control>(4 + dragTiles.Count);
+            batch.Add(header);
+            batch.Add(bottom);
+            batch.Add(left);
+            batch.Add(right);
+            for (int i = 0; i < dragTiles.Count; i++) batch.Add(dragTiles[i]);
+            if (!MainForm.MoveWindowsDeferred(batch, dx, dy))
             {
-                dragTiles[i].Left += dx;
-                dragTiles[i].Top += dy;
+                header.Left += dx; header.Top += dy;
+                bottom.Left += dx; bottom.Top += dy;
+                left.Left += dx; left.Top += dy;
+                right.Left += dx; right.Top += dy;
+                for (int i = 0; i < dragTiles.Count; i++)
+                {
+                    dragTiles[i].Left += dx;
+                    dragTiles[i].Top += dy;
+                }
             }
             // The body plate is panel-painted: move it along and have the
-            // panel repaint the two strips of surface it slid between.
+            // panel repaint the strips of surface it slid between - only the
+            // exposed difference of the two positions, never their union (the
+            // union repaints about twice the group's area on every single
+            // mouse move; the difference is a few pixels wide).
             Point off;
             if (!DragOffsets.TryGetValue(Group, out off)) off = Point.Empty;
             DragOffsets[Group] = new Point(off.X + dx, off.Y + dy);
             var scroll = OwnerPanel.AutoScrollPosition;
             var oldRect = new Rectangle(Group.X * cellW + scroll.X + off.X, Group.Y * cellH + scroll.Y + off.Y,
                 Math.Max(1, Group.W) * cellW, Math.Max(1, Group.H) * cellH);
-            OwnerPanel.Invalidate(Rectangle.Union(oldRect, new Rectangle(oldRect.X + dx, oldRect.Y + dy, oldRect.Width, oldRect.Height)));
+            var fresh = new Rectangle(oldRect.X + dx, oldRect.Y + dy, oldRect.Width, oldRect.Height);
+            using (var reg = new Region(oldRect))
+            {
+                reg.Xor(fresh);
+                OwnerPanel.Invalidate(reg);
+            }
         }
 
         public void HeaderMouseDown(MouseEventArgs e)

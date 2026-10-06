@@ -134,17 +134,10 @@ namespace WinPanel
                             catch { }
                         }
                     }
-                    if (!string.IsNullOrEmpty(target) && File.Exists(target))
+                    if (!string.IsNullOrEmpty(target))
                     {
-                        try
-                        {
-                            var vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(target);
-                            Add(list, vi.FileDescription);
-                            Add(list, vi.ProductName);
-                            Add(list, vi.CompanyName);
-                            Add(list, vi.OriginalFilename);
-                        }
-                        catch { }
+                        string[] vi = VersionMetas(target);
+                        for (int i = 0; i < vi.Length; i++) Add(list, vi[i]);
                     }
                 }
                 catch { }
@@ -188,19 +181,96 @@ namespace WinPanel
             list.Add(s.ToLowerInvariant());
         }
 
-        // .lnk target via the WScript.Shell COM object (reflection, no dynamic).
-        private static string ResolveShortcut(string lnkPath)
+        // Targets of resolved .lnk files this session (path -> target, "" when
+        // unresolved). The resolution used to activate a fresh WScript.Shell COM
+        // object for EVERY shortcut on EVERY call - milliseconds each, and the
+        // first search (or the first icon pass over a .lnk-heavy tab) paid it
+        // hundreds of times over. The binary parse is instant and covers the
+        // normal local flavours; the UTF-16 scan catches the non-conformant
+        // ones; the COM object is the last-resort fallback, one per thread.
+        private static readonly object ResolveGate = new object();
+        private static readonly Dictionary<string, string> ResolveCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        [ThreadStatic]
+        private static object WscriptShell;
+
+        // Version-info strings per resolved target (FileDescription etc.). Panel
+        // items commonly point at the same executable many times over (Start
+        // menu mirrors, duplicated tiles); without this every cold meta entry
+        // re-read the version resource from disk for each of them.
+        private static readonly object ViGate = new object();
+        private static readonly Dictionary<string, string[]> ViCache = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+
+        private static string[] VersionMetas(string target)
         {
+            lock (ViGate)
+            {
+                string[] hit;
+                if (ViCache.TryGetValue(target, out hit)) return hit;
+            }
+            string[] metas = new string[0];
             try
             {
-                var t = Type.GetTypeFromProgID("WScript.Shell");
-                if (t == null) return null;
-                object sh = Activator.CreateInstance(t);
-                object sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
-                object target = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null);
-                return target as string;
+                var vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(target);
+                metas = new string[] { vi.FileDescription, vi.ProductName, vi.CompanyName, vi.OriginalFilename };
             }
-            catch { return null; }
+            catch { }
+            lock (ViGate)
+            {
+                if (ViCache.Count > 2000) ViCache.Clear();
+                ViCache[target] = metas;
+            }
+            return metas;
+        }
+
+        // .lnk target via the WScript.Shell COM object (reflection, no dynamic).
+        // One instance per thread: the COM activation itself costs milliseconds
+        // and the automation object is reusable for any number of shortcuts.
+        private static string ResolveShortcut(string lnkPath)
+        {
+            string key = lnkPath ?? "";
+            lock (ResolveGate)
+            {
+                string hit;
+                if (ResolveCache.TryGetValue(key, out hit)) return hit;
+            }
+            string target = null;
+            try { target = MainForm.ParseLnkLocalBasePath(lnkPath); } catch { }
+            if (string.IsNullOrEmpty(target))
+            {
+                try { target = MainForm.ScanUtf16AbsolutePath(File.ReadAllBytes(lnkPath)); }
+                catch { }
+            }
+            if (string.IsNullOrEmpty(target))
+            {
+                try
+                {
+                    object sh = WscriptShell;
+                    if (sh == null)
+                    {
+                        Type t = Type.GetTypeFromProgID("WScript.Shell");
+                        if (t != null)
+                        {
+                            sh = Activator.CreateInstance(t);
+                            WscriptShell = sh;
+                        }
+                    }
+                    if (sh != null)
+                    {
+                        object sc = sh.GetType().InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
+                        object tp = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null);
+                        target = tp as string;
+                    }
+                }
+                catch { }
+            }
+            string resolved = target ?? "";
+            lock (ResolveGate)
+            {
+                if (ResolveCache.Count > 4000) ResolveCache.Clear();
+                ResolveCache[key] = resolved;
+            }
+            return resolved.Length == 0 ? null : resolved;
         }
     }
 }
