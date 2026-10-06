@@ -5417,7 +5417,7 @@ namespace WinPanel
                         };
                         gc.UpdateBoundsFromCells();
                         layoutPanel.Controls.Add(gc);
-                        gc.SendToBack();
+                        gc.BringToFront(); // the group draws OVER the tiles; the body stays click-through via its window region
                     }
                 }
             }
@@ -5814,9 +5814,10 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("DeleteTileGroup", ex); }
         }
 
-        // Auto-sized group axes hug their members: recompute them from the
-        // bounding box of the tiles whose top-left cell is inside the group;
-        // a fixed axis keeps the user-set size. Empty groups keep their rect.
+        // Auto-sized group axes: the width is a constant 8 cells (making it
+        // smaller is what the fixed width is for), the height hugs the member
+        // tiles but never drops below the default 3 rows. Fixed axes keep the
+        // user-set size. Empty groups keep their rect.
         private void FitGroupsToItems(TabData tabData, List<ShortcutItem> items)
         {
             var groups = tabData.Groups;
@@ -5824,20 +5825,16 @@ namespace WinPanel
             int cols = Math.Max(1, settings.GridColumns);
             foreach (var g in groups)
             {
-                if (g.FixedW > 0 && g.FixedH > 0) continue;
-                int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+                if (g.FixedW <= 0) g.W = Math.Min(8, cols);
+                if (g.FixedH > 0) continue;
+                int maxY = int.MinValue;
                 foreach (var it in items)
                 {
                     if (it.GridX < g.X || it.GridX >= g.X + g.W || it.GridY < g.Y || it.GridY >= g.Y + g.H) continue;
                     int s = ClampItemSize(it.Size);
-                    if (it.GridX < minX) minX = it.GridX;
-                    if (it.GridY < minY) minY = it.GridY;
-                    if (it.GridX + s > maxX) maxX = it.GridX + s;
                     if (it.GridY + s > maxY) maxY = it.GridY + s;
                 }
-                if (minX == int.MaxValue) continue; // no members: keep as is
-                if (g.FixedW <= 0) { g.X = Math.Max(0, minX); g.W = Math.Max(1, Math.Min(cols - Math.Max(0, minX), maxX - minX)); }
-                if (g.FixedH <= 0) { g.Y = Math.Max(0, minY); g.H = Math.Max(1, maxY - minY); }
+                if (maxY != int.MinValue) g.H = Math.Max(3, maxY - g.Y);
             }
         }
 
@@ -6296,6 +6293,12 @@ namespace WinPanel
                     {
                         if (!isEditMode) return;
 
+                        // Red-mode selection survives the drag: the re-render
+                        // below clears it by convention, the flags and the list
+                        // are restored right after it.
+                        List<ShortcutItem> keepSelection =
+                            (editState == 2 && multiSelection.Contains(item)) ? new List<ShortcutItem>(multiSelection) : null;
+
                         var ptClient = panel.PointToClient(Cursor.Position);
                         ShortcutItem targetFolder = null;
                         if (!wasGroupDrag)
@@ -6366,13 +6369,25 @@ namespace WinPanel
                         // drop into / near a group; folder merge wins over it).
                         if (dropGroup != null && targetFolder == null)
                         {
-                            dropGroup.X = dropRect.X;
-                            dropGroup.Y = dropRect.Y;
+                            dropGroup.X = Math.Max(0, dropRect.X);
+                            dropGroup.Y = Math.Max(1, dropRect.Y); // row 0 would clip the header line away
                             dropGroup.W = dropRect.Width;
                             dropGroup.H = dropRect.Height;
                         }
                         records.Save(recordsPath);
                         RenderCurrentFolder(panel, tabData);
+                        if (keepSelection != null)
+                        {
+                            multiSelection.Clear();
+                            multiSelection.AddRange(keepSelection);
+                            foreach (Control c in panel.Controls)
+                            {
+                                var t = c as TileControl;
+                                if (t == null) continue;
+                                bool sel = keepSelection.Contains(t.Item);
+                                if (t.MultiSelected != sel) { t.MultiSelected = sel; t.Invalidate(); }
+                            }
+                        }
                     }
                     else
                     {
@@ -7913,6 +7928,7 @@ namespace WinPanel
         public Action DeleteAction;
 
         private int cellW = 60, cellH = 60;
+        private Font ownFont; // GroupControl-owned; the ambient Font must never be disposed by painting
         private bool hover;
         private Rectangle? preview; // cells, when a tile is dragged into the group
         private bool dragging;
@@ -7935,6 +7951,8 @@ namespace WinPanel
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+            ownFont = new Font("Segoe UI", 10f);
+            Font = ownFont;
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -7945,7 +7963,7 @@ namespace WinPanel
                 e.Graphics.FillRectangle(b, ClientRectangle);
         }
 
-        private int HeaderPx { get { return Math.Max(16, Math.Min(24, cellH / 3)); } }
+        private int HeaderPx { get { return Math.Max(24, cellH / 2); } }
         private bool HasName { get { return !string.IsNullOrEmpty(Group.Name); } }
         private bool Revealed { get { return hover || preview.HasValue || dragging; } }
 
@@ -7982,7 +8000,30 @@ namespace WinPanel
 
         private void UpdateRegion()
         {
-            Region r = Revealed ? null : new Region(new Rectangle(0, 0, Width, HeaderPx));
+            // The control sits above the tiles, so the window region carries
+            // the whole interaction model: only the header strip and the thin
+            // frame band catch the mouse and paint; the body interior is
+            // excluded - clicks and the grid dots there fall through to the
+            // tiles underneath.
+            Region r;
+            if (Revealed)
+            {
+                r = new Region(new Rectangle(0, 0, Width, HeaderPx));
+                const int b = 3;
+                r.Union(new Rectangle(0, HeaderPx, Width, b));
+                r.Union(new Rectangle(0, Height - b, Width, b));
+                r.Union(new Rectangle(0, HeaderPx, b, Height - HeaderPx));
+                r.Union(new Rectangle(Width - b, HeaderPx, b, Height - HeaderPx));
+            }
+            else if (HasName)
+                r = new Region(new Rectangle(0, 0, Width, HeaderPx));
+            else
+            {
+                // Unnamed and idle: fully invisible, only a thin live line
+                // along the group's top edge stays as the hover target.
+                int hit = Math.Min(12, HeaderPx);
+                r = new Region(new Rectangle(0, HeaderPx - hit, Width, hit));
+            }
             if (Region != null) Region.Dispose();
             Region = r;
         }
@@ -8005,11 +8046,15 @@ namespace WinPanel
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            // The idle region covers only the header strip: moving into the
-            // body fires MouseLeave, but the pointer is still over the group -
-            // keep the reveal until it truly exits the full rect.
+            // Crossing from the strip into the body fires MouseLeave (the body
+            // is not part of the window region): collapse only when the pointer
+            // is truly outside the strip and the frame band.
             var p = PointToClient(Cursor.Position);
-            if (ClientRectangle.Contains(p)) return;
+            const int b = 3;
+            bool inStrip = p.X >= 0 && p.X < Width && p.Y >= 0 && p.Y <= HeaderPx;
+            bool inFrame = p.X >= 0 && p.X < Width && p.Y > HeaderPx && p.Y < Height &&
+                           (p.X < b || p.X >= Width - b || p.Y >= Height - b);
+            if (inStrip || inFrame) return;
             hover = false;
             UpdateRegion();
             Invalidate();
@@ -8058,7 +8103,7 @@ namespace WinPanel
             if (dcx != 0 || dcy != 0)
             {
                 Group.X = Math.Max(0, Group.X + dcx);
-                Group.Y = Math.Max(0, Group.Y + dcy);
+                Group.Y = Math.Max(1, Group.Y + dcy); // row 0 would clip the header line away
                 foreach (var t in dragTiles)
                 {
                     t.Item.GridX = Math.Max(0, t.Item.GridX + dcx);
@@ -8201,9 +8246,16 @@ namespace WinPanel
             if (caption != null)
             {
                 bool ghost = !HasName;
-                using (var f = ghost ? new Font(Font, FontStyle.Italic) : Font)
-                using (var b = new SolidBrush(Color.FromArgb(ghost ? 110 : 150, MainTextColor)))
-                    g.DrawString(caption, f, b, new Rectangle(8, 1, Math.Max(20, Width - 32), HeaderPx - 2), Sf);
+                // Only the italic variant is disposable here; the control's own
+                // Font must survive the paint (disposing it made every next
+                // repaint throw "Parameter is not valid").
+                Font drawFont = ghost ? new Font(Font, FontStyle.Italic) : Font;
+                try
+                {
+                    using (var b = new SolidBrush(Color.FromArgb(ghost ? 110 : 150, MainTextColor)))
+                        g.DrawString(caption, drawFont, b, new Rectangle(8, 1, Math.Max(20, Width - 32), HeaderPx - 2), Sf);
+                }
+                finally { if (ghost) drawFont.Dispose(); }
             }
             if (!Revealed) return;
             // The size toggle on the right of the header line.
@@ -8214,20 +8266,28 @@ namespace WinPanel
                 g.DrawLine(p, bx - 7, by, bx + 7, by);
                 g.DrawLine(p, bx - 7, by + 3, bx + 7, by + 3);
             }
-            // Outer perimeter of the group: barely visible over the header
-            // hover, clearly visible while something is dragged into it.
-            using (var p = new Pen(Color.FromArgb(strong ? 170 : 70, MainTextColor)))
-                g.DrawRectangle(p, 0, HeaderPx, Width - 1, Height - HeaderPx - 1);
-            using (var p = new Pen(Color.FromArgb(strong ? 100 : 45, MainTextColor)))
-                g.DrawLine(p, 0, HeaderPx, Width - 1, HeaderPx);
+            // Outer perimeter of the group body: barely visible over the header
+            // hover, clearly visible while something is dragged into it. The
+            // control is above the tiles, so only this 2px ring (plus the
+            // header) is ever painted - the body interior stays with the tiles.
+            using (var p = new Pen(Color.FromArgb(strong ? 170 : 70, MainTextColor), 2f))
+                g.DrawRectangle(p, 1, HeaderPx + 1, Math.Max(2, Width - 2), Math.Max(2, Height - HeaderPx - 2));
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && nameBox != null)
+            if (disposing)
             {
-                nameBox.Dispose();
-                nameBox = null;
+                if (nameBox != null)
+                {
+                    nameBox.Dispose();
+                    nameBox = null;
+                }
+                if (ownFont != null)
+                {
+                    ownFont.Dispose();
+                    ownFont = null;
+                }
             }
             base.Dispose(disposing);
         }
