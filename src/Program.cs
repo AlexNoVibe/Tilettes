@@ -6037,7 +6037,12 @@ namespace WinPanel
 
             var scroll = panel.AutoScrollPosition;
 
-            e.Graphics.SetClip(panel.ClientRectangle);
+            // Bound the drawing to the client rectangle INTERSECTED with the
+            // area actually invalidated. A plain SetClip here discarded the
+            // invalid-region clip, so every tiny exposed strip during a drag
+            // re-rendered the whole grid into the double buffer (dozens of
+            // full-panel renders per second while dragging several tiles).
+            e.Graphics.SetClip(panel.ClientRectangle, System.Drawing.Drawing2D.CombineMode.Intersect);
 
             // The border rectangle in virtual (scroll-aware) coordinates: interior
             // lines span exactly between the border lines so the dashed grid ends
