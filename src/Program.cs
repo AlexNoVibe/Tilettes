@@ -1600,12 +1600,26 @@ namespace WinPanel
         // the virtual-desktop COM class return true only when they also have no
         // virtual desktops (pre-Windows 10); a stripped Windows 10+ image falls
         // through to the caller's fallback.
+        // The virtual-desktop COM class registration does not change while the
+        // process runs: after the first "class not registered" there is no
+        // point retrying CoCreateInstance on every show - each retry costs an
+        // exception and repeats the full HRESULT line in the log.
+        private static bool s_noDesktopCom;
+
         private static bool MoveToCurrentDesktop(IntPtr hwnd)
         {
             if (hwnd == IntPtr.Zero) return false;
             IVirtualDesktopManager mgr = null;
-            try { mgr = (IVirtualDesktopManager)new CVirtualDesktopManager(); }
-            catch (Exception ex) { AppLog.Write("Desktop move: COM manager unavailable: " + ex.Message); mgr = null; }
+            if (!s_noDesktopCom)
+            {
+                try { mgr = (IVirtualDesktopManager)new CVirtualDesktopManager(); }
+                catch (Exception ex)
+                {
+                    AppLog.Write("Desktop move: COM manager unavailable: " + ex.Message);
+                    s_noDesktopCom = true;
+                    mgr = null;
+                }
+            }
             if (mgr == null)
             {
                 // No COM class: virtual desktops can still exist (stripped
