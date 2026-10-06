@@ -39,6 +39,29 @@ namespace WinPanel
         }
     }
 
+    // A named rectangular region on a grid tab that visually holds the tiles
+    // dropped inside it ("grouping, not folders"): the tiles keep their own
+    // grid cells, the group is only a container drawn under them. X/Y/W/H are
+    // cells of the current rect; FixedW/FixedH pin an axis to a user-set size
+    // (0 = auto: the axis follows the bounding box of the member tiles).
+    public class TileGroup
+    {
+        public string Name { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int W { get; set; }
+        public int H { get; set; }
+        public int FixedW { get; set; }
+        public int FixedH { get; set; }
+
+        public TileGroup()
+        {
+            Name = "";
+            W = 8;
+            H = 3;
+        }
+    }
+
     public class TabData
     {
         public string Name { get; set; }
@@ -47,11 +70,20 @@ namespace WinPanel
         // Special tab type ("startmenu" = mirrored system Start Menu; null = normal).
         public string Kind { get; set; }
         public List<ShortcutItem> Items { get; set; }
+        // Tile groups (grid tabs only). XmlSerializer does not run constructors,
+        // so records saved before groups existed deserialize with a null list.
+        public List<TileGroup> Groups { get; set; }
 
         public TabData()
         {
             Items = new List<ShortcutItem>();
             Row = 0;
+        }
+
+        public List<TileGroup> EnsureGroups()
+        {
+            if (Groups == null) Groups = new List<TileGroup>();
+            return Groups;
         }
     }
 

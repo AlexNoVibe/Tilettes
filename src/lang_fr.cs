@@ -314,7 +314,16 @@ namespace WinPanel
             { "Added: {0}", "Ajoutées : {0}" },
             { "Skipped (pinned sites, tile folders): {0}", "Ignorées (sites épinglés, dossiers de tuiles) : {0}" },
             { "Missing on this computer: {0}", "Absentes de cet ordinateur : {0}" },
-            { "User Start", "Démarrage de l'utilisateur" }
+            { "User Start", "Démarrage de l'utilisateur" },
+            { "Create Group", "Créer un groupe" },
+            { "Name the group", "Nommer le groupe" },
+            { "Rename group", "Renommer le groupe" },
+            { "Delete group", "Supprimer le groupe" },
+            { "Group size: auto", "Taille du groupe : auto" },
+            { "Fix width...", "Fixer la largeur..." },
+            { "Fix width and height...", "Fixer la largeur et la hauteur..." },
+            { "Width in cells", "Largeur en cellules" },
+            { "Size as WxH, e.g. 8x3", "Taille en LxH, ex. 8x3" }
         };
     }
 }

@@ -314,7 +314,16 @@ namespace WinPanel
             { "Added: {0}", "追加: {0}" },
             { "Skipped (pinned sites, tile folders): {0}", "スキップ（ピン留めされたサイト、タイル フォルダー）: {0}" },
             { "Missing on this computer: {0}", "このコンピューターにない: {0}" },
-            { "User Start", "ユーザーのスタート" }
+            { "User Start", "ユーザーのスタート" },
+            { "Create Group", "グループを作成" },
+            { "Name the group", "グループに名前を付ける" },
+            { "Rename group", "グループ名を変更" },
+            { "Delete group", "グループを削除" },
+            { "Group size: auto", "グループサイズ: 自動" },
+            { "Fix width...", "幅を固定..." },
+            { "Fix width and height...", "幅と高さを固定..." },
+            { "Width in cells", "幅（セル数）" },
+            { "Size as WxH, e.g. 8x3", "サイズは幅x高さ、例: 8x3" }
         };
     }
 }
