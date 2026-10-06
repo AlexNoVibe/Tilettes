@@ -6697,6 +6697,7 @@ namespace WinPanel
                     }
                     else
                     {
+                        bool openedInMini = false;
                         bool ctrlClick = CtrlHeld();
                         // Red multi-select mode: a plain click toggles selection and
                         // never launches anything.
@@ -6705,14 +6706,23 @@ namespace WinPanel
                             ToggleMultiSelect(tile, item);
                             return;
                         }
-                        bool isDir = false;
-                        try { isDir = !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path); }
-                        catch (Exception ex) { AppLog.Write("TileClick: Directory.Exists", ex); }
-                        if (ctrlClick && settings.MiniExplorerCtrlClick && isDir)
+                        if (ctrlClick && settings.MiniExplorerCtrlClick)
                         {
-                            OpenMiniExplorer(item);
+                            // The folder itself, or - for a shortcut to a folder -
+                            // the directory its target points at. A plain
+                            // Directory.Exists on the tile path used to miss .lnk
+                            // tiles, and Ctrl + click fell through to the normal
+                            // launch: Explorer opened instead of the mini explorer.
+                            string ctrlFolder = ResolveShortcutFolder(item == null ? null : item.Path);
+                            if (!string.IsNullOrEmpty(ctrlFolder))
+                            {
+                                OpenMiniExplorer(new ShortcutItem { Path = ctrlFolder });
+                                openedInMini = true;
+                            }
+                            // No directory reachable: the normal launch below
+                            // keeps its old meaning (a dead shortcut still opens).
                         }
-                        else if (!settings.TilesOpenByDoubleClick)
+                        if (!openedInMini && !settings.TilesOpenByDoubleClick)
                         {
                             // Single-click open (the classic behavior). In the
                             // double-click mode the MouseDoubleClick handler opens.
