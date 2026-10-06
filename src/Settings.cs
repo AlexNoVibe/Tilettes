@@ -494,87 +494,87 @@ namespace WinPanel
         {
             try
             {
-                var ini = new IniFile(path);
-                ini.Write("StartupWidth", StartupWidth.ToString());
-                ini.Write("StartupHeight", StartupHeight.ToString());
-                ini.Write("WindowX", WindowX.ToString());
-                ini.Write("WindowY", WindowY.ToString());
-                ini.Write("MinimizeToTray", MinimizeToTray.ToString());
-                ini.Write("OpenFoldersInPopup", OpenFoldersInPopup.ToString());
-                ini.Write("EditMode", EditMode.ToString());
-                ini.Write("EditModeState", EditModeState.ToString());
-                ini.Write("GridVisible", GridVisible.ToString());
-                ini.Write("HotkeyShow", string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+Q" : HotkeyShow);
-                ini.Write("MiniExplorerCtrlClick", MiniExplorerCtrlClick.ToString());
-                ini.Write("MiniExplorerW", MiniExplorerW.ToString());
-                ini.Write("MiniExplorerH", MiniExplorerH.ToString());
-                ini.Write("MiniExplorerX", MiniExplorerX.ToString());
-                ini.Write("MiniExplorerY", MiniExplorerY.ToString());
-                ini.Write("MiniExplorerBookmarks", MiniExplorerBookmarks.ToString());
-                ini.Write("MiniExplorerTopBar", MiniExplorerTopBar.ToString());
-                ini.Write("MiniExplorerConsole", MiniExplorerConsole.ToString());
-                ini.Write("MiniExplorerBm", MiniExplorerBm.ToString());
-                ini.Write("ConsoleFontSizeX10", ConsoleFontSizeX10.ToString());
-                ini.Write("FolderAutoExitSeconds", FolderAutoExitSeconds.ToString());
-                ini.Write("FolderOpenProgram", FolderOpenProgram ?? "");
-                ini.Write("FolderConsole", FolderConsole ?? "");
-                ini.Write("Language", string.IsNullOrEmpty(Language) ? "ru" : Language);
-                ini.Write("AutoStart", AutoStart.ToString());
-                ini.Write("AutoStartMinimized", AutoStartMinimized.ToString());
-                ini.Write("TrayIconAlways", TrayIconAlways.ToString());
-                ini.Write("KeepActiveTab", KeepActiveTab.ToString());
-                ini.Write("ActiveTab", ActiveTab == null ? "" : ActiveTab);
-                ini.Write("SearchFuzzyLevel", SearchFuzzyLevel.ToString());
-                ini.Write("SearchInMeta", SearchInMeta.ToString());
-                ini.Write("SearchInPaths", SearchInPaths.ToString());
-                ini.Write("SearchInDesc", SearchInDesc.ToString());
-                ini.Write("SearchInStart", SearchInStart.ToString());
-                ini.Write("SearchBoxFontSize", SearchBoxFontSize.ToString());
-                ini.Write("SearchResultsFontSize", SearchResultsFontSize.ToString());
-
-                ini.Write("GridTransparency", GridTransparency.ToString());
-                ini.Write("AuraTransparency", AuraTransparency.ToString());
-                ini.Write("GridColumns", GridColumns.ToString());
-                ini.Write("GridRows", GridRows.ToString());
-                ini.Write("GridExtraRows", GridExtraRows.ToString());
-                ini.Write("DefaultItemSize", DefaultItemSize.ToString());
-                ini.Write("IsLightTheme", IsLightTheme.ToString());
-
-                ini.Write("IconScale", IconScale.ToString());
-
-                ini.Write("FontItemsSize", FontItemsSize.ToString());
-                ini.Write("FontItemsColor", FontItemsColor == null ? "" : FontItemsColor);
-                ini.Write("FontItemsName", FontItemsName == null ? "" : FontItemsName);
-
-                ini.Write("FontTabsSize", FontTabsSize.ToString());
-                ini.Write("FontTabsColor", FontTabsColor == null ? "" : FontTabsColor);
-                ini.Write("FontTabsName", FontTabsName == null ? "" : FontTabsName);
-
-                ini.Write("FontUiSize", FontUiSize.ToString());
-                ini.Write("FontUiColor", FontUiColor == null ? "" : FontUiColor);
-                ini.Write("FontUiName", FontUiName == null ? "" : FontUiName);
-
-                ini.Write("BackupDays", BackupDays.ToString());
-                ini.Write("LastBackupDate", LastBackupDate == null ? "" : LastBackupDate);
-                ini.Write("StartMenuSyncHours", StartMenuSyncHours.ToString());
-                ini.Write("LastSyncDate", LastSyncDate == null ? "" : LastSyncDate);
-                ini.Write("SearchSaveHistory", SearchSaveHistory.ToString());
-                ini.Write("HotkeyWin", HotkeyWin.ToString());
-                ini.Write("HotkeyStartClick", HotkeyStartClick.ToString());
-                ini.Write("TilesOpenByDoubleClick", TilesOpenByDoubleClick.ToString());
-                ini.Write("SearchOpenByDoubleClick", SearchOpenByDoubleClick.ToString());
-                ini.Write("SkinName", SkinName == null ? "" : SkinName);
-                ini.Write("FirstRunDone", FirstRunDone.ToString());
-                ini.Write("UpdateCheckEnabled", UpdateCheckEnabled.ToString());
-                ini.Write("UpdateCheckDays", UpdateCheckDays.ToString());
-                ini.Write("UpdateAutoInstall", UpdateAutoInstall.ToString());
-                ini.Write("LastUpdateCheck", LastUpdateCheck == null ? "" : LastUpdateCheck);
-
-                ini.Write("LabelTwoRows", LabelTwoRows.ToString());
-                ini.Write("LabelTrimShortcut", LabelTrimShortcut.ToString());
-                ini.Write("LabelTrimExtension", LabelTrimExtension.ToString());
-                ini.Write("LabelCtrlFullNames", LabelCtrlFullNames.ToString());
-                ini.Write("LabelAlign2Rows", LabelAlign2Rows.ToString());
+                // One whole-section write instead of ~90 per-key calls: every
+                // WritePrivateProfileString rewrites the file, and on machines
+                // with a slow antivirus filter each rewrite costs milliseconds -
+                // a Save on every edit-mode toggle froze the UI for hundreds of ms.
+                var lines = new List<string>
+                {
+                    "StartupWidth=" + StartupWidth,
+                    "StartupHeight=" + StartupHeight,
+                    "WindowX=" + WindowX,
+                    "WindowY=" + WindowY,
+                    "MinimizeToTray=" + MinimizeToTray,
+                    "OpenFoldersInPopup=" + OpenFoldersInPopup,
+                    "EditMode=" + EditMode,
+                    "EditModeState=" + EditModeState,
+                    "GridVisible=" + GridVisible,
+                    "HotkeyShow=" + (string.IsNullOrEmpty(HotkeyShow) ? "Ctrl+Q" : HotkeyShow),
+                    "MiniExplorerCtrlClick=" + MiniExplorerCtrlClick,
+                    "MiniExplorerW=" + MiniExplorerW,
+                    "MiniExplorerH=" + MiniExplorerH,
+                    "MiniExplorerX=" + MiniExplorerX,
+                    "MiniExplorerY=" + MiniExplorerY,
+                    "MiniExplorerBookmarks=" + MiniExplorerBookmarks,
+                    "MiniExplorerTopBar=" + MiniExplorerTopBar,
+                    "MiniExplorerConsole=" + MiniExplorerConsole,
+                    "MiniExplorerBm=" + MiniExplorerBm,
+                    "ConsoleFontSizeX10=" + ConsoleFontSizeX10,
+                    "FolderAutoExitSeconds=" + FolderAutoExitSeconds,
+                    "FolderOpenProgram=" + (FolderOpenProgram ?? ""),
+                    "FolderConsole=" + (FolderConsole ?? ""),
+                    "Language=" + (string.IsNullOrEmpty(Language) ? "ru" : Language),
+                    "AutoStart=" + AutoStart,
+                    "AutoStartMinimized=" + AutoStartMinimized,
+                    "TrayIconAlways=" + TrayIconAlways,
+                    "KeepActiveTab=" + KeepActiveTab,
+                    "ActiveTab=" + (ActiveTab == null ? "" : ActiveTab),
+                    "SearchFuzzyLevel=" + SearchFuzzyLevel,
+                    "SearchInMeta=" + SearchInMeta,
+                    "SearchInPaths=" + SearchInPaths,
+                    "SearchInDesc=" + SearchInDesc,
+                    "SearchInStart=" + SearchInStart,
+                    "SearchBoxFontSize=" + SearchBoxFontSize,
+                    "SearchResultsFontSize=" + SearchResultsFontSize,
+                    "GridTransparency=" + GridTransparency,
+                    "AuraTransparency=" + AuraTransparency,
+                    "GridColumns=" + GridColumns,
+                    "GridRows=" + GridRows,
+                    "GridExtraRows=" + GridExtraRows,
+                    "DefaultItemSize=" + DefaultItemSize,
+                    "IsLightTheme=" + IsLightTheme,
+                    "IconScale=" + IconScale,
+                    "FontItemsSize=" + FontItemsSize,
+                    "FontItemsColor=" + (FontItemsColor == null ? "" : FontItemsColor),
+                    "FontItemsName=" + (FontItemsName == null ? "" : FontItemsName),
+                    "FontTabsSize=" + FontTabsSize,
+                    "FontTabsColor=" + (FontTabsColor == null ? "" : FontTabsColor),
+                    "FontTabsName=" + (FontTabsName == null ? "" : FontTabsName),
+                    "FontUiSize=" + FontUiSize,
+                    "FontUiColor=" + (FontUiColor == null ? "" : FontUiColor),
+                    "FontUiName=" + (FontUiName == null ? "" : FontUiName),
+                    "BackupDays=" + BackupDays,
+                    "LastBackupDate=" + (LastBackupDate == null ? "" : LastBackupDate),
+                    "StartMenuSyncHours=" + StartMenuSyncHours,
+                    "LastSyncDate=" + (LastSyncDate == null ? "" : LastSyncDate),
+                    "SearchSaveHistory=" + SearchSaveHistory,
+                    "HotkeyWin=" + HotkeyWin,
+                    "HotkeyStartClick=" + HotkeyStartClick,
+                    "TilesOpenByDoubleClick=" + TilesOpenByDoubleClick,
+                    "SearchOpenByDoubleClick=" + SearchOpenByDoubleClick,
+                    "SkinName=" + (SkinName == null ? "" : SkinName),
+                    "FirstRunDone=" + FirstRunDone,
+                    "UpdateCheckEnabled=" + UpdateCheckEnabled,
+                    "UpdateCheckDays=" + UpdateCheckDays,
+                    "UpdateAutoInstall=" + UpdateAutoInstall,
+                    "LastUpdateCheck=" + (LastUpdateCheck == null ? "" : LastUpdateCheck),
+                    "LabelTwoRows=" + LabelTwoRows,
+                    "LabelTrimShortcut=" + LabelTrimShortcut,
+                    "LabelTrimExtension=" + LabelTrimExtension,
+                    "LabelCtrlFullNames=" + LabelCtrlFullNames,
+                    "LabelAlign2Rows=" + LabelAlign2Rows
+                };
+                new IniFile(path).WriteSection("Settings", lines.ToArray());
             }
             catch (Exception ex)
             {

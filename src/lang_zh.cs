@@ -314,7 +314,19 @@ namespace WinPanel
             { "Added: {0}", "已添加: {0}" },
             { "Skipped (pinned sites, tile folders): {0}", "已跳过（固定的网站、磁贴文件夹）: {0}" },
             { "Missing on this computer: {0}", "此计算机上没有: {0}" },
-            { "User Start", "用户开始屏幕" }
+            { "User Start", "用户开始屏幕" },
+            { "Create Group", "新建分组" },
+            { "Name the group", "命名分组" },
+            { "Rename group", "重命名分组" },
+            { "Delete group", "删除分组" },
+            { "Group size: auto", "分组大小：自动" },
+            { "Fix width...", "固定宽度..." },
+            { "Fix width and height...", "固定宽度和高度..." },
+            { "Width in cells", "宽度（单元格数）" },
+            { "Size as WxH, e.g. 8x3", "尺寸如 宽x高，例如 8x3" },
+            { "Now: auto ({0}x{1})", "当前：自动 ({0}x{1})" },
+            { "Now: width {0} fixed, height auto", "当前：宽度 {0} 已固定，高度自动" },
+            { "Now: width {0} and height {1} fixed", "当前：宽度 {0} 和高度 {1} 已固定" }
         };
     }
 }

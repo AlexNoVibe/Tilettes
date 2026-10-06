@@ -314,7 +314,19 @@ namespace WinPanel
             { "Added: {0}", "Aggiunte: {0}" },
             { "Skipped (pinned sites, tile folders): {0}", "Ignorate (siti bloccati, cartelle di tile): {0}" },
             { "Missing on this computer: {0}", "Mancano in questo computer: {0}" },
-            { "User Start", "Start dell'utente" }
+            { "User Start", "Start dell'utente" },
+            { "Create Group", "Crea gruppo" },
+            { "Name the group", "Nomina il gruppo" },
+            { "Rename group", "Rinomina il gruppo" },
+            { "Delete group", "Elimina il gruppo" },
+            { "Group size: auto", "Dimensione gruppo: automatica" },
+            { "Fix width...", "Blocca larghezza..." },
+            { "Fix width and height...", "Blocca larghezza e altezza..." },
+            { "Width in cells", "Larghezza in celle" },
+            { "Size as WxH, e.g. 8x3", "Dimensione come LxA, es. 8x3" },
+            { "Now: auto ({0}x{1})", "Adesso: automatica ({0}x{1})" },
+            { "Now: width {0} fixed, height auto", "Adesso: larghezza {0} bloccata, altezza automatica" },
+            { "Now: width {0} and height {1} fixed", "Adesso: larghezza {0} e altezza {1} bloccate" }
         };
     }
 }
