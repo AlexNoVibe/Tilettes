@@ -166,7 +166,10 @@ namespace WinPanel
         // dragged tile shows its frame and expands to cover the tile's cells.
         private TileGroup previewGroup;
         private Rectangle previewRect;        // cells
-        private GroupControl previewControl;
+        private GroupSurface previewSurface;
+        // Live pixel offsets of groups being dragged by their header: the body
+        // plates are painted by the panel, which must follow the move.
+        internal readonly Dictionary<TileGroup, Point> groupDragOffsets = new Dictionary<TileGroup, Point>();
 
         // Deferred (non-blocking) icon loading
         private readonly Queue<Action> iconQueue = new Queue<Action>();
@@ -5307,8 +5310,12 @@ namespace WinPanel
                 var scroll = panel.AutoScrollPosition;
                 foreach (Control c in panel.Controls)
                 {
-                    var gc = c as GroupControl;
-                    if (gc != null) { gc.UpdateBoundsFromCells(); continue; }
+                    var part = c as GroupPart;
+                    if (part != null)
+                    {
+                        if (part.Kind == 0) part.Owner.Relayout(); // repositions the whole composite
+                        continue;
+                    }
                     var tile = c as TileControl;
                     if (tile == null || tile.Item == null) continue;
                     int s = ClampItemSize(tile.Item.Size);
@@ -5393,8 +5400,8 @@ namespace WinPanel
             finally { layoutPanel.ResumeLayout(true); }
 
             // Tile groups live on grid tabs at the root view only: fit the auto
-            // axes to the member tiles, then add the group surfaces - they go
-            // in after the tiles, so they stay underneath them.
+            // axes to the member tiles, then build the chrome windows - they
+            // go in after the tiles, so they stay above them.
             if (tabData.IsGridLayout && navStack.Count == 0)
             {
                 var groups = tabData.EnsureGroups();
@@ -5403,21 +5410,19 @@ namespace WinPanel
                     FitGroupsToItems(tabData, itemsToRender);
                     foreach (var grp in groups)
                     {
-                        var gc = new GroupControl
+                        var surface = new GroupSurface
                         {
                             Group = grp,
                             Tab = tabData,
                             OwnerPanel = layoutPanel,
-                            BaseColor = bgColor,
                             MainTextColor = textColor,
                             GetCols = () => Math.Max(1, settings.GridColumns),
                             GetRows = () => Math.Max(1, settings.GridRows),
-                            SaveAndRelayout = () => { records.Save(recordsPath); ReflowGridTiles(layoutPanel, tabData); },
-                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp)
+                            SaveAndRelayout = () => { records.Save(recordsPath); ReflowGridTiles(layoutPanel, tabData); layoutPanel.Invalidate(); },
+                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp),
+                            DragOffsets = groupDragOffsets
                         };
-                        gc.UpdateBoundsFromCells();
-                        layoutPanel.Controls.Add(gc);
-                        gc.BringToFront(); // the group draws OVER the tiles; the body stays click-through via its window region
+                        surface.Build();
                     }
                 }
             }
@@ -5795,8 +5800,8 @@ namespace WinPanel
                 RenderCurrentFolder(layoutPanel, tabData);
                 foreach (Control c in layoutPanel.Controls)
                 {
-                    var gc = c as GroupControl;
-                    if (gc != null && ReferenceEquals(gc.Group, grp)) gc.BeginEdit();
+                    var part = c as GroupPart;
+                    if (part != null && part.Kind == 0 && ReferenceEquals(part.Owner.Group, grp)) part.Owner.BeginEdit();
                 }
             }
             catch (Exception ex) { AppLog.Write("CreateGroup", ex); }
@@ -5869,7 +5874,14 @@ namespace WinPanel
                 int nx = g.X, ny = g.Y, nr = g.X + g.W, nb = g.Y + g.H;
                 if (g.FixedW <= 0) { nx = Math.Min(nx, col); nr = Math.Max(nr, col + s); }
                 if (g.FixedH <= 0) { ny = Math.Min(ny, row); nb = Math.Max(nb, row + s); }
-                expand = new Rectangle(nx, ny, nr - nx, nb - ny);
+                var candidate = new Rectangle(nx, ny, nr - nx, nb - ny);
+                // The growth must not swallow the neighbouring tiles: every
+                // cell the expansion adds has to be empty, otherwise the group
+                // stays as it is (the tile still lands at its own cell, just
+                // without joining).
+                if (!ExpansionSweepsEmpty(tabData, g, candidate, tile.Item))
+                    candidate = new Rectangle(g.X, g.Y, g.W, g.H);
+                expand = candidate;
                 break;
             }
 
@@ -5878,23 +5890,44 @@ namespace WinPanel
             ClearGroupPreview();
             foreach (Control c in panel.Controls)
             {
-                var gc = c as GroupControl;
-                if (gc != null && ReferenceEquals(gc.Group, near))
+                var part = c as GroupPart;
+                if (part != null && ReferenceEquals(part.Owner.Group, near))
                 {
                     previewGroup = near;
                     previewRect = expand;
-                    previewControl = gc;
-                    gc.SetPreview(expand);
+                    previewSurface = part.Owner;
+                    part.Owner.SetPreview(expand);
                     break;
                 }
             }
         }
 
+        // True when every cell the candidate rect adds over the group's
+        // current rect is free of other tiles.
+        private bool ExpansionSweepsEmpty(TabData tabData, TileGroup g, Rectangle candidate, ShortcutItem joined)
+        {
+            var current = GetCurrentItems(tabData);
+            for (int yy = candidate.Y; yy < candidate.Bottom; yy++)
+            {
+                for (int xx = candidate.X; xx < candidate.Right; xx++)
+                {
+                    if (xx >= g.X && xx < g.X + g.W && yy >= g.Y && yy < g.Y + g.H) continue;
+                    foreach (var it in current)
+                    {
+                        if (ReferenceEquals(it, joined)) continue;
+                        int sz = ClampItemSize(it.Size);
+                        if (xx >= it.GridX && xx < it.GridX + sz && yy >= it.GridY && yy < it.GridY + sz) return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         private void ClearGroupPreview()
         {
-            if (previewControl != null && !previewControl.IsDisposed)
-                previewControl.SetPreview(null);
-            previewControl = null;
+            if (previewSurface != null && previewSurface.IsAlive)
+                previewSurface.SetPreview(null);
+            previewSurface = null;
             previewGroup = null;
             previewRect = Rectangle.Empty;
         }
@@ -6042,6 +6075,30 @@ namespace WinPanel
                     else if (i == totalRows) y = bottom;
                     if (y >= 0 && y <= panel.ClientSize.Height)
                         e.Graphics.DrawLine(gridPen, left, y, right, y);
+                }
+            }
+
+            // Group body plates: a clean surface under the member tiles, so the
+            // grid markup (and its intersection squares) does not show between
+            // the tiles inside a group. Same int cell math as the tiles and the
+            // group chrome use; during a group drag it follows the live offset.
+            if (tabNavigations[tabData].Count == 0 && tabData.Groups != null && tabData.Groups.Count > 0)
+            {
+                int cellWi = Math.Max(1, panel.ClientSize.Width / cols);
+                int cellHi = Math.Max(1, panel.ClientSize.Height / rows);
+                using (var b = new SolidBrush(panel.BackColor))
+                {
+                    foreach (var g in tabData.Groups)
+                    {
+                        Point off;
+                        if (!groupDragOffsets.TryGetValue(g, out off)) off = Point.Empty;
+                        var bodyRect = new Rectangle(
+                            g.X * cellWi + scroll.X + off.X,
+                            g.Y * cellHi + scroll.Y + off.Y,
+                            Math.Max(1, g.W) * cellWi,
+                            Math.Max(1, g.H) * cellHi);
+                        e.Graphics.FillRectangle(b, bodyRect);
+                    }
                 }
             }
         }
@@ -7909,197 +7966,265 @@ namespace WinPanel
         }
     }
 
-    // A visual container for tile groups ("grouping, not folders"): the tiles
-    // keep their own grid cells, the group draws a header line above them and
-    // a frame around them. Idle the group is invisible - only the header strip
-    // stays live as a hover target; hovering it (or dragging a tile into the
-    // group) reveals the frame. The header carries the editable name, the size
-    // menu on the right, and grabbing it moves the whole group with its tiles.
-    public class GroupControl : Control
+    // Tile groups ("grouping, not folders"): the tiles keep their own grid
+    // cells. A group's chrome is drawn by PLAIN RECTANGULAR child windows
+    // only - no SetWindowRgn anywhere: a window whose region excludes its own
+    // body leaves that body to nobody (the parent clips child windows by
+    // their rectangles), and every region switch let the panel repaint its
+    // dashed grid right over the tiles inside the group. The composite:
+    //   - the body plate is painted by the panel itself, under the tiles
+    //     (LayoutPanel_Paint), so the markup and its intersection squares do
+    //     not show between the tiles of a group;
+    //   - the header strip floats above the tiles: editable name, the size
+    //     menu on the right, grabbing it moves the whole group with its
+    //     tiles; it redraws its own share of the dashed grid, so the markup
+    //     stays visible through it;
+    //   - three thin frame strips mark the body edges when the group is
+    //     revealed (header hover, or a tile dragged into the group).
+    public class GroupSurface
     {
         public TileGroup Group;
         public TabData Tab;
         public Panel OwnerPanel;
-        public Color BaseColor;
         public Color MainTextColor;
         public Func<int> GetCols;
         public Func<int> GetRows;
-        public Action SaveAndRelayout;
+        public Action SaveAndRelayout; // save + tile reflow + panel invalidate (the body plates live on the panel)
         public Action DeleteAction;
+        public Dictionary<TileGroup, Point> DragOffsets; // live pixel offset of a dragged group (the panel plate follows it)
 
-        private int cellW = 60, cellH = 60;
-        private Font ownFont; // GroupControl-owned; the ambient Font must never be disposed by painting
+        internal TextBox nameBox;
+        private GroupPart header, bottom, left, right;
+        private int cellW = 60, cellH = 60, headerH = 24;
         private bool hover;
         private Rectangle? preview; // cells, when a tile is dragged into the group
         private bool dragging;
         private Point grabPoint;
-        private Point startLocation;
+        private Point headerStart;
         private List<TileControl> dragTiles;
         private List<Point> dragStarts;
-        private TextBox nameBox;
         private static readonly StringFormat Sf = new StringFormat(StringFormatFlags.NoWrap)
         {
             LineAlignment = StringAlignment.Center,
             Trimming = StringTrimming.EllipsisCharacter
         };
+        // Static and never disposed: the header caption must not paint with a
+        // font that anything destroys (a disposed font made every next repaint
+        // throw "Parameter is not valid").
+        private static readonly Font HeaderFont = new Font("Segoe UI", 10f);
 
         private const int EM_SETCUEBANNER = 0x1501;
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, string lParam);
 
-        public GroupControl()
-        {
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-            ownFont = new Font("Segoe UI", 10f);
-            Font = ownFont;
-        }
-
-        protected override void OnPaintBackground(PaintEventArgs e)
-        {
-            // The group surface is an opaque panel-colored plate; over it only
-            // the (optional) caption, the frame and the header fill are drawn.
-            using (var b = new SolidBrush(BaseColor))
-                e.Graphics.FillRectangle(b, ClientRectangle);
-        }
-
-        private int HeaderPx { get { return Math.Max(24, cellH / 2); } }
         private bool HasName { get { return !string.IsNullOrEmpty(Group.Name); } }
         private bool Revealed { get { return hover || preview.HasValue || dragging; } }
+        public bool IsAlive { get { return header != null && !header.IsDisposed; } }
 
-        protected override void OnCreateControl()
+        // Creates the four chrome windows above the tiles; the body itself is
+        // panel-painted and intentionally has no window over it.
+        public void Build()
         {
-            base.OnCreateControl();
-            UpdateRegion();
+            header = new GroupPart { Owner = this, Kind = 0 };
+            bottom = new GroupPart { Owner = this, Kind = 1 };
+            left = new GroupPart { Owner = this, Kind = 2 };
+            right = new GroupPart { Owner = this, Kind = 3 };
+            OwnerPanel.Controls.Add(bottom);
+            OwnerPanel.Controls.Add(left);
+            OwnerPanel.Controls.Add(right);
+            OwnerPanel.Controls.Add(header);
+            Relayout();
+            bottom.BringToFront();
+            left.BringToFront();
+            right.BringToFront();
+            header.BringToFront();
         }
 
-        // Positions the control over its cell rect: the body is W x H cells,
-        // the header strip floats one strip-height above the body.
-        internal void UpdateBoundsFromCells()
+        // Recomputes the metrics and repositions all four chrome windows over
+        // the live (preview-expanded) rect.
+        internal void Relayout()
         {
-            if (OwnerPanel == null || Group == null) return;
+            if (OwnerPanel == null || Group == null || header == null) return;
             int cols = GetCols != null ? GetCols() : 8;
             int rows = GetRows != null ? GetRows() : 6;
             cellW = Math.Max(1, OwnerPanel.ClientSize.Width / Math.Max(1, cols));
             cellH = Math.Max(1, OwnerPanel.ClientSize.Height / Math.Max(1, rows));
+            headerH = Math.Max(24, cellH / 2);
             var scroll = OwnerPanel.AutoScrollPosition;
-            int hp = HeaderPx;
-            Bounds = new Rectangle(
-                Group.X * cellW + scroll.X,
-                Group.Y * cellH - hp + scroll.Y,
-                Math.Max(1, Group.W) * cellW,
-                Math.Max(1, Group.H) * cellH + hp);
+            Rectangle c = LiveCells();
+            int x = c.X * cellW + scroll.X;
+            int y = c.Y * cellH + scroll.Y;
+            int w = Math.Max(1, c.Width) * cellW;
+            int h = Math.Max(1, c.Height) * cellH;
+            header.Bounds = new Rectangle(x, y - headerH, w, headerH);
+            bottom.Bounds = new Rectangle(x, y + h - 3, w, 3);
+            left.Bounds = new Rectangle(x, y, 3, h);
+            right.Bounds = new Rectangle(x + w - 3, y, 3, h);
         }
 
-        internal void SetPreview(Rectangle? cells)
+        private Rectangle LiveCells()
+        {
+            if (preview.HasValue) return preview.Value;
+            return new Rectangle(Group.X, Group.Y, Group.W, Group.H);
+        }
+
+        public void SetPreview(Rectangle? cells)
         {
             preview = cells;
-            UpdateRegion();
-            Invalidate();
+            Relayout();
+            InvalidateAll();
         }
 
-        private void UpdateRegion()
+        public void SetHover(bool on)
         {
-            // The control sits above the tiles, so the window region carries
-            // the whole interaction model: only the header strip and the thin
-            // frame band catch the mouse and paint; the body interior is
-            // excluded - clicks and the grid dots there fall through to the
-            // tiles underneath.
-            Region r;
-            if (Revealed)
+            if (hover == on) return;
+            hover = on;
+            InvalidateAll();
+        }
+
+        private void InvalidateAll()
+        {
+            if (header == null || header.IsDisposed) return;
+            header.Invalidate();
+            if (!bottom.IsDisposed) bottom.Invalidate();
+            if (!left.IsDisposed) left.Invalidate();
+            if (!right.IsDisposed) right.Invalidate();
+        }
+
+        // Paints one chrome window: its slice of the dashed grid first, then
+        // the caption / frame line on top.
+        internal void PaintPart(GroupPart part, Graphics g)
+        {
+            try
             {
-                r = new Region(new Rectangle(0, 0, Width, HeaderPx));
-                const int b = 3;
-                r.Union(new Rectangle(0, HeaderPx, Width, b));
-                r.Union(new Rectangle(0, Height - b, Width, b));
-                r.Union(new Rectangle(0, HeaderPx, b, Height - HeaderPx));
-                r.Union(new Rectangle(Width - b, HeaderPx, b, Height - HeaderPx));
+                Settings cfg = MainForm.CurrentSettings;
+                if (cfg != null && cfg.GridVisible)
+                {
+                    int cols = GetCols != null ? GetCols() : 8;
+                    var scroll = OwnerPanel.AutoScrollPosition;
+                    // The panel sizes its grid lines with float cell metrics;
+                    // reuse the same math and the same line origins so the
+                    // dashes stay in phase with the panel's between the parts.
+                    float cellWf = OwnerPanel.ClientSize.Width / (float)Math.Max(1, cols);
+                    float cellHf = OwnerPanel.ClientSize.Height / (float)Math.Max(1, GetRows != null ? GetRows() : 6);
+                    Color gridColor = cfg.IsLightTheme
+                        ? Color.FromArgb(cfg.GridTransparency, 0, 0, 0)
+                        : Color.FromArgb(cfg.GridTransparency, 255, 255, 255);
+                    using (Pen gridPen = new Pen(gridColor))
+                    {
+                        gridPen.DashPattern = new float[] { 4, 8 };
+                        const int BorderInset = 8;
+                        for (int i = 0; i <= cols; i++)
+                        {
+                            float x = i * cellWf + scroll.X - part.Left;
+                            if (x < -1 || x > part.Width + 1) continue;
+                            g.DrawLine(gridPen, x, BorderInset + scroll.Y - part.Top, x, part.Height);
+                        }
+                        for (int j = Math.Max(0, Group.Y - 2); j <= Group.Y + Group.H + 2; j++)
+                        {
+                            float y = j * cellHf + scroll.Y - part.Top;
+                            if (y < -1 || y > part.Height + 1) continue;
+                            g.DrawLine(gridPen, BorderInset + scroll.X - part.Left, y, part.Width, y);
+                        }
+                    }
+                }
             }
-            else if (HasName)
-                r = new Region(new Rectangle(0, 0, Width, HeaderPx));
-            else
+            catch { }
+
+            bool strong = preview.HasValue || dragging;
+            if (part.Kind == 0)
             {
-                // Unnamed and idle: fully invisible, only a thin live line
-                // along the group's top edge stays as the hover target.
-                int hit = Math.Min(12, HeaderPx);
-                r = new Region(new Rectangle(0, HeaderPx - hit, Width, hit));
+                if (Revealed)
+                {
+                    using (var b = new SolidBrush(Color.FromArgb(strong ? 26 : 14, MainTextColor)))
+                        g.FillRectangle(b, 0, 0, part.Width, part.Height);
+                }
+                string caption = HasName ? Group.Name : (Revealed ? Loc.S("Name the group", "Назвать группу") : null);
+                if (caption != null)
+                {
+                    bool ghost = !HasName;
+                    Font drawFont = ghost ? new Font(HeaderFont, FontStyle.Italic) : HeaderFont;
+                    try
+                    {
+                        using (var b = new SolidBrush(Color.FromArgb(ghost ? 110 : 150, MainTextColor)))
+                            g.DrawString(caption, drawFont, b, new Rectangle(8, 1, Math.Max(20, part.Width - 32), Math.Max(4, part.Height - 2)), Sf);
+                    }
+                    finally { if (ghost) drawFont.Dispose(); }
+                }
+                if (Revealed)
+                {
+                    // The size toggle on the right of the header line...
+                    int bx = part.Width - 17, by = part.Height / 2;
+                    using (var p = new Pen(Color.FromArgb(170, MainTextColor), 1.4f))
+                    {
+                        g.DrawLine(p, bx - 7, by - 3, bx + 7, by - 3);
+                        g.DrawLine(p, bx - 7, by, bx + 7, by);
+                        g.DrawLine(p, bx - 7, by + 3, bx + 7, by + 3);
+                    }
+                    // ...and the body's top frame edge along the strip's bottom.
+                    using (var p = new Pen(Color.FromArgb(strong ? 170 : 70, MainTextColor), 2f))
+                        g.DrawLine(p, 0, part.Height - 1, part.Width - 1, part.Height - 1);
+                }
             }
-            if (Region != null) Region.Dispose();
-            Region = r;
+            else if (Revealed)
+            {
+                using (var p = new Pen(Color.FromArgb(strong ? 170 : 70, MainTextColor), 2f))
+                {
+                    if (part.Kind == 1) g.DrawLine(p, 0, 1, part.Width, 1);
+                    else g.DrawLine(p, 1, 0, 1, part.Height);
+                }
+            }
         }
 
-        protected override void OnResize(EventArgs eventargs)
+        public void HeaderMouseMove(MouseEventArgs e)
         {
-            base.OnResize(eventargs);
-            UpdateRegion();
-            Invalidate();
-        }
-
-        protected override void OnMouseEnter(EventArgs e)
-        {
-            base.OnMouseEnter(e);
-            hover = true;
-            UpdateRegion();
-            Invalidate();
-        }
-
-        protected override void OnMouseLeave(EventArgs e)
-        {
-            base.OnMouseLeave(e);
-            // Crossing from the strip into the body fires MouseLeave (the body
-            // is not part of the window region): collapse only when the pointer
-            // is truly outside the strip and the frame band.
-            var p = PointToClient(Cursor.Position);
-            const int b = 3;
-            bool inStrip = p.X >= 0 && p.X < Width && p.Y >= 0 && p.Y <= HeaderPx;
-            bool inFrame = p.X >= 0 && p.X < Width && p.Y > HeaderPx && p.Y < Height &&
-                           (p.X < b || p.X >= Width - b || p.Y >= Height - b);
-            if (inStrip || inFrame) return;
-            hover = false;
-            UpdateRegion();
-            Invalidate();
-        }
-
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            base.OnMouseMove(e);
-            Cursor = e.Y <= HeaderPx ? Cursors.SizeAll : Cursors.Default;
+            header.Cursor = e.X >= header.Width - 26 ? Cursors.Hand : Cursors.SizeAll;
             if (!dragging) return;
-            int oldLeft = Left, oldTop = Top;
-            Left += e.X - grabPoint.X;
-            Top += e.Y - grabPoint.Y;
-            int dx = Left - oldLeft, dy = Top - oldTop;
+            int oldLeft = header.Left, oldTop = header.Top;
+            header.Left += e.X - grabPoint.X;
+            header.Top += e.Y - grabPoint.Y;
+            int dx = header.Left - oldLeft, dy = header.Top - oldTop;
+            if (dx == 0 && dy == 0) return;
+            bottom.Left += dx; bottom.Top += dy;
+            left.Left += dx; left.Top += dy;
+            right.Left += dx; right.Top += dy;
             for (int i = 0; i < dragTiles.Count; i++)
             {
                 dragTiles[i].Left += dx;
                 dragTiles[i].Top += dy;
             }
+            // The body plate is panel-painted: move it along and have the
+            // panel repaint the two strips of surface it slid between.
+            Point off;
+            if (!DragOffsets.TryGetValue(Group, out off)) off = Point.Empty;
+            DragOffsets[Group] = new Point(off.X + dx, off.Y + dy);
+            var scroll = OwnerPanel.AutoScrollPosition;
+            var oldRect = new Rectangle(Group.X * cellW + scroll.X + off.X, Group.Y * cellH + scroll.Y + off.Y,
+                Math.Max(1, Group.W) * cellW, Math.Max(1, Group.H) * cellH);
+            OwnerPanel.Invalidate(Rectangle.Union(oldRect, new Rectangle(oldRect.X + dx, oldRect.Y + dy, oldRect.Width, oldRect.Height)));
         }
 
-        protected override void OnMouseDown(MouseEventArgs e)
+        public void HeaderMouseDown(MouseEventArgs e)
         {
-            base.OnMouseDown(e);
             if (e.Button != MouseButtons.Left) return;
             if (nameBox != null)
             {
                 if (!nameBox.Bounds.Contains(e.Location)) EndEdit(true);
                 return;
             }
-            if (e.Y > HeaderPx) return;
-            if (e.X >= Width - 26) { ShowSizeMenu(); return; }
+            if (e.X >= header.Width - 26) { ShowSizeMenu(); return; }
             StartDrag(e.Location);
         }
 
-        protected override void OnMouseUp(MouseEventArgs e)
+        public void HeaderMouseUp(MouseEventArgs e)
         {
-            base.OnMouseUp(e);
             if (e.Button != MouseButtons.Left || !dragging) return;
             dragging = false;
-            int dcx = (int)Math.Round((Left - startLocation.X) / (double)cellW);
-            int dcy = (int)Math.Round((Top - startLocation.Y) / (double)cellH);
+            int dcx = (int)Math.Round((header.Left - headerStart.X) / (double)cellW);
+            int dcy = (int)Math.Round((header.Top - headerStart.Y) / (double)cellH);
             for (int i = 0; i < dragTiles.Count; i++)
                 dragTiles[i].Location = dragStarts[i]; // snap back; the relayout re-snaps to the grid
-            Location = startLocation;
+            DragOffsets.Remove(Group);
             if (dcx != 0 || dcy != 0)
             {
                 Group.X = Math.Max(0, Group.X + dcx);
@@ -8109,17 +8234,14 @@ namespace WinPanel
                     t.Item.GridX = Math.Max(0, t.Item.GridX + dcx);
                     t.Item.GridY = Math.Max(0, t.Item.GridY + dcy);
                 }
-                if (SaveAndRelayout != null) SaveAndRelayout();
+                if (SaveAndRelayout != null) SaveAndRelayout(); // includes the panel invalidate for the plate
             }
-            UpdateRegion();
-            Invalidate();
-        }
-
-        protected override void OnMouseDoubleClick(MouseEventArgs e)
-        {
-            base.OnMouseDoubleClick(e);
-            if (e.Button == MouseButtons.Left && e.Y <= HeaderPx && e.X < Width - 26 && nameBox == null)
-                BeginEdit();
+            else
+            {
+                OwnerPanel.Invalidate(); // the plate slid back onto itself: clean up the strip it left
+            }
+            Relayout();
+            InvalidateAll();
         }
 
         // The members: tiles whose top-left cell is inside the group rect.
@@ -8127,7 +8249,7 @@ namespace WinPanel
         {
             dragging = true;
             grabPoint = grab;
-            startLocation = Location;
+            headerStart = header.Location;
             dragTiles = new List<TileControl>();
             dragStarts = new List<Point>();
             if (OwnerPanel == null) return;
@@ -8188,7 +8310,7 @@ namespace WinPanel
             {
                 if (DeleteAction != null) DeleteAction();
             }));
-            m.Show(this, new Point(Math.Max(0, Width - 12), HeaderPx + 2));
+            m.Show(header, new Point(Math.Max(0, header.Width - 12), header.Height + 2));
         }
 
         // Inline name editor in the header strip ("Назвать группу" cue).
@@ -8196,15 +8318,15 @@ namespace WinPanel
         {
             if (nameBox != null) { nameBox.Focus(); return; }
             hover = true;
-            UpdateRegion();
+            InvalidateAll();
             nameBox = new TextBox
             {
                 BorderStyle = BorderStyle.None,
-                BackColor = BaseColor,
+                BackColor = OwnerPanel.BackColor,
                 ForeColor = MainTextColor,
-                Font = Font
+                Font = HeaderFont
             };
-            nameBox.SetBounds(6, (HeaderPx - 18) / 2, Math.Max(40, Width - 34), 18);
+            nameBox.SetBounds(6, Math.Max(1, (header.Height - 18) / 2), Math.Max(40, header.Width - 34), 18);
             nameBox.Text = Group.Name == null ? "" : Group.Name;
             nameBox.KeyDown += delegate(object s, KeyEventArgs e2)
             {
@@ -8212,7 +8334,7 @@ namespace WinPanel
                 else if (e2.KeyCode == Keys.Escape) { e2.SuppressKeyPress = true; EndEdit(false); }
             };
             nameBox.LostFocus += delegate { EndEdit(true); };
-            Controls.Add(nameBox);
+            header.Controls.Add(nameBox);
             nameBox.BringToFront();
             nameBox.Focus();
             SendMessage(nameBox.Handle, EM_SETCUEBANNER, 1, Loc.S("Name the group", "Назвать группу"));
@@ -8228,68 +8350,76 @@ namespace WinPanel
                 Group.Name = box.Text.Trim();
                 if (SaveAndRelayout != null) SaveAndRelayout();
             }
-            Controls.Remove(box);
+            header.Controls.Remove(box);
             box.Dispose();
-            Invalidate();
+            InvalidateAll();
+        }
+    }
+
+    // One rectangular piece of a group's chrome: the header strip (Kind 0) or
+    // one of the three thin frame edges. Plain rectangle - it paints its whole
+    // area every time, so no stale pixels and no interference with the panel
+    // or the sibling tiles; everything else is forwarded to the GroupSurface.
+    public class GroupPart : Control
+    {
+        public GroupSurface Owner;
+        public int Kind; // 0 = header, 1 = bottom edge, 2 = left edge, 3 = right edge
+
+        public GroupPart()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // The chrome plates use the panel's own color - invisible against
+            // it; the dashed grid slice crossing this window is drawn on top
+            // by PaintPart, so the markup shows through the header.
+            using (var b = new SolidBrush(Owner.OwnerPanel.BackColor))
+                e.Graphics.FillRectangle(b, ClientRectangle);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            var g = e.Graphics;
-            bool strong = preview.HasValue;
-            if (Revealed)
-            {
-                using (var b = new SolidBrush(Color.FromArgb(strong ? 26 : 14, MainTextColor)))
-                    g.FillRectangle(b, 0, 0, Width, HeaderPx);
-            }
-            string caption = HasName ? Group.Name : (Revealed ? Loc.S("Name the group", "Назвать группу") : null);
-            if (caption != null)
-            {
-                bool ghost = !HasName;
-                // Only the italic variant is disposable here; the control's own
-                // Font must survive the paint (disposing it made every next
-                // repaint throw "Parameter is not valid").
-                Font drawFont = ghost ? new Font(Font, FontStyle.Italic) : Font;
-                try
-                {
-                    using (var b = new SolidBrush(Color.FromArgb(ghost ? 110 : 150, MainTextColor)))
-                        g.DrawString(caption, drawFont, b, new Rectangle(8, 1, Math.Max(20, Width - 32), HeaderPx - 2), Sf);
-                }
-                finally { if (ghost) drawFont.Dispose(); }
-            }
-            if (!Revealed) return;
-            // The size toggle on the right of the header line.
-            int bx = Width - 17, by = HeaderPx / 2;
-            using (var p = new Pen(Color.FromArgb(170, MainTextColor), 1.4f))
-            {
-                g.DrawLine(p, bx - 7, by - 3, bx + 7, by - 3);
-                g.DrawLine(p, bx - 7, by, bx + 7, by);
-                g.DrawLine(p, bx - 7, by + 3, bx + 7, by + 3);
-            }
-            // Outer perimeter of the group body: barely visible over the header
-            // hover, clearly visible while something is dragged into it. The
-            // control is above the tiles, so only this 2px ring (plus the
-            // header) is ever painted - the body interior stays with the tiles.
-            using (var p = new Pen(Color.FromArgb(strong ? 170 : 70, MainTextColor), 2f))
-                g.DrawRectangle(p, 1, HeaderPx + 1, Math.Max(2, Width - 2), Math.Max(2, Height - HeaderPx - 2));
+            Owner.PaintPart(this, e.Graphics);
         }
 
-        protected override void Dispose(bool disposing)
+        protected override void OnMouseEnter(EventArgs e)
         {
-            if (disposing)
-            {
-                if (nameBox != null)
-                {
-                    nameBox.Dispose();
-                    nameBox = null;
-                }
-                if (ownFont != null)
-                {
-                    ownFont.Dispose();
-                    ownFont = null;
-                }
-            }
-            base.Dispose(disposing);
+            base.OnMouseEnter(e);
+            if (Kind == 0) Owner.SetHover(true);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            if (Kind == 0) Owner.SetHover(false);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (Kind == 0) Owner.HeaderMouseMove(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (Kind == 0) Owner.HeaderMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (Kind == 0) Owner.HeaderMouseUp(e);
+        }
+
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+            if (Kind == 0 && e.Button == MouseButtons.Left && e.X < Width - 26 && Owner.nameBox == null)
+                Owner.BeginEdit();
         }
     }
 
