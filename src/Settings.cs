@@ -14,6 +14,11 @@ namespace WinPanel
         public int WindowY { get; set; }
         public bool MinimizeToTray { get; set; }
         public bool OpenFoldersInPopup { get; set; }
+        // Opt-in: re-home the panel to the current virtual desktop on every
+        // show. Off by default - on systems without the desktop COM component
+        // the re-home falls back to recreating the window handle, a burst of
+        // DWM churn at each summon that can flash neighboring windows.
+        public bool MoveToCurrentDesktopOnShow { get; set; }
         public bool EditMode { get; set; }
         // Edit button state: 0 = off, 1 = edit, 2 = multi-select (red).
         public int EditModeState { get; set; }
@@ -159,6 +164,7 @@ namespace WinPanel
             WindowY = 100;
             MinimizeToTray = true;
             OpenFoldersInPopup = false;
+            MoveToCurrentDesktopOnShow = false;
             // First-run defaults: grid visible and adding icons (edit mode) allowed.
             EditMode = true;
             EditModeState = 1;
@@ -346,13 +352,14 @@ namespace WinPanel
             {
                 var ini = new IniFile(path);
                 int w, h, x, y, gt, gc, gr, dis, iscl, fis, fts, fus;
-                bool m, lt, fp, em;
+                bool m, lt, fp, em, mtd;
                 if (int.TryParse(ini.Read("StartupWidth"), out w)) s.StartupWidth = w;
                 if (int.TryParse(ini.Read("StartupHeight"), out h)) s.StartupHeight = h;
                 if (int.TryParse(ini.Read("WindowX"), out x)) s.WindowX = x;
                 if (int.TryParse(ini.Read("WindowY"), out y)) s.WindowY = y;
                 if (bool.TryParse(ini.Read("MinimizeToTray"), out m)) s.MinimizeToTray = m;
                 if (bool.TryParse(ini.Read("OpenFoldersInPopup"), out fp)) s.OpenFoldersInPopup = fp;
+                if (bool.TryParse(ini.Read("MoveToCurrentDesktopOnShow"), out mtd)) s.MoveToCurrentDesktopOnShow = mtd;
                 if (bool.TryParse(ini.Read("EditMode"), out em)) s.EditMode = em;
                 int ems;
                 if (int.TryParse(ini.Read("EditModeState"), out ems) && ems >= 0 && ems <= 2) s.EditModeState = ems;
@@ -506,6 +513,7 @@ namespace WinPanel
                     "WindowY=" + WindowY,
                     "MinimizeToTray=" + MinimizeToTray,
                     "OpenFoldersInPopup=" + OpenFoldersInPopup,
+                    "MoveToCurrentDesktopOnShow=" + MoveToCurrentDesktopOnShow,
                     "EditMode=" + EditMode,
                     "EditModeState=" + EditModeState,
                     "GridVisible=" + GridVisible,

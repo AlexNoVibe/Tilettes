@@ -242,6 +242,8 @@ namespace WinPanel
               " уже опубликована, но ей меньше суток. Будет предложена через 24 часа — за это время обычно уходят ложные срабатывания антивирусов на свежих сборках." },
             { "Like Tilettes? Support the author:", "Понравились Плиточки? Поддержите автора:" },
             { "Opens the donate section on GitHub", "Открывает раздел доната на GitHub" },
+            { "Virtual desktops - move the panel when shown", "Виртуальные рабочие столы — переставлять панель при показе" },
+            { "When the desktop COM component is unavailable, the window is recreated on every show - this can occasionally cause a repaint glitch. Leave off unless you use several virtual desktops.", "Если COM-компонента рабочих столов недоступна, окно пересоздаётся при каждом показе — изредка это может давать баг перерисовки. Держите выключенным, если не пользуетесь несколькими виртуальными столами." },
             { "Bugs and rough edges are possible.", "Возможны баги и недоделки." },
             { "✅ - the corner checkmark enables adding and editing tiles", "✅ — галочка в углу панели включает добавление и редактирование плиток" },
         };
