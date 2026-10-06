@@ -4038,19 +4038,23 @@ namespace WinPanel
         // delivers, and the panel layout stays suspended for the drag's
         // duration, so no layout cascade follows. False when the batch could
         // not even be built - the caller falls back to plain per-control moves.
-        internal static bool MoveWindowsDeferred(System.Collections.Generic.IList<Control> ctrls, int dx, int dy)
+        internal static bool MoveWindowsDeferred(System.Collections.ICollection ctrls, int dx, int dy)
         {
             if (ctrls == null || ctrls.Count == 0 || (dx == 0 && dy == 0)) return true;
-            foreach (Control c in ctrls)
+            var items = new Control[ctrls.Count];
+            int n = 0;
+            foreach (object o in ctrls)
             {
+                var c = o as Control;
                 if (c == null || !c.IsHandleCreated) return false; // never a partial batch
+                items[n++] = c;
             }
-            IntPtr hd = BeginDeferWindowPos(ctrls.Count);
+            IntPtr hd = BeginDeferWindowPos(items.Length);
             if (hd == IntPtr.Zero) return false;
             const uint SWP_NOSIZE = 0x0001, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_NOOWNERZORDER = 0x0200;
-            for (int i = 0; i < ctrls.Count; i++)
+            for (int i = 0; i < items.Length; i++)
             {
-                Control c = ctrls[i];
+                Control c = items[i];
                 hd = DeferWindowPos(hd, c.Handle, IntPtr.Zero, c.Left + dx, c.Top + dy, c.Width, c.Height,
                                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
                 if (hd == IntPtr.Zero) return false;
@@ -6567,25 +6571,34 @@ namespace WinPanel
                     if (!isEditMode) return;
                     if (dragFired)
                     {
-                        int oldLeft = tile.Left;
-                        int oldTop = tile.Top;
-                        tile.Left = tile.Left + e.X - dragStartPoint.X;
-                        tile.Top = tile.Top + e.Y - dragStartPoint.Y;
-                        // The captured mouse sends every MouseMove here, so the
-                        // rest of the selection just follows the grabbed tile.
-                        if (groupDrag && groupDragTiles != null)
+                        int dx = e.X - dragStartPoint.X;
+                        int dy = e.Y - dragStartPoint.Y;
+                        if (dx != 0 || dy != 0)
                         {
-                            int dx = tile.Left - oldLeft;
-                            int dy = tile.Top - oldTop;
-                            foreach (var gt in groupDragTiles)
+                            // The captured mouse sends every MouseMove here, so
+                            // the whole selection follows the grabbed tile; the
+                            // block slides in one atomic reposition (see
+                            // MoveWindowsDeferred), the fallback re-moves the
+                            // tiles one by one.
+                            if (groupDrag && groupDragTiles != null)
                             {
-                                if (ReferenceEquals(gt, tile)) continue;
-                                gt.Left += dx;
-                                gt.Top += dy;
+                                if (!MoveWindowsDeferred(groupDragTiles, dx, dy))
+                                {
+                                    foreach (var gt in groupDragTiles)
+                                    {
+                                        gt.Left += dx;
+                                        gt.Top += dy;
+                                    }
+                                }
                             }
+                            else
+                            {
+                                tile.Left += dx;
+                                tile.Top += dy;
+                            }
+                            // Group reveal preview (single-tile drags only).
+                            UpdateGroupPreview(panel, tabData, tile);
                         }
-                        // Group reveal preview (single-tile drags only).
-                        UpdateGroupPreview(panel, tabData, tile);
                     }
                 }
             };
