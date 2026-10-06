@@ -470,6 +470,13 @@ public static Image GetIcon(string path, bool large)
             int dh = Math.Max(1, (int)Math.Round(img.Height * scale));
             int x = dest.X + (dest.Width - dw) / 2;
             int y = dest.Y + (dest.Height - dh) / 2;
+            // The icons arrive at 96-256px and land on a ~50-70px tile: GDI+'s
+            // default bilinear sampling drops most of the source rows on such a
+            // downscale and leaves the glyph edges smudged. High quality
+            // bicubic averages the whole area instead - the flat-color folder
+            // glyphs stay crisp, photo thumbnails gain detail.
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
             g.DrawImage(img, new Rectangle(x, y, dw, dh));
         }
     }

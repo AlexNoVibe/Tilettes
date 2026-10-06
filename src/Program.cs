@@ -2671,7 +2671,7 @@ namespace WinPanel
                     {
                         string gkey = key, gpath = path;
                         int gen = panelSearchGen;
-                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                        RunIconWorker(delegate
                         {
                             Bitmap small = null;
                             try
@@ -3696,13 +3696,32 @@ namespace WinPanel
         // cache evicts entries over time, and a tile that once showed a picture
         // must not fall back to a generic icon later ("the thumbnail disappeared").
         // The cache key includes the source mtime, so a replaced file re-previews.
+        // Folder composes arrive with the glyph floating in a transparent
+        // margin (the shell centers a ~70% stack inside the requested canvas),
+        // so a composed tile draws visibly smaller than a photo tile next to
+        // it. Trim the margin away like the icon path does; a no-op when the
+        // bitmap has no margin (an already-trimmed cache entry).
+        private static Image TrimFolderCompose(Image img)
+        {
+            Bitmap bmp = img as Bitmap;
+            if (bmp == null) return img;
+            try
+            {
+                Bitmap trimmed = IconExtractor.TrimTransparent(bmp);
+                if (ReferenceEquals(trimmed, bmp)) return img;
+                bmp.Dispose();
+                return trimmed;
+            }
+            catch { return img; }
+        }
+
         internal static Image LoadMediaThumbnail(string path, int size, bool isFolder)
         {
             try
             {
                 if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return null;
                 if (!isFolder && !IsMediaFile(path)) return null;
-                if (isFolder && !FolderHasPreviewableChild(path))
+                if (isFolder && !FolderMayComposePreview(path))
                 {
                     // The shell hands a folder whose thumbnail cache only holds
                     // the small generic render back as an UPSCALED size-by-size
@@ -3724,7 +3743,7 @@ namespace WinPanel
                 string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
                              File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
                 Image own = IconExtractor.DiskCacheGetByKey(key);
-                if (own != null) return own;
+                if (own != null) return isFolder ? TrimFolderCompose(own) : own;
                 if (isFolder)
                 {
                     // A folder without composeable pictures fails the attempt;
@@ -3738,7 +3757,10 @@ namespace WinPanel
                     }
                     Image fimg = ShellItemApi.GetShellThumbnail(path, size);
                     if (fimg != null)
+                    {
+                        fimg = TrimFolderCompose(fimg);
                         IconExtractor.DiskCachePutByKey(key, fimg);
+                    }
                     else
                         lock (FolderNoThumb)
                         {
@@ -3761,16 +3783,21 @@ namespace WinPanel
         // shell can compose a preview from) - see LoadMediaThumbnail.
         private static readonly Dictionary<string, byte> FolderNoThumb = new Dictionary<string, byte>();
 
-        // True when a folder's DIRECT children include a media file - the only
-        // case where the shell composes a real folder preview. One enumeration
-        // of a local directory; network paths arrive here on a worker thread
-        // (IsSlowIconSource), so a slow share cannot block the UI.
-        internal static bool FolderHasPreviewableChild(string path)
+        // True when a folder has ANY direct child (file or subfolder) - the only
+        // case where the shell has something to compose a preview from: a photo
+        // stack for folders with pictures, a folder stack for folders with
+        // subfolders. A truly EMPTY folder gets nothing composed - the attempt
+        // either fails outright or, worse, hands back the generic folder render
+        // upscaled from the thumbnail cache's small entry, which is the smudged
+        // tile icon. One enumeration of a local directory; network paths arrive
+        // here on a worker thread (IsSlowIconSource), so a slow share cannot
+        // block the UI.
+        internal static bool FolderMayComposePreview(string path)
         {
             try
             {
-                foreach (string f in Directory.EnumerateFiles(path))
-                    if (IsMediaFile(f)) return true;
+                foreach (string f in Directory.EnumerateFileSystemEntries(path))
+                    return true;
             }
             catch { }
             return false;
@@ -3834,6 +3861,20 @@ namespace WinPanel
                                        (IsSlowIconSource(item) && Directory.Exists(item.Path ?? ""));
                 Image mediaThumb = LoadMediaThumbnail(item.Path, 256, isFolderPreview);
                 if (mediaThumb != null) return mediaThumb;
+                // 4a) folder tiles: a fresh icon-only shell extraction at 96px
+                // before the cached icon chain. The persistent icon cache still
+                // holds pre-fix folder icons upscaled from a small layer (the
+                // smudged tiles), and the shell hands the best layer it has
+                // here - the same one Explorer draws in its large-icon views.
+                if (isFolderPreview && !ShellItemApi.IsShellPath(item.Path))
+                {
+                    try
+                    {
+                        Image fresh = ShellItemApi.GetShellIcon(item.Path, 96);
+                        if (fresh != null) return fresh;
+                    }
+                    catch { }
+                }
                 // 4) standard shell icon (shell: paths = UWP apps)
                 return IconExtractor.GetIconAuto(item.Path, true);
             }
@@ -3913,22 +3954,72 @@ namespace WinPanel
 
         // True when the icon chain for this path runs a shell thumbnail call
         // that can take hundreds of milliseconds: a media file (photo decode,
-        // video frame) or a real folder whose direct children include media
-        // (composed folder preview). The icon queue runs on the UI thread and
-        // its per-tick time budget cannot preempt a task that already started,
-        // so one such task stalls the whole panel for its duration - these go
-        // to a worker thread like the network sources do. Local-only checks;
-        // network paths are caught by IsSlowIconSource first.
+        // video frame) or a real folder with children whose preview the shell
+        // composes. The icon queue runs on the UI thread and its per-tick time
+        // budget cannot preempt a task that already started, so one such task
+        // stalls the whole panel for its duration - these go to the STA worker
+        // like the network sources do. Local-only checks; network paths are
+        // caught by IsSlowIconSource first.
         internal static bool IconPathNeedsWorkerThread(string path)
         {
             try
             {
                 if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return false;
                 if (IsMediaFile(path)) return true;
-                return IsFolderPathCached(path) && FolderHasPreviewableChild(path);
+                return IsFolderPathCached(path) && FolderMayComposePreview(path);
             }
             catch { }
             return false;
+        }
+
+        // ---------- dedicated STA icon worker ----------
+        // Shell thumbnail extraction (SHCreateItemFromParsingName → GetImage)
+        // needs an initialized COM apartment. Threadpool threads are MTA and the
+        // shell's thumbnail pipeline fails on them silently - once the media and
+        // folder previews moved off the UI thread, the tiles came back empty on
+        // machines where the shell actually composes them. One background STA
+        // thread with a queue keeps the UI free (a 100-500ms decode can no
+        // longer stall the panel) and gives the shell the apartment it wants,
+        // one extraction at a time, in arrival order - so a heavy tab cannot
+        // hammer the shell with a dozen concurrent decoders either.
+        private static readonly object IconWorkerGate = new object();
+        private static readonly System.Collections.Generic.Queue<System.Threading.WaitCallback> IconWorkerQueue =
+            new System.Collections.Generic.Queue<System.Threading.WaitCallback>();
+        private static System.Threading.Thread IconWorkerThread;
+
+        [System.Runtime.InteropServices.DllImport("ole32.dll")]
+        private static extern int CoInitialize(IntPtr pvReserved);
+
+        internal static void RunIconWorker(System.Threading.WaitCallback job)
+        {
+            if (job == null) return;
+            lock (IconWorkerGate)
+            {
+                IconWorkerQueue.Enqueue(job);
+                if (IconWorkerThread == null)
+                {
+                    IconWorkerThread = new System.Threading.Thread(IconWorkerLoop);
+                    IconWorkerThread.IsBackground = true;
+                    IconWorkerThread.SetApartmentState(System.Threading.ApartmentState.STA);
+                    IconWorkerThread.Start();
+                }
+                System.Threading.Monitor.Pulse(IconWorkerGate);
+            }
+        }
+
+        private static void IconWorkerLoop()
+        {
+            try { CoInitialize(IntPtr.Zero); } catch { }
+            while (true)
+            {
+                System.Threading.WaitCallback job;
+                lock (IconWorkerGate)
+                {
+                    while (IconWorkerQueue.Count == 0) System.Threading.Monitor.Wait(IconWorkerGate);
+                    job = IconWorkerQueue.Dequeue();
+                }
+                try { job(null); } catch { }
+            }
         }
 
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
@@ -3937,14 +4028,18 @@ namespace WinPanel
             if (IsSlowIconSource(item) || IconPathNeedsWorkerThread(item == null ? null : item.Path))
             {
                 // Network source, media preview or composed folder preview:
-                // extract on a worker thread - an unreachable share may stall it
-                // for the SMB timeout, a thumbnail composition or a video frame
-                // costs hundreds of ms, and the UI keeps running either way
-                // while the tile keeps its placeholder until the icon arrives.
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                // extract on the STA worker thread - an unreachable share may
+                // stall it for the SMB timeout, a thumbnail composition or a
+                // video frame costs hundreds of ms, and the UI keeps running
+                // either way while the tile keeps its placeholder until the
+                // icon arrives.
+                RunIconWorker(delegate
                 {
                     Image img = null;
                     try { img = LoadIconForItem(item); } catch { }
+                    if (img == null)
+                        AppLog.Write("LoadTileIcon: no icon extracted for " +
+                                     (item != null ? item.Path : "(null item)"));
                     if (img == null) { try { img = SystemIcons.Application.ToBitmap(); } catch { } }
                     try
                     {
@@ -3976,6 +4071,8 @@ namespace WinPanel
             }
             if (img2 == null)
             {
+                AppLog.Write("LoadTileIcon: no icon extracted for " +
+                             (item != null ? item.Path : "(null item)") + " (ui thread)");
                 try { img2 = SystemIcons.Application.ToBitmap(); }
                 catch { img2 = SystemIcons.Error.ToBitmap(); }
             }
@@ -4029,9 +4126,10 @@ namespace WinPanel
             if (IsSlowIconSource(child) || IconPathNeedsWorkerThread(child == null ? null : child.Path))
             {
                 // Network source, media preview or composed folder preview:
-                // extract on a worker thread (see LoadTileIcon) - the child
-                // icons run on the same UI-thread queue as everything else.
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                // extract on the STA worker thread (see LoadTileIcon) - the
+                // child icons run on the same UI-thread queue as everything
+                // else.
+                RunIconWorker(delegate
                 {
                     Image bimg = null;
                     try
@@ -7613,7 +7711,7 @@ namespace WinPanel
                         // unreachable share can not stall the popup.
                         string cpath = child.Path;
                         bool cgroup = child.IsFolder;
-                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                        MainForm.RunIconWorker(delegate
                         {
                             Image img = null;
                             try
@@ -7697,7 +7795,7 @@ namespace WinPanel
                 {
                     // Ctrl + right-click on a folder tile: open it in the
                     // console command from the settings (empty = the menu).
-                    if (CtrlHeld() && OpenFolderConsole(child))
+                    if (MainForm.CtrlHeld() && OpenFolderConsole(child))
                         return;
                     ShowTileMenu(tile, child, e.Location);
                     return;
@@ -8024,6 +8122,8 @@ namespace WinPanel
                         double scale = Math.Min(iconRect.Width / (double)IconImage.Width, iconRect.Height / (double)IconImage.Height);
                         int dw = Math.Max(1, (int)Math.Round(IconImage.Width * scale));
                         int dh = Math.Max(1, (int)Math.Round(IconImage.Height * scale));
+                        e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
                         e.Graphics.DrawImage(IconImage, new Rectangle(iconRect.X + (iconRect.Width - dw) / 2, iconRect.Y + (iconRect.Height - dh) / 2, dw, dh));
                     }
                     catch { }
