@@ -961,7 +961,7 @@ namespace WinPanel
         {
             try
             {
-                if ((Control.ModifierKeys & Keys.Control) == 0) return;
+                if (!MainForm.CtrlHeld()) return;
                 var he = e as HandledMouseEventArgs;
                 if (he != null) he.Handled = true;
                 float cur = Math.Max(6f, Math.Min(28f, settings.ConsoleFontSizeX10 / 10f));

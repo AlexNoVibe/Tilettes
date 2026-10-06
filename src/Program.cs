@@ -1027,6 +1027,21 @@ namespace WinPanel
         [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
         private static extern bool DestroyIcon(IntPtr hIcon);
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+
+        // Ctrl state for MOUSE-time decisions (Ctrl + right-click folder open,
+        // Ctrl + click, the Ctrl-expands-label paint). Control.ModifierKeys is
+        // the thread's SYNCHRONIZED keyboard state - it only updates while this
+        // thread processes keyboard messages, so a Ctrl held over a click on a
+        // panel that has no input focus read as released and the folder open
+        // silently fell through to the regular menu. GetAsyncKeyState reads the
+        // live state regardless of which window has focus.
+        internal static bool CtrlHeld()
+        {
+            return (GetAsyncKeyState(0x11) & 0x8000) != 0;
+        }
+
         private void OpenSettings()
         {
             Rectangle liveRect = WindowState == FormWindowState.Normal ? new Rectangle(this.Location, this.Size) : this.RestoreBounds;
@@ -3687,6 +3702,25 @@ namespace WinPanel
             {
                 if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return null;
                 if (!isFolder && !IsMediaFile(path)) return null;
+                if (isFolder && !FolderHasPreviewableChild(path))
+                {
+                    // The shell hands a folder whose thumbnail cache only holds
+                    // the small generic render back as an UPSCALED size-by-size
+                    // bitmap - a smudged open-folder image on the tile - and the
+                    // failed attempt also seeds that cache entry. A real composed
+                    // preview only exists when something previewable sits directly
+                    // inside; anything else goes straight to the sharp jumbo icon.
+                    // Checked before the disk cache get, so a cached upscale never
+                    // loads either.
+                    string negKey = "mediathumb|" + path.ToLowerInvariant() + "|" +
+                                    File.GetLastWriteTimeUtc(path).Ticks;
+                    lock (FolderNoThumb)
+                    {
+                        if (FolderNoThumb.Count > 512) FolderNoThumb.Clear();
+                        FolderNoThumb[negKey] = 1;
+                    }
+                    return null;
+                }
                 string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
                              File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
                 Image own = IconExtractor.DiskCacheGetByKey(key);
@@ -3726,6 +3760,21 @@ namespace WinPanel
         // Session memory of folders whose thumbnail attempt failed (nothing the
         // shell can compose a preview from) - see LoadMediaThumbnail.
         private static readonly Dictionary<string, byte> FolderNoThumb = new Dictionary<string, byte>();
+
+        // True when a folder's DIRECT children include a media file - the only
+        // case where the shell composes a real folder preview. One enumeration
+        // of a local directory; network paths arrive here on a worker thread
+        // (IsSlowIconSource), so a slow share cannot block the UI.
+        internal static bool FolderHasPreviewableChild(string path)
+        {
+            try
+            {
+                foreach (string f in Directory.EnumerateFiles(path))
+                    if (IsMediaFile(f)) return true;
+            }
+            catch { }
+            return false;
+        }
 
         // Session cache of "is this path a filesystem directory" (UI-thread safe:
         // network paths are excluded here, they are probed directly only inside
@@ -3862,14 +3911,36 @@ namespace WinPanel
             return false;
         }
 
+        // True when the icon chain for this path runs a shell thumbnail call
+        // that can take hundreds of milliseconds: a media file (photo decode,
+        // video frame) or a real folder whose direct children include media
+        // (composed folder preview). The icon queue runs on the UI thread and
+        // its per-tick time budget cannot preempt a task that already started,
+        // so one such task stalls the whole panel for its duration - these go
+        // to a worker thread like the network sources do. Local-only checks;
+        // network paths are caught by IsSlowIconSource first.
+        internal static bool IconPathNeedsWorkerThread(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return false;
+                if (IsMediaFile(path)) return true;
+                return IsFolderPathCached(path) && FolderHasPreviewableChild(path);
+            }
+            catch { }
+            return false;
+        }
+
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
         {
             if (tile.IsDisposed) return;
-            if (IsSlowIconSource(item))
+            if (IsSlowIconSource(item) || IconPathNeedsWorkerThread(item == null ? null : item.Path))
             {
-                // Network source: extract on a worker thread - an unreachable share
-                // may stall it for the SMB timeout, the UI keeps running and the
-                // tile keeps its placeholder until the icon arrives.
+                // Network source, media preview or composed folder preview:
+                // extract on a worker thread - an unreachable share may stall it
+                // for the SMB timeout, a thumbnail composition or a video frame
+                // costs hundreds of ms, and the UI keeps running either way
+                // while the tile keeps its placeholder until the icon arrives.
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate
                 {
                     Image img = null;
@@ -3955,11 +4026,11 @@ namespace WinPanel
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
-            if (IsSlowIconSource(child))
+            if (IsSlowIconSource(child) || IconPathNeedsWorkerThread(child == null ? null : child.Path))
             {
-                // Network source: extract on a worker thread (see LoadTileIcon).
-                // Folder children too - they may need a shell preview, which must
-                // not touch an unreachable share on the UI thread.
+                // Network source, media preview or composed folder preview:
+                // extract on a worker thread (see LoadTileIcon) - the child
+                // icons run on the same UI-thread queue as everything else.
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate
                 {
                     Image bimg = null;
@@ -4268,23 +4339,43 @@ namespace WinPanel
                 if (Directory.Exists(path)) return path;
                 if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Binary parse first: WScript.Shell (the COM path
-                    // PanelSearch uses) can be dead on machines with a broken
+                    // Three independent sources, tried until one names an
+                    // existing directory. The binary parse comes first because
+                    // WScript.Shell (COM) can be dead on machines with a broken
                     // shell COM layer — this dev box logs E_NOINTERFACE and
                     // REGDB_E_CLASSNOTREG from several shell classes — and the
-                    // folder open must not depend on COM.
+                    // folder open must not depend on COM. But a failed binary
+                    // parse must not stop the others: it decodes ANSI bytes in
+                    // the system codepage, so a shortcut made under a different
+                    // locale decodes to garbage that merely fails
+                    // Directory.Exists, and non-conformant shortcuts carry
+                    // garbage offsets outright.
                     string target = ParseLnkLocalBasePath(path);
-                    if (string.IsNullOrEmpty(target))
-                    {
-                        try { target = PanelSearch.ResolveTarget(path); }
-                        catch { target = null; }
-                    }
                     if (!string.IsNullOrEmpty(target) && Directory.Exists(target))
                     {
                         AppLog.Write("ResolveShortcutFolder: " + path + " -> " + target);
                         return target;
                     }
-                    AppLog.Write("ResolveShortcutFolder: no directory for " + path);
+                    try
+                    {
+                        string com = PanelSearch.ResolveTarget(path);
+                        if (!string.IsNullOrEmpty(com) && Directory.Exists(com))
+                        {
+                            AppLog.Write("ResolveShortcutFolder: " + path + " -> " + com + " (shell)");
+                            return com;
+                        }
+                    }
+                    catch { }
+                    string scanned = null;
+                    try { scanned = ScanUtf16AbsolutePath(File.ReadAllBytes(path)); }
+                    catch { scanned = null; }
+                    if (!string.IsNullOrEmpty(scanned) && Directory.Exists(scanned))
+                    {
+                        AppLog.Write("ResolveShortcutFolder: " + path + " -> " + scanned + " (scan)");
+                        return scanned;
+                    }
+                    AppLog.Write("ResolveShortcutFolder: no directory for " + path +
+                                 (string.IsNullOrEmpty(target) ? "" : " (binary parse: " + target + ")"));
                 }
             }
             catch (Exception ex)
@@ -6267,7 +6358,7 @@ namespace WinPanel
                     // command from the settings; with the command empty the mini
                     // explorer opens on the folder instead (the regular menu
                     // below stays for non-directories and failed launches).
-                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && LaunchFolderConsoleOrMini(item))
+                    if (CtrlHeld() && LaunchFolderConsoleOrMini(item))
                         return;
                     var pt = tile.PointToScreen(e.Location);
                     if (item.IsFolder)
@@ -6480,7 +6571,7 @@ namespace WinPanel
                     }
                     else
                     {
-                        bool ctrlClick = (Control.ModifierKeys & Keys.Control) == Keys.Control;
+                        bool ctrlClick = CtrlHeld();
                         // Red multi-select mode: a plain click toggles selection and
                         // never launches anything.
                         if (editState == 2)
@@ -7606,7 +7697,7 @@ namespace WinPanel
                 {
                     // Ctrl + right-click on a folder tile: open it in the
                     // console command from the settings (empty = the menu).
-                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control && OpenFolderConsole(child))
+                    if (CtrlHeld() && OpenFolderConsole(child))
                         return;
                     ShowTileMenu(tile, child, e.Location);
                     return;
@@ -7748,6 +7839,16 @@ namespace WinPanel
         }
 
         public Image IconImage { get; private set; }
+
+        // Same as TileControl: a right-click on a popup tile is the tile's own
+        // business (the Ctrl + right-click folder open returns without a menu,
+        // and the bubbled WM_CONTEXTMENU would pop the form's background menu).
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_CONTEXTMENU = 0x007B;
+            if (m.Msg == WM_CONTEXTMENU) return;
+            base.WndProc(ref m);
+        }
 
         // Shared label font/format and a cached rounded outline, same idea as in
         // TileControl: no per-repaint Font/StringFormat/GraphicsPath allocations.
@@ -7948,7 +8049,7 @@ namespace WinPanel
                         // Same display-only transform as the main tiles.
                         string label = UiText.TileLabel(item.Name, item.Path,
                             cfg == null || cfg.LabelTrimShortcut, cfg == null || cfg.LabelTrimExtension);
-                        bool ctrlFull = (Control.ModifierKeys & Keys.Control) != 0 &&
+                        bool ctrlFull = MainForm.CtrlHeld() &&
                                         (cfg == null || cfg.LabelCtrlFullNames);
                         if (ctrlFull)
                         {
@@ -8579,6 +8680,19 @@ namespace WinPanel
             this.Invalidate();
         }
 
+        // A tile owns its right-click entirely (the tile menus are shown from
+        // the MouseDown/MouseUp handlers). Without this, the WM_CONTEXTMENU of
+        // the button-up bubbles to the parent panel whenever the handler
+        // returns without showing a menu - concretely, a successful Ctrl +
+        // right-click folder open made the panel's background menu (Create
+        // Folder / Create Group / Settings) pop up over the mini explorer.
+        protected override void WndProc(ref Message m)
+        {
+            const int WM_CONTEXTMENU = 0x007B;
+            if (m.Msg == WM_CONTEXTMENU) return;
+            base.WndProc(ref m);
+        }
+
         // Height reserved for the label. Only reserve it when the tile fits a text line,
         // otherwise the label would overlap the icon on short tiles.
         // Height reserved for the label. Tiles below 56px get no label; from
@@ -8793,7 +8907,7 @@ namespace WinPanel
                             // Ctrl held (and enabled in settings): show the full
                             // name instead of the abbreviated one - the label font
                             // shrinks until the whole text fits one line.
-                            bool ctrlFull = (Control.ModifierKeys & Keys.Control) != 0 &&
+                            bool ctrlFull = MainForm.CtrlHeld() &&
                                             (cfg == null || cfg.LabelCtrlFullNames);
                             string[] rows = (!ctrlFull && labelSpace > 30 && (cfg == null || cfg.LabelTwoRows))
                                 ? UiText.WrapTwo(label, e.Graphics, font, textRect.Width) : null;
