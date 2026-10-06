@@ -6528,6 +6528,64 @@ namespace WinPanel
                         ClearMultiSelection();
                     });
                 }
+                m.MenuItems.Add("-");
+                // Bulk description: one dialog seeded from the first selected
+                // item, the result lands on every selected tile.
+                var descTargets = new List<ShortcutItem>(multiSelection);
+                m.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) =>
+                {
+                    if (descTargets.Count == 0) return;
+                    string subject = descTargets.Count + " " + Loc.S("selected", "выбрано");
+                    string d = DescriptionDialog.Show(this, descTargets[0], subject);
+                    if (d == null) return;
+                    foreach (var it in descTargets)
+                    {
+                        it.ShortDescription = d;
+                        PanelSearch.Invalidate(it);
+                        UpdateItemTooltip(it);
+                    }
+                    records.Save(recordsPath);
+                });
+                // Bulk size: the same 1x1..6x6 submenu a single folder tile has.
+                var sizeMenu = m.MenuItems.Add(Loc.S("Size", "Размер"));
+                var sizeTargets = new List<ShortcutItem>(multiSelection);
+                for (int s = 1; s <= 6; s++)
+                {
+                    int sz = s;
+                    sizeMenu.MenuItems.Add(sz + " x " + sz, (s2, e2) =>
+                    {
+                        if (sizeTargets.Count == 0) return;
+                        foreach (var it in sizeTargets)
+                        {
+                            it.Size = sz;
+                            if (tabData.IsGridLayout)
+                            {
+                                int cols = Math.Max(1, settings.GridColumns);
+                                PlaceInGrid(GetCurrentItems(tabData), it, it.GridX, it.GridY, cols, TotalGridRows);
+                            }
+                        }
+                        records.Save(recordsPath);
+                        ClearMultiSelection();
+                        RenderCurrentFolder(panel, tabData);
+                    });
+                }
+                // Bulk icon: one file picked once, applied to every selected
+                // tile (the same consolidation a single tile gets).
+                var iconTargets = new List<ShortcutItem>(multiSelection);
+                m.MenuItems.Add(Loc.S("Change Icon", "Сменить иконку"), (s2, e2) =>
+                {
+                    if (iconTargets.Count == 0) return;
+                    using (var ofd = new OpenFileDialog())
+                    {
+                        ofd.Filter = "Icon Files (*.ico;*.exe)|*.ico;*.exe|All Files (*.*)|*.*";
+                        if (ofd.ShowDialog() != DialogResult.OK) return;
+                        string icoPath = ConsolidateFilePath(ofd.FileName);
+                        foreach (var it in iconTargets) it.CustomIconPath = icoPath;
+                        records.Save(recordsPath);
+                        ClearMultiSelection();
+                        RenderCurrentFolder(panel, tabData);
+                    }
+                });
                 m.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) =>
                 {
                     var targets = new List<ShortcutItem>(multiSelection);
@@ -6547,6 +6605,23 @@ namespace WinPanel
                 });
                 var moveTo = m.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
                 FillMoveToTabMenu(moveTo, panel, tabData, new List<ShortcutItem>(multiSelection));
+                // Reveal where the selection lives: one window per distinct
+                // parent folder, not one per tile (ten selected tiles from one
+                // directory would otherwise open ten Explorers).
+                var perFolder = new Dictionary<string, ShortcutItem>(StringComparer.OrdinalIgnoreCase);
+                foreach (var it in multiSelection)
+                {
+                    string dir = null;
+                    try { dir = string.IsNullOrEmpty(it.Path) ? null : Path.GetDirectoryName(it.Path); }
+                    catch { }
+                    if (string.IsNullOrEmpty(dir)) continue;
+                    if (!perFolder.ContainsKey(dir)) perFolder[dir] = it;
+                }
+                if (perFolder.Count > 0)
+                    m.MenuItems.Add(Loc.S("Open containing folder", "Открыть содержащую папку"), (s2, e2) =>
+                    {
+                        foreach (var it in perFolder.Values) OpenContainingFolder(it);
+                    });
                 m.MenuItems.Add(Loc.S("Clear selection", "Снять выделение"), (s2, e2) => ClearMultiSelection());
                 m.Show(tile, location);
             }
@@ -7679,13 +7754,31 @@ namespace WinPanel
                     catch { }
                 }
 
-                // Multi-select highlight (red edit-button mode).
+                // Multi-select highlight (red edit-button mode): a red outline
+                // plus a red checkmark badge in the top-right corner.
                 if (MultiSelected)
                 {
                     try
                     {
                         using (var pen = new Pen(Color.FromArgb(235, 60, 40), 2f))
                             e.Graphics.DrawPath(pen, path);
+                        int d = Math.Max(12, Math.Min(20, Math.Min(this.Width, this.Height) / 4));
+                        int bx = this.Width - d - 3;
+                        int by = 3;
+                        using (var brush = new SolidBrush(Color.FromArgb(235, 60, 40)))
+                            e.Graphics.FillEllipse(brush, bx, by, d, d);
+                        float k = d / 20f;
+                        using (var checkPen = new Pen(Color.White, Math.Max(2f, 3.4f * k)))
+                        {
+                            checkPen.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+                            checkPen.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                            e.Graphics.DrawLines(checkPen, new[]
+                            {
+                                new PointF(bx + 5f * k, by + 10.5f * k),
+                                new PointF(bx + 9f * k, by + 14.5f * k),
+                                new PointF(bx + 15f * k, by + 6.5f * k)
+                            });
+                        }
                     }
                     catch { }
                 }
@@ -8321,7 +8414,7 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
         private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
 
-        private DescriptionDialog(ShortcutItem item)
+        private DescriptionDialog(ShortcutItem item, string subject)
         {
             Settings st = MainForm.CurrentSettings;
             Color bg = UiPalette.Bg;
@@ -8345,7 +8438,7 @@ namespace WinPanel
 
             var title = new Label
             {
-                Text = Loc.S("Description", "Описание") + " — " + item.Name,
+                Text = Loc.S("Description", "Описание") + " — " + (string.IsNullOrEmpty(subject) ? item.Name : subject),
                 Left = 20,
                 Top = 14,
                 Width = 430,
@@ -8403,7 +8496,13 @@ namespace WinPanel
         // Returns the entered text, or null when the dialog was cancelled.
         public static string Show(IWin32Window owner, ShortcutItem item)
         {
-            using (var dlg = new DescriptionDialog(item))
+            return Show(owner, item, null);
+        }
+
+        // `subject` replaces the item name in the title (bulk edit: "N selected").
+        public static string Show(IWin32Window owner, ShortcutItem item, string subject)
+        {
+            using (var dlg = new DescriptionDialog(item, subject))
             {
                 dlg.ShowDialog(owner);
                 return dlg.accepted ? dlg.textBox.Text.Trim() : null;

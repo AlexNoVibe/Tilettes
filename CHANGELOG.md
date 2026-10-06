@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4 — 2026-10-06
+
+- **Bulk actions in the red multi-select mode**: the right-click menu over selected tiles gains four items — "Description..." opens one dialog (titled "N selected", seeded from the first selected tile) and lands the text on every selected tile; "Size" carries the same 1×1–6×6 submenu a single folder tile has, applied to all selected (grid tiles are re-fitted into their cells); "Change Icon" picks one icon file and assigns it to every selected tile with the usual copy-into-ico consolidation; "Open containing folder" reveals where the selection lives — one Explorer window per distinct parent folder, so ten tiles from one directory open one window, not ten. Selected tiles now also carry a red checkmark badge (a red disc with a white check, scaling with the tile) in the top-right corner next to the red outline. All items reuse existing menu strings, so the ten languages are covered without new keys.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.3...v1.1.4
+
 ## v1.1.3 — 2026-10-06
 
 - **"Sync user Start"**: a button in Settings (next to the Start Menu sync) and a "close & sync" answer in the first-start welcome window copy your pinned Windows 10 Start tiles — groups, sizes, positions — into a new ordinary tab ("User Start" / «Пользовательский Пуск»; running it again rebuilds that tab). The layout comes from one PowerShell call (`Export-StartLayout` + `Get-StartApps` in a single process, hard 20 s timeout because `Export-StartLayout` hangs forever on systems with a broken Start layer), tile targets resolve to native shortcuts when one exists (a Start Menu scan matches shortcuts by their AppUserModel ID), UWP tiles go through `shell:AppsFolder` paths the panel already launches and icons, Windows tile shapes map onto the square grid (small→1, medium→2, wide→3, large→4), and groups stack in their original order with collisions moved to the nearest free cell. Windows 11 (no tiles) answers with an explanation; pinned Edge sites and Start tile folders cannot be exported by Windows at all and are reported in the final count. No confirmation dialogs on the way: the button does its thing and the report tells what happened. Localized in ten languages.
