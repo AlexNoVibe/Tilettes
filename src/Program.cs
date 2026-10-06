@@ -6222,6 +6222,10 @@ namespace WinPanel
                         }
                         foreach (var gt in groupDragTiles) gt.BringToFront();
                         groupDragStartPos = new Point(tile.Left, tile.Top);
+                        // Moving the whole selection per mouse event would run
+                        // an AutoScroll layout pass per child move; hold the
+                        // layout until the drop (resumed in MouseUp).
+                        panel.SuspendLayout();
                     }
                 }
                 else if (e.Button == MouseButtons.Right)
@@ -6340,6 +6344,7 @@ namespace WinPanel
                 {
                     bool wasGroupDrag = groupDrag && groupDragTiles != null && groupDragTiles.Count > 1;
                     List<TileControl> dragTiles = groupDragTiles;
+                    if (groupDrag) panel.ResumeLayout(true); // the drag held the panel layout suspended
                     groupDrag = false;
                     groupDragTiles = null;
                     TileGroup dropGroup = previewGroup;
@@ -8225,6 +8230,7 @@ namespace WinPanel
             for (int i = 0; i < dragTiles.Count; i++)
                 dragTiles[i].Location = dragStarts[i]; // snap back; the relayout re-snaps to the grid
             DragOffsets.Remove(Group);
+            OwnerPanel.ResumeLayout(true); // the drag held the layout suspended
             if (dcx != 0 || dcy != 0)
             {
                 Group.X = Math.Max(0, Group.X + dcx);
@@ -8252,6 +8258,11 @@ namespace WinPanel
             headerStart = header.Location;
             dragTiles = new List<TileControl>();
             dragStarts = new List<Point>();
+            // Every child move on an AutoScroll panel would run a layout pass
+            // over all children (and recompute the scroll area); with the
+            // header, three frame strips and every member tile moving on each
+            // mouse event that cascade stalled the drag. Layout resumes on drop.
+            if (OwnerPanel != null) OwnerPanel.SuspendLayout();
             if (OwnerPanel == null) return;
             foreach (Control c in OwnerPanel.Controls)
             {
