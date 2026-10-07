@@ -843,6 +843,8 @@ namespace WinPanel
             scrollPanel.Controls.Add(lblMul2);
             scrollPanel.Controls.Add(numY);
             scrollPanel.Controls.Add(lblPosY);
+            scrollPanel.Controls.Add(lblShowTab);
+            scrollPanel.Controls.Add(cmbShowTab);
             scrollPanel.Controls.Add(lblTrans);
             scrollPanel.Controls.Add(numGridTransparency);
             scrollPanel.Controls.Add(lblAuraTr);

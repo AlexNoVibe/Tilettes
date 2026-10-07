@@ -25,7 +25,7 @@ namespace WinPanel
         private readonly Font mainFont, titleFont, smallFont;
         private readonly ToolTip tips = new ToolTip();
 
-        private Label lblGreet, lblNote, lblIssuePrompt, lblHow, lblEditHint, lblLang, lblSupport;
+        private Label lblGreet, lblNote, lblIssuePrompt, lblHow, lblEditHint, lblGroupHint, lblLang, lblSupport;
         private LinkLabel linkIssues, linkDonate;
         private CheckBox chkUpdates;
         private Button btnClose, btnExamples, btnSyncUser;
@@ -146,6 +146,10 @@ namespace WinPanel
             // question - spell out what it toggles right under the how-to line.
             lblEditHint = AddLabel(x, ref y, cw, mainFont.Height + 2, mainFont);
             lblEditHint.ForeColor = dimColor;
+            // Groups answer the second most asked question: dragging a group
+            // does nothing outside the red multi-select state.
+            lblGroupHint = AddLabel(x, ref y, cw, mainFont.Height + 2, mainFont);
+            lblGroupHint.ForeColor = dimColor;
             y += 10;
 
             // ---- Language: painted flags (one per supported language, 5 x 2) ----
@@ -265,6 +269,7 @@ namespace WinPanel
 
             y = FlowLabel(lblHow, x, y, cw, mainFont, 2);
             y = FlowLabel(lblEditHint, x, y, cw, mainFont, 2);
+            y = FlowLabel(lblGroupHint, x, y, cw, mainFont, 2);
             y += 10;
 
             y = FlowLabel(lblLang, x, y, cw, mainFont, 2);
@@ -388,6 +393,8 @@ namespace WinPanel
                 "Просто перетащите ярлык или файл на панель — появится плитка.");
             lblEditHint.Text = Loc.S("✅ - the corner checkmark enables adding and editing tiles",
                 "✅ — галочка в углу панели включает добавление и редактирование плиток");
+            lblGroupHint.Text = Loc.S("The red checkmark (a second click on the corner checkmark) enables groups: they can only be moved and resized in that mode",
+                "Красная галочка (второй клик по галочке в углу) включает группы: двигать и менять их размер можно только в этом режиме");
             lblLang.Text = Loc.S("Language / Язык:", "Язык / Language:");
             chkUpdates.Text = Loc.S("Check for updates automatically", "Проверять обновления автоматически");
             lblSupport.Text = Loc.S("Support the author", "Поддержать автора");
