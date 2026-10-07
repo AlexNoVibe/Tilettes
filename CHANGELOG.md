@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.2.0 — 2026-10-07
+
+- **Icon pipeline rebuilt**: folder tiles get their composed previews back (folders-with-folders included), media thumbnails extract on a dedicated STA worker thread instead of dying silently, and folder icons re-extract fresh so tiles paint sharp instead of blurred.
+- **Faster search**: shortcut resolution no longer pays a WScript.Shell COM activation per item — a binary .lnk parser plus resolution caches do the job, so search stays fast with hundreds of tiles.
+- **Smooth drags**: dragging a whole group or a red multi-select block repositions all its windows in one atomic batch with exposed-strip invalidation instead of per-frame full repaints — the stutter is gone.
+- **Grid through groups**: the dashed grid now runs through tile groups; the body plate that covered it in a group's empty cells is gone, so the grid no longer looks erased where there are no tiles.
+- **Ctrl+click on folder shortcuts** opens the mini explorer on shortcuts to folders too — the target folder is parsed straight out of the .lnk binary instead of opening a regular Explorer window.
+- **Group auto-size rules**: the standard group keeps its auto width at 8 cells, grows downward by at most 2 rows per dragged tile, and never grows into the group below it — that group's 1-cell header stays free.
+- **Groups act only in the red state**: frames, headers, dragging and the size menu exist only while the edit button shows the red checkmark; the normal mode has no group borders and no stale move cursor on a header.
+- **Settings window**: opens instantly again (the icon queue pauses while the dialog is up) and stops flickering when resized smaller; the Ctrl full-name labels use a cached fitted font instead of allocating one per frame.
+- **"Open tab on show"**: a new settings row pins the tab every panel show lands on — hotkey, start-button click, tray, taskbar-button restore, second launch and the first start — and the row itself now actually renders (it used to be silently missing from the window).
+- **Opt-in desktop re-home**: moving the panel to the current virtual desktop on show became a setting (off by default — on systems without the virtual-desktop COM class the old re-home recreated the window on every show), and the welcome window now explains that groups can be moved and resized only with the red checkmark.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.1.5...v1.2.0
+
 ## v1.1.5 — 2026-10-06
 
 - **Hover tooltips on small tiles**: tiles without a label band (every 1×1) always carry the name in the tooltip — the face shows only an icon, so the tip was the only place the name existed — and whitespace-only descriptions no longer produce an empty balloon.
