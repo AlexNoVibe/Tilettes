@@ -890,6 +890,19 @@ namespace WinPanel
                 RestoreWindow();
                 return;
             }
+            // Restoring from the taskbar button (or a taskbar preview action)
+            // bypasses RestoreWindow entirely - the shell posts the system
+            // command straight to the window. Pin the "open tab on show" tab
+            // before the restore paints, so the taskbar path lands on the
+            // chosen tab like every other show path. No-op when the tab is
+            // already the active one or none is pinned.
+            const int WM_SYSCOMMAND = 0x0112;
+            if (m.Msg == WM_SYSCOMMAND && WindowState == FormWindowState.Minimized)
+            {
+                int cmd = m.WParam.ToInt32() & 0xFFF0;
+                const int SC_RESTORE = 0xF120, SC_MAXIMIZE = 0xF030;
+                if (cmd == SC_RESTORE || cmd == SC_MAXIMIZE) ActivateStartupTab();
+            }
             const int WM_NCHITTEST = 0x84;
             if (m.Msg == WM_NCHITTEST && WindowState == FormWindowState.Normal)
             {
