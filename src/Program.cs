@@ -6246,6 +6246,18 @@ namespace WinPanel
                 // the preview's bottom edge several rows down in one move).
                 int nx = g.X, ny = g.Y, nr = g.X + g.W, nb = g.Y + g.H;
                 if (g.FixedH <= 0) nb = Math.Max(nb, Math.Min(row + s, nb + 2));
+                // ...and never into the group below: its header strip takes a
+                // cell above its body, so the growth stops one row short of
+                // the next group sharing these columns. When the group already
+                // reaches that line (auto-fit stacked them tight), the growth
+                // is blocked entirely - the cap never shrinks a group.
+                foreach (var below in groups)
+                {
+                    if (ReferenceEquals(below, g)) continue;
+                    if (below.X >= nr || below.X + below.W <= g.X) continue; // different columns
+                    int boundary = below.Y - 1;
+                    if (nb > boundary) nb = Math.Max(boundary, g.Y + g.H);
+                }
                 var candidate = new Rectangle(nx, ny, nr - nx, nb - ny);
                 // The growth must not swallow the neighbouring tiles: every
                 // cell the expansion adds has to be empty, otherwise the group
@@ -8817,19 +8829,26 @@ namespace WinPanel
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
+            // The cursor is reset on entry so a mode switch can never leave a
+            // stale move cursor behind: outside the red state the header is a
+            // plain strip.
+            if (Kind == 0) Cursor = Cursors.Default;
             if (Kind == 0 && Owner.Editing) Owner.SetHover(true);
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
+            if (Kind == 0) Cursor = Cursors.Default;
             if (Kind == 0 && Owner.Editing) Owner.SetHover(false);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            if (Kind == 0 && Owner.Editing) Owner.HeaderMouseMove(e);
+            if (Kind != 0) return;
+            Cursor = Owner.Editing ? (e.X >= Width - 26 ? Cursors.Hand : Cursors.SizeAll) : Cursors.Default;
+            if (Owner.Editing) Owner.HeaderMouseMove(e);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
