@@ -4019,6 +4019,70 @@ namespace WinPanel
             }
         }
 
+        // Ctrl-full-name labels: the font shrinks until the whole name fits one
+        // line. Fitting used to allocate and measure a fresh Font per 0.5f step
+        // on EVERY tile paint - hovering the panel with Ctrl held churned out
+        // dozens of GDI font objects per mouse move and the repaints lagged.
+        // The fitted size is memoized per (text, font, size, width) and the
+        // Font objects themselves are cached and shared; a repaint then costs
+        // two dictionary lookups. The returned Font is OWNED by the cache -
+        // callers draw with it and never dispose it.
+        private static readonly object FitFontGate = new object();
+        private static readonly Dictionary<string, float> FitSizeMemo = new Dictionary<string, float>();
+        private static readonly Dictionary<string, Font> FitFontCache = new Dictionary<string, Font>();
+
+        private static Font MakeFitFont(string fontName, float fs)
+        {
+            return fontName != null ? new Font(fontName, fs) : new Font("Segoe UI", fs);
+        }
+
+        internal static Font FitFullLabelFont(string label, string fontName, float startSize, int maxWidth)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(label)) return null;
+                string memoKey = label + "|" + maxWidth + "|" + (fontName ?? "") + "|" + startSize;
+                float fs;
+                lock (FitFontGate)
+                {
+                    if (!FitSizeMemo.TryGetValue(memoKey, out fs))
+                    {
+                        fs = startSize;
+                        if (fs < 6f) fs = 6f;
+                        Font probe = MakeFitFont(fontName, fs);
+                        try
+                        {
+                            while (fs > 5.5f && TextRenderer.MeasureText(label, probe,
+                                new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width > maxWidth)
+                            {
+                                probe.Dispose();
+                                fs -= 0.5f;
+                                probe = MakeFitFont(fontName, fs);
+                            }
+                        }
+                        finally { probe.Dispose(); }
+                        if (FitSizeMemo.Count > 4096) FitSizeMemo.Clear();
+                        FitSizeMemo[memoKey] = fs;
+                    }
+                }
+                string fontKey = (fontName ?? "") + "|" + Math.Round(fs * 2f); // 0.5f steps
+                lock (FitFontGate)
+                {
+                    Font hit;
+                    if (FitFontCache.TryGetValue(fontKey, out hit)) return hit;
+                    Font f = MakeFitFont(fontName, fs);
+                    if (FitFontCache.Count > 512)
+                    {
+                        foreach (var kv in FitFontCache) { try { kv.Value.Dispose(); } catch { } }
+                        FitFontCache.Clear();
+                    }
+                    FitFontCache[fontKey] = f;
+                    return f;
+                }
+            }
+            catch { return null; }
+        }
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr BeginDeferWindowPos(int n);
         [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -6117,10 +6181,13 @@ namespace WinPanel
             {
                 if (col > g.X + g.W || col + s - 1 < g.X - 1 || row > g.Y + g.H || row + s - 1 < g.Y - 1) continue;
                 near = g;
-                // Expansion union; a fixed axis never grows (and never joins).
+                // Expansion is deliberately timid, per the user's spec: an
+                // auto-width group keeps its standard 8 columns and never
+                // widens; an auto-height group grows DOWNWARD only, at most
+                // two rows per joining tile (one tile used to be able to drag
+                // the preview's bottom edge several rows down in one move).
                 int nx = g.X, ny = g.Y, nr = g.X + g.W, nb = g.Y + g.H;
-                if (g.FixedW <= 0) { nx = Math.Min(nx, col); nr = Math.Max(nr, col + s); }
-                if (g.FixedH <= 0) { ny = Math.Min(ny, row); nb = Math.Max(nb, row + s); }
+                if (g.FixedH <= 0) nb = Math.Max(nb, Math.Min(row + s, nb + 2));
                 var candidate = new Rectangle(nx, ny, nr - nx, nb - ny);
                 // The growth must not swallow the neighbouring tiles: every
                 // cell the expansion adds has to be empty, otherwise the group
@@ -8191,25 +8258,11 @@ namespace WinPanel
                                         (cfg == null || cfg.LabelCtrlFullNames);
                         if (ctrlFull)
                         {
-                            float fs = labelSize > 0 ? labelSize : 8f;
-                            if (fs < 6f) fs = 6f;
-                            Font fit = labelName != null
-                                ? new Font(labelName, fs)
-                                : new Font(FallbackLabelFont.FontFamily, fs);
-                            try
-                            {
-                                while (fs > 5.5f && TextRenderer.MeasureText(label, fit,
-                                    new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width > textRect.Width)
-                                {
-                                    fit.Dispose();
-                                    fs -= 0.5f;
-                                    fit = labelName != null
-                                        ? new Font(labelName, fs)
-                                        : new Font(FallbackLabelFont.FontFamily, fs);
-                                }
+                            // Shared cached font (see MainForm.FitFullLabelFont).
+                            float fs0 = labelSize > 0 ? labelSize : 8f;
+                            Font fit = MainForm.FitFullLabelFont(label, labelName, fs0, textRect.Width);
+                            if (fit != null)
                                 e.Graphics.DrawString(label, fit, brush, textRect, TileLabelFormat);
-                            }
-                            finally { fit.Dispose(); }
                         }
                         else
                         {
@@ -9062,25 +9115,13 @@ namespace WinPanel
                                 Rectangle oneRect = new Rectangle(2, this.Height - stripH - 1, this.Width - 4, stripH);
                                 if (ctrlFull)
                                 {
-                                    float fs = labelSize > 0 ? labelSize : 9f;
-                                    if (fs < 6f) fs = 6f;
-                                    Font fit = labelName != null
-                                        ? new Font(labelName, fs)
-                                        : new Font(FallbackLabelFont.FontFamily, fs);
-                                    try
-                                    {
-                                        while (fs > 5.5f && TextRenderer.MeasureText(label, fit,
-                                            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width > textRect.Width)
-                                        {
-                                            fit.Dispose();
-                                            fs -= 0.5f;
-                                            fit = labelName != null
-                                                ? new Font(labelName, fs)
-                                                : new Font(FallbackLabelFont.FontFamily, fs);
-                                        }
+                                    // The fitted font comes shared from the cache
+                                    // (see MainForm.FitFullLabelFont) - never
+                                    // disposed here.
+                                    float fs0 = labelSize > 0 ? labelSize : 9f;
+                                    Font fit = MainForm.FitFullLabelFont(label, labelName, fs0, textRect.Width);
+                                    if (fit != null)
                                         e.Graphics.DrawString(label, fit, brush, oneRect, TileLabelFormat);
-                                    }
-                                    finally { fit.Dispose(); }
                                 }
                                 else
                                 {
