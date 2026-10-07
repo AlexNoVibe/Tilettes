@@ -1042,6 +1042,9 @@ namespace WinPanel
         private void OpenSettings()
         {
             Rectangle liveRect = WindowState == FormWindowState.Normal ? new Rectangle(this.Location, this.Size) : this.RestoreBounds;
+            iconQueueSuspended = true;
+            try
+            {
             using (var sf = new SettingsForm(settings, settingsPath, liveRect))
             {
                 if (sf.ShowDialog() == DialogResult.OK)
@@ -1123,6 +1126,8 @@ namespace WinPanel
                     catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
             }
+            }
+            finally { iconQueueSuspended = false; }
         }
 
         // Settings → "Rebuild icons & paths": walks every item of every tab,
@@ -3610,6 +3615,14 @@ namespace WinPanel
         // ---------- Non-blocking icon loading ----------
         // Icons are extracted one-by-one between UI messages instead of blocking the
         // startup: the window appears immediately and the tiles fill in as it goes.
+        // Modal dialogs (Settings) suspend the queue while they open: the 15 ms
+        // queue timer keeps firing inside a dialog's modal loop, and its tasks
+        // interleave with the dialog's first paints - clicking the settings
+        // button right after a freshly shown panel, with dozens of queued icon
+        // tasks, made the settings window crawl up. While suspended the tick is
+        // a no-op; closing the dialog resumes the drain.
+        private bool iconQueueSuspended;
+
         private void EnqueueIconTask(Action task)
         {
             iconQueue.Enqueue(task);
@@ -3624,6 +3637,7 @@ namespace WinPanel
 
         private void ProcessNextIconTask()
         {
+            if (iconQueueSuspended) return;
             if (this.IsDisposed)
             {
                 iconQueue.Clear();

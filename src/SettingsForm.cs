@@ -136,9 +136,26 @@ namespace WinPanel
         // scroll position on focus changes; the scrollbar and wheel still work.
         private class NoJumpPanel : Panel
         {
+            public NoJumpPanel() { DoubleBuffered = true; }
             protected override Point ScrollToControl(Control activeControl)
             {
                 return DisplayRectangle.Location;
+            }
+        }
+
+        // A borderless dialog with a rounded region and ~a hundred child
+        // controls flickered through every resize: the unbuffered children
+        // repainted over the freshly erased background on every WM_SIZE step
+        // of a drag. WS_EX_COMPOSITED paints the whole window tree bottom-up
+        // into one buffer, so a resize shows the finished frame instead of
+        // the repaint wave.
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED
+                return cp;
             }
         }
 
@@ -169,6 +186,7 @@ namespace WinPanel
             this.ForeColor = textColor;
             this.BackColor = bgColor; // labels/checkboxes inherit it: no white-on-white text
             this.Font = new Font("Segoe UI", 9f);
+            this.DoubleBuffered = true;
 
             this.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, Width, Height, 15, 15));
 
