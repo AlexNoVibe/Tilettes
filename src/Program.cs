@@ -27,6 +27,7 @@ namespace WinPanel
         // and the rest render on their first activation.
         private readonly HashSet<TabData> renderedTabs = new HashSet<TabData>();
         private readonly Dictionary<Button, TabData> tabDataByButton = new Dictionary<Button, TabData>();
+        private readonly Dictionary<Button, Panel> panelByButton = new Dictionary<Button, Panel>();
         private TextBox panelSearchBox;
         private System.Windows.Forms.Timer panelSearchTimer;
         private Panel panelSearchOverlay;
@@ -1042,10 +1043,12 @@ namespace WinPanel
         private void OpenSettings()
         {
             Rectangle liveRect = WindowState == FormWindowState.Normal ? new Rectangle(this.Location, this.Size) : this.RestoreBounds;
+            var tabNames = new List<string>();
+            try { foreach (var t in records.Tabs) tabNames.Add(t.Name); } catch { }
             iconQueueSuspended = true;
             try
             {
-            using (var sf = new SettingsForm(settings, settingsPath, liveRect))
+            using (var sf = new SettingsForm(settings, settingsPath, liveRect, tabNames))
             {
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
@@ -1502,6 +1505,9 @@ namespace WinPanel
 
         private void RestoreWindow()
         {
+            // The pinned "open tab on show" setting: every show lands on the
+            // chosen tab, the switch happens while the window is still hidden.
+            ActivateStartupTab();
             // A panel left on another virtual desktop must not drag the whole
             // view back there: Activate() follows the window and the shell
             // follows the activation. Re-home it to the current desktop BEFORE
@@ -5167,6 +5173,7 @@ namespace WinPanel
 
             // ---- Tabs (manual rows) ----
             var layoutPanels = new Dictionary<Button, Panel>();
+            panelByButton.Clear();
             var tabByButton = new Dictionary<Button, TabData>();
             var buttons = new List<Button>();
             int[] rowX = new int[tabRows];
@@ -5272,6 +5279,7 @@ namespace WinPanel
                 tabByButton[tabBtn] = tabData;
                 tabDataByButton[tabBtn] = tabData;
                 layoutPanels[tabBtn] = layoutPanel;
+                panelByButton[tabBtn] = layoutPanel;
                 buttons.Add(tabBtn);
 
                 tabBtn.Location = new Point(rowX[row], row * tabPitch);
@@ -5379,7 +5387,16 @@ namespace WinPanel
 
             // Activate the remembered tab when it still exists, otherwise the first one.
             Button startBtn = null;
-            if (settings.KeepActiveTab && !string.IsNullOrEmpty(settings.ActiveTab))
+            if (!string.IsNullOrEmpty(settings.ShowTabName))
+            {
+                // The pinned startup tab outranks the remembered last tab.
+                foreach (var b in buttons)
+                {
+                    TabData td;
+                    if (tabByButton.TryGetValue(b, out td) && td.Name == settings.ShowTabName) { startBtn = b; break; }
+                }
+            }
+            if (startBtn == null && settings.KeepActiveTab && !string.IsNullOrEmpty(settings.ActiveTab))
             {
                 foreach (var b in buttons)
                 {
@@ -5448,6 +5465,32 @@ namespace WinPanel
             // panel is visible now, so the layout has real bounds to work with.
             if (td != null && !renderedTabs.Contains(td))
                 RenderCurrentFolder(layoutPanels[tabBtn], td);
+        }
+
+        // The "open tab on show" setting (empty = classic remember-last
+        // behavior): every panel show - the hotkey, the start-button click, an
+        // un-minimize, the second-instance nudge - lands on the pinned tab;
+        // the first start picks it in LoadTabs. The switch happens while the
+        // window is still hidden, so the panel surfaces already on the right
+        // tab.
+        private void ActivateStartupTab()
+        {
+            try
+            {
+                string want = settings.ShowTabName;
+                if (string.IsNullOrEmpty(want)) return;
+                if (activeTabData != null && string.Equals(activeTabData.Name, want, StringComparison.Ordinal)) return;
+                foreach (var kv in tabDataByButton)
+                {
+                    if (!string.Equals(kv.Value.Name, want, StringComparison.Ordinal)) continue;
+                    Panel p;
+                    if (!panelByButton.TryGetValue(kv.Key, out p) || p.IsDisposed) return;
+                    var buttons = new List<Button>(panelByButton.Keys);
+                    ActivateTab(kv.Key, panelByButton, buttons);
+                    return;
+                }
+            }
+            catch { }
         }
 
         // Drag a tab button to reorder it inside its row or move it to another row.
@@ -5745,7 +5788,8 @@ namespace WinPanel
                             GetCols = () => Math.Max(1, settings.GridColumns),
                             GetRows = () => Math.Max(1, settings.GridRows),
                             SaveAndRelayout = () => { records.Save(recordsPath); ReflowGridTiles(layoutPanel, tabData); layoutPanel.Invalidate(); },
-                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp)
+                            DeleteAction = () => DeleteTileGroup(layoutPanel, tabData, grp),
+                            InEditMode = () => editState == 2
                         };
                         surface.Build();
                     }
@@ -8330,6 +8374,11 @@ namespace WinPanel
         public Func<int> GetRows;
         public Action SaveAndRelayout; // save + tile reflow + panel invalidate
         public Action DeleteAction;
+        // True while the panel is in the red multi-select edit state: group
+        // reveal, rename, the size menu and the header drag exist only there.
+        // In every other state the group is invisible - the header strip is a
+        // passive grid passthrough.
+        internal Func<bool> InEditMode;
 
         internal TextBox nameBox;
         private GroupPart header, bottom, left, right;
@@ -8356,7 +8405,15 @@ namespace WinPanel
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, string lParam);
 
         private bool HasName { get { return !string.IsNullOrEmpty(Group.Name); } }
-        private bool Revealed { get { return hover || preview.HasValue || dragging; } }
+        internal bool Editing { get { return InEditMode != null && InEditMode(); } }
+        private bool Revealed
+        {
+            // The join preview (a tile dragged in) and the header drag reveal
+            // the frame on their own; the plain hover reveal exists only in the
+            // red edit state - in every other state the group looks like
+            // nothing but its tiles.
+            get { return preview.HasValue || dragging || (Editing && hover); }
+        }
         public bool IsAlive { get { return header != null && !header.IsDisposed; } }
 
         // Creates the four chrome windows above the tiles; the body itself is
@@ -8477,7 +8534,9 @@ namespace WinPanel
                     using (var b = new SolidBrush(Color.FromArgb(strong ? 26 : 14, MainTextColor)))
                         g.FillRectangle(b, 0, 0, part.Width, part.Height);
                 }
-                string caption = HasName ? Group.Name : (Revealed ? Loc.S("Name the group", "Назвать группу") : null);
+                string caption = null;
+                if (Editing)
+                    caption = HasName ? Group.Name : (Revealed ? Loc.S("Name the group", "Назвать группу") : null);
                 if (caption != null)
                 {
                     bool ghost = !HasName;
@@ -8516,6 +8575,11 @@ namespace WinPanel
 
         public void HeaderMouseMove(MouseEventArgs e)
         {
+            if (!Editing)
+            {
+                header.Cursor = Cursors.Default;
+                return;
+            }
             header.Cursor = e.X >= header.Width - 26 ? Cursors.Hand : Cursors.SizeAll;
             if (!dragging) return;
             int dx = e.X - grabPoint.X;
@@ -8549,6 +8613,7 @@ namespace WinPanel
 
         public void HeaderMouseDown(MouseEventArgs e)
         {
+            if (!Editing) return;
             if (e.Button != MouseButtons.Left) return;
             if (nameBox != null)
             {
@@ -8752,37 +8817,37 @@ namespace WinPanel
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
-            if (Kind == 0) Owner.SetHover(true);
+            if (Kind == 0 && Owner.Editing) Owner.SetHover(true);
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            if (Kind == 0) Owner.SetHover(false);
+            if (Kind == 0 && Owner.Editing) Owner.SetHover(false);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
-            if (Kind == 0) Owner.HeaderMouseMove(e);
+            if (Kind == 0 && Owner.Editing) Owner.HeaderMouseMove(e);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (Kind == 0) Owner.HeaderMouseDown(e);
+            if (Kind == 0 && Owner.Editing) Owner.HeaderMouseDown(e);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            if (Kind == 0) Owner.HeaderMouseUp(e);
+            if (Kind == 0 && Owner.Editing) Owner.HeaderMouseUp(e);
         }
 
         protected override void OnMouseDoubleClick(MouseEventArgs e)
         {
             base.OnMouseDoubleClick(e);
-            if (Kind == 0 && e.Button == MouseButtons.Left && e.X < Width - 26 && Owner.nameBox == null)
+            if (Kind == 0 && e.Button == MouseButtons.Left && e.X < Width - 26 && Owner.Editing && Owner.nameBox == null)
                 Owner.BeginEdit();
         }
     }

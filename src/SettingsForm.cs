@@ -18,6 +18,7 @@ namespace WinPanel
         private NumericUpDown numY;
         private CheckBox chkMinimizeToTray;
         private ComboBox cmbFolders;
+        private ComboBox cmbShowTab;
         private TextBox txtHotkey;        // click-and-press hotkey capture field
         private string hotkeyValue;       // canonical "Ctrl+Alt+F5" / "None"
         private bool hotkeyTextLock;
@@ -159,7 +160,8 @@ namespace WinPanel
             }
         }
 
-        public SettingsForm(Settings settings, string settingsPath, Rectangle liveWindowRect)
+        public SettingsForm(Settings settings, string settingsPath, Rectangle liveWindowRect,
+            System.Collections.Generic.List<string> tabNames)
         {
             this.settings = settings;
             this.settingsPath = settingsPath;
@@ -262,6 +264,25 @@ namespace WinPanel
             var lblPosY = new Label { Text = "y", Left = 319, Top = y, Width = 16 };
             Tip(numX, "Window position: distance from the left screen edge", "Положение окна: отступ от левого края экрана");
             Tip(numY, "Window position: distance from the top screen edge", "Положение окна: отступ от верхнего края экрана");
+            y += 30;
+
+            // The tab every panel show lands on ("always open on tab ...");
+            // empty selection = the last used tab, the classic behavior.
+            var lblShowTab = new Label { Text = Loc.S("Open tab on show:", "Вкладка при показе:"), Left = 20, Top = y, Width = 130 };
+            cmbShowTab = new ComboBox { Left = 155, Top = y - 2, Width = 180, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = panelColor, ForeColor = textColor, FlatStyle = FlatStyle.Flat };
+            cmbShowTab.Items.Add(Loc.S("Last used", "Последняя использованная"));
+            if (tabNames != null)
+                foreach (var tn in tabNames) cmbShowTab.Items.Add(tn ?? "");
+            int preselect = 0;
+            if (!string.IsNullOrEmpty(settings.ShowTabName))
+            {
+                int at = cmbShowTab.Items.IndexOf(settings.ShowTabName);
+                if (at >= 0) preselect = at;
+            }
+            cmbShowTab.SelectedIndex = preselect;
+            Tip(cmbShowTab,
+                "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+                "Вкладка, на которой открывается панель: хоткей, клик по кнопке Пуск, разворот из свёрнутого, первый старт. «Последняя использованная» — прежнее поведение.");
             y += 30;
 
             var lblTrans = new Label { Text = Loc.S("Grid Transp. (0-255):", "Прозрачность сетки (0-255):"), Left = 20, Top = y, Width = 130 };
@@ -1076,6 +1097,9 @@ namespace WinPanel
             settings.StartupHeight = (int)numHeight.Value;
             settings.WindowX = (int)numX.Value;
             settings.WindowY = (int)numY.Value;
+            settings.ShowTabName = cmbShowTab != null && cmbShowTab.SelectedIndex > 0
+                ? (string)cmbShowTab.Items[cmbShowTab.SelectedIndex]
+                : "";
             settings.MinimizeToTray = chkMinimizeToTray.Checked;
             settings.OpenFoldersInPopup = cmbFolders.SelectedIndex == 1;
             settings.FolderOpenProgram = (txtFolderOpenProgram.Text ?? "").Trim();

@@ -80,6 +80,10 @@ namespace WinPanel
         public bool TrayIconAlways { get; set; }
         public bool KeepActiveTab { get; set; }
         public string ActiveTab { get; set; }
+        // When set to a tab name, every panel show (hotkey, start-button click,
+        // un-minimize, first start) lands on that tab instead of the last used
+        // one. Empty = the classic remember-last behavior.
+        public string ShowTabName { get; set; }
 
         // Panel search tuning
         public int SearchFuzzyLevel { get; set; }     // 0 = exact only, 1..3 = looser fuzzy
@@ -185,6 +189,7 @@ namespace WinPanel
             TrayIconAlways = true;
             KeepActiveTab = true;
             ActiveTab = "";
+            ShowTabName = "";
             SearchFuzzyLevel = 2;
             SearchInMeta = true;
             SearchInPaths = true;
@@ -403,6 +408,8 @@ namespace WinPanel
                 if (bool.TryParse(ini.Read("KeepActiveTab"), out ktab)) s.KeepActiveTab = ktab;
                 string atab = ini.Read("ActiveTab");
                 if (atab != null) s.ActiveTab = atab;
+                string stab = ini.Read("ShowTabName");
+                if (stab != null) s.ShowTabName = stab;
 
                 int sfz;
                 if (int.TryParse(ini.Read("SearchFuzzyLevel"), out sfz)) s.SearchFuzzyLevel = sfz;
@@ -537,6 +544,7 @@ namespace WinPanel
                     "TrayIconAlways=" + TrayIconAlways,
                     "KeepActiveTab=" + KeepActiveTab,
                     "ActiveTab=" + (ActiveTab == null ? "" : ActiveTab),
+                    "ShowTabName=" + (ShowTabName == null ? "" : ShowTabName),
                     "SearchFuzzyLevel=" + SearchFuzzyLevel,
                     "SearchInMeta=" + SearchInMeta,
                     "SearchInPaths=" + SearchInPaths,
