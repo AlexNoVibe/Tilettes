@@ -56,7 +56,6 @@ namespace WinPanel
         // Top block of the search overlay: remembered query -> item pairs whose
         // QUERY matches what is being typed ("поиск среди прошлых поисков").
         private readonly List<SearchHistoryEntry> panelSearchPast = new List<SearchHistoryEntry>();
-        private const int PastSearchBlockMax = 10;
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
         // Fully measured row layouts (see PreparePanelSearchRow): rebuilt per query
@@ -1905,7 +1904,8 @@ namespace WinPanel
             {
                 if (!settings.SearchSaveHistory || string.IsNullOrEmpty(qLower)) return;
                 var top = SearchHistoryStore.Top(60);
-                panelSearchPast.AddRange(MatchPastQueries(top, qLower, PastSearchBlockMax));
+                int pastLimit = settings.SearchPastResultsLimit;
+                panelSearchPast.AddRange(MatchPastQueries(top, qLower, pastLimit));
             }
             catch { }
         }
@@ -2239,10 +2239,11 @@ namespace WinPanel
                 panelSearchResults.Clear();
                 // Best-ranked first, so the survivor of a duplicate pair is the
                 // one the ranking preferred. The final cap is deliberately
-                // small: the most relevant 30 are what a launcher is for.
+                // small: the most relevant results are what a launcher is for.
                 var flat = new List<ShortcutItem>();
                 for (int i = 0; i < found.Count && flat.Count < 400; i++) flat.Add(found[i].Value);
-                foreach (var it in DedupeSearchResults(flat, 30))
+                int maxResults = settings.SearchRegularResultsLimit;
+                foreach (var it in DedupeSearchResults(flat, maxResults))
                     panelSearchResults.Add(it);
                 RebuildPanelSearchList();
                 panelSearchStatus.Text = (Loc.IsRu ? "Найдено: " : "Found: ") + panelSearchResults.Count +
@@ -2688,67 +2689,49 @@ namespace WinPanel
                 }
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
-                    if (IsSlowIconPath(path))
+                    // Any path can block the shell (spun-down HDD, slow network, etc.) -
+                    // never extract it on the UI thread. The icon arrives in the
+                    // background, lands in the cache and the list repaints.
+                    string gkey = key, gpath = path;
+                    int gen = panelSearchGen;
+                    RunIconWorker(delegate
                     {
-                        string gkey = key, gpath = path;
-                        int gen = panelSearchGen;
-                        RunIconWorker(delegate
+                        Bitmap small = null;
+                        try
                         {
-                            Bitmap small = null;
-                            try
+                            Image big = null;
+                            try { if (!string.IsNullOrEmpty(gpath)) big = IconExtractor.GetIconAuto(gpath, false); } catch { }
+                            if (big != null)
                             {
-                                Image big = null;
-                                try { if (!string.IsNullOrEmpty(gpath)) big = IconExtractor.GetIconAuto(gpath, false); } catch { }
-                                if (big != null)
+                                small = new Bitmap(16, 16);
+                                using (var gg = Graphics.FromImage(small))
                                 {
-                                    small = new Bitmap(16, 16);
-                                    using (var gg = Graphics.FromImage(small))
-                                    {
-                                        gg.Clear(Color.Transparent);
-                                        IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
-                                    }
-                                    big.Dispose();
+                                    gg.Clear(Color.Transparent);
+                                    IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
                                 }
+                                big.Dispose();
                             }
-                            catch { }
-                            try
-                            {
-                                if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
-                                this.BeginInvoke((MethodInvoker)delegate
-                                {
-                                    try
-                                    {
-                                        if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
-                                        Bitmap old;
-                                        if (panelSearchIcons.TryGetValue(gkey, out old) && old != null) old.Dispose();
-                                        panelSearchIcons[gkey] = small;
-                                        if (gen == panelSearchGen) panelSearchList.Invalidate();
-                                    }
-                                    catch { if (small != null) try { small.Dispose(); } catch { } }
-                                });
-                            }
-                            catch { if (small != null) try { small.Dispose(); } catch { } }
-                        });
-                        ic = null;
-                    }
-                    else
-                    {
-                        Image big = null;
-                        try { if (!string.IsNullOrEmpty(path)) big = IconExtractor.GetIconAuto(path, false); }
-                        catch { }
-                        ic = null;
-                        if (big != null)
-                        {
-                            ic = new Bitmap(16, 16);
-                            using (var gg = Graphics.FromImage(ic))
-                            {
-                                gg.Clear(Color.Transparent);
-                                IconExtractor.DrawFit(gg, big, new Rectangle(0, 0, 16, 16));
-                            }
-                            big.Dispose();
                         }
-                        panelSearchIcons[key] = ic;
-                    }
+                        catch { }
+                        try
+                        {
+                            if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
+                            this.BeginInvoke((MethodInvoker)delegate
+                            {
+                                try
+                                {
+                                    if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
+                                    Bitmap old;
+                                    if (panelSearchIcons.TryGetValue(gkey, out old) && old != null) old.Dispose();
+                                    panelSearchIcons[gkey] = small;
+                                    if (gen == panelSearchGen) panelSearchList.Invalidate();
+                                }
+                                catch { if (small != null) try { small.Dispose(); } catch { } }
+                            });
+                        }
+                        catch { if (small != null) try { small.Dispose(); } catch { } }
+                    });
+                    ic = null;
                 }
             }
             catch { }

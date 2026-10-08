@@ -42,6 +42,7 @@ namespace WinPanel
 
         private NumericUpDown numIconScale;
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
+        private NumericUpDown numSearchPastLimit, numSearchRegularLimit;
         private CheckBox chkSearchMeta, chkSearchPaths, chkSearchDesc, chkSearchStart;
         private ComboBox cmbTileOpen, cmbSearchOpen;
         private NumericUpDown numFolderExit;
@@ -591,7 +592,19 @@ namespace WinPanel
             scrollPanel.Controls.Add(numSearchResultsFont);
             scrollPanel.Controls.Add(lblSearchResultsFont);
 
-            y += 30; // the search fonts row must not overlap the file type buttons below
+            y += 30;
+            var lblSearchPastLimit = new Label { Text = Loc.S("Past search limit:", "Лимит прошлого поиска:"), Left = 20, Top = y, Width = 180 };
+            numSearchPastLimit = new NumericUpDown { Left = 205, Top = y - 2, Width = 55, Minimum = 1, Maximum = 200, Value = Math.Max(1, Math.Min(200, settings.SearchPastResultsLimit)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numSearchPastLimit, "Maximum number of past-search entries shown above results", "Максимальное число записей «прошлого поиска» над результатами");
+            var lblSearchRegularLimit = new Label { Text = Loc.S("Regular search limit:", "Лимит обычного поиска:"), Left = 20, Top = y + 28, Width = 180 };
+            numSearchRegularLimit = new NumericUpDown { Left = 205, Top = y + 26, Width = 55, Minimum = 1, Maximum = 500, Value = Math.Max(1, Math.Min(500, settings.SearchRegularResultsLimit)), BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
+            Tip(numSearchRegularLimit, "Maximum number of regular search results shown", "Максимальное число обычных результатов поиска");
+            scrollPanel.Controls.Add(lblSearchPastLimit);
+            scrollPanel.Controls.Add(numSearchPastLimit);
+            scrollPanel.Controls.Add(lblSearchRegularLimit);
+            scrollPanel.Controls.Add(numSearchRegularLimit);
+
+            y += 66; // the search limits row must not overlap the file type buttons below
 
             // Search result open mode (settings): double click (classic) or single click.
             var lblSearchOpen = new Label { Text = Loc.S("Open results:", "Открытие результатов:"), Left = 20, Top = y, Width = 150 };
@@ -1171,6 +1184,8 @@ namespace WinPanel
             settings.TilesOpenByDoubleClick = cmbTileOpen.SelectedIndex == 1;
             settings.SearchOpenByDoubleClick = cmbSearchOpen.SelectedIndex == 1;
             settings.SearchSaveHistory = chkSaveHistory.Checked;
+            settings.SearchPastResultsLimit = (int)numSearchPastLimit.Value;
+            settings.SearchRegularResultsLimit = (int)numSearchRegularLimit.Value;
             settings.BackupDays = (int)numBackupDays.Value;
             settings.StartMenuSyncHours = (int)numSyncHours.Value;
             settings.UpdateCheckEnabled = chkUpdateCheck.Checked;

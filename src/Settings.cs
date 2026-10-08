@@ -94,6 +94,10 @@ namespace WinPanel
         public bool SearchInStart { get; set; }
         public int SearchBoxFontSize { get; set; }
         public int SearchResultsFontSize { get; set; }
+        // Maximum number of past-search entries to show above results (0 = unlimited)
+        public int SearchPastResultsLimit { get; set; }
+        // Maximum number of regular search results to show (0 = unlimited)
+        public int SearchRegularResultsLimit { get; set; }
 
         public int GridTransparency { get; set; }
         // Default aura transparency for all tiles, percent (the per-tile aura
@@ -197,6 +201,8 @@ namespace WinPanel
             SearchInStart = true;
             SearchBoxFontSize = 14;
             SearchResultsFontSize = 14;
+            SearchPastResultsLimit = 10;
+            SearchRegularResultsLimit = 30;
 
             GridTransparency = 50;
             AuraTransparency = 55;
@@ -453,6 +459,10 @@ namespace WinPanel
                 val = ini.Read("LastSyncDate"); if (val != null) s.LastSyncDate = val;
                 bool ssh;
                 if (bool.TryParse(ini.Read("SearchSaveHistory"), out ssh)) s.SearchSaveHistory = ssh;
+                int sprl;
+                if (int.TryParse(ini.Read("SearchPastResultsLimit"), out sprl)) s.SearchPastResultsLimit = Math.Max(1, sprl);
+                int srrl;
+                if (int.TryParse(ini.Read("SearchRegularResultsLimit"), out srrl)) s.SearchRegularResultsLimit = Math.Max(1, srrl);
                 bool hkw;
                 if (bool.TryParse(ini.Read("HotkeyWin"), out hkw)) s.HotkeyWin = hkw;
                 // v0.6.5 shipped the Start button click capture bundled with the
@@ -552,6 +562,8 @@ namespace WinPanel
                     "SearchInStart=" + SearchInStart,
                     "SearchBoxFontSize=" + SearchBoxFontSize,
                     "SearchResultsFontSize=" + SearchResultsFontSize,
+                    "SearchPastResultsLimit=" + SearchPastResultsLimit,
+                    "SearchRegularResultsLimit=" + SearchRegularResultsLimit,
                     "GridTransparency=" + GridTransparency,
                     "AuraTransparency=" + AuraTransparency,
                     "GridColumns=" + GridColumns,

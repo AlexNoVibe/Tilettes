@@ -1730,77 +1730,56 @@ namespace WinPanel
         private Bitmap GetCachedIcon(string key, string path)
         {
             if (iconCache.ContainsKey(key)) return iconCache[key];
-            // A network path can block the shell for the SMB timeout (unreachable
-            // share) - never extract it on the UI thread. The icon arrives in the
+            // Any path can block the shell (spun-down HDD, slow network, etc.) -
+            // never extract it on the UI thread. The icon arrives in the
             // background, lands in the cache and the list repaints.
-            if (MainForm.IsSlowIconPath(path))
+            lock (pendingIcons)
             {
-                lock (pendingIcons)
+                if (pendingIcons.Contains(key)) return null;
+                pendingIcons.Add(key);
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                Bitmap b16 = null;
+                try
                 {
-                    if (pendingIcons.Contains(key)) return null;
-                    pendingIcons.Add(key);
-                }
-                System.Threading.ThreadPool.QueueUserWorkItem(delegate
-                {
-                    Bitmap b16 = null;
-                    try
+                    Image big = IconExtractor.GetIcon(path, false);
+                    if (big != null)
                     {
-                        Image big = IconExtractor.GetIcon(path, false);
-                        if (big != null)
+                        b16 = new Bitmap(16, 16);
+                        using (var g = Graphics.FromImage(b16))
                         {
-                            b16 = new Bitmap(16, 16);
-                            using (var g = Graphics.FromImage(b16))
-                            {
-                                g.Clear(Color.Transparent);
-                                IconExtractor.DrawFit(g, big, new Rectangle(0, 0, 16, 16));
-                            }
-                            big.Dispose();
+                            g.Clear(Color.Transparent);
+                            IconExtractor.DrawFit(g, big, new Rectangle(0, 0, 16, 16));
                         }
+                        big.Dispose();
                     }
-                    catch { }
-                    try
-                    {
-                        if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
-                        this.BeginInvoke((MethodInvoker)delegate
-                        {
-                            lock (pendingIcons) { pendingIcons.Remove(key); }
-                            if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
-                            try
-                            {
-                                Bitmap old;
-                                if (iconCache.TryGetValue(key, out old) && old != null) old.Dispose();
-                                iconCache[key] = b16;
-                                fileList.Invalidate();
-                            }
-                            catch { if (b16 != null) try { b16.Dispose(); } catch { } }
-                        });
-                    }
-                    catch
+                }
+                catch { }
+                try
+                {
+                    if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
+                    this.BeginInvoke((MethodInvoker)delegate
                     {
                         lock (pendingIcons) { pendingIcons.Remove(key); }
-                        if (b16 != null) try { b16.Dispose(); } catch { }
-                    }
-                });
-                return null;
-            }
-            Bitmap b16s = null;
-            try
-            {
-                Image big = IconExtractor.GetIcon(path, false);
-                if (big != null)
-                {
-                    b16s = new Bitmap(16, 16);
-                    using (var g = Graphics.FromImage(b16s))
-                    {
-                        g.Clear(Color.Transparent);
-                        IconExtractor.DrawFit(g, big, new Rectangle(0, 0, 16, 16));
-                    }
-                    big.Dispose();
+                        if (this.IsDisposed) { if (b16 != null) b16.Dispose(); return; }
+                        try
+                        {
+                            Bitmap old;
+                            if (iconCache.TryGetValue(key, out old) && old != null) old.Dispose();
+                            iconCache[key] = b16;
+                            fileList.Invalidate();
+                        }
+                        catch { if (b16 != null) try { b16.Dispose(); } catch { } }
+                    });
                 }
-            }
-            catch { }
-            iconCache[key] = b16s;
-            return b16s;
+                catch
+                {
+                    lock (pendingIcons) { pendingIcons.Remove(key); }
+                    if (b16 != null) try { b16.Dispose(); } catch { }
+                }
+            });
+            return null;
         }
 
         // ---------- search ----------
