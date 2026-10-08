@@ -184,7 +184,6 @@ namespace WinPanel
             { "Rename", "Renomear" },
             { "Rename bookmark", "Renomear favorito" },
             { "Rename...", "Renomear..." },
-            { "Restart", "Reiniciar" },
             { "Restore", "Restaurar" },
             { "Restore archive...", "Restaurar arquivo..." },
             { "Restore backup", "Restaurar backup" },
@@ -328,7 +327,11 @@ namespace WinPanel
             { "Size as WxH, e.g. 8x3", "Tamanho como LxA, ex. 8x3" },
             { "Now: auto ({0}x{1})", "Agora: automático ({0}x{1})" },
             { "Now: width {0} fixed, height auto", "Agora: largura {0} fixa, altura automática" },
-            { "Now: width {0} and height {1} fixed", "Agora: largura {0} e altura {1} fixas" }
+            { "Now: width {0} and height {1} fixed", "Agora: largura {0} e altura {1} fixas" },
+            { "Past search limit:", "Limite de pesquisas anteriores:" },
+            { "Maximum number of past-search entries shown above results", "Número máximo de pesquisas anteriores mostradas" },
+            { "Regular search limit:", "Limite de pesquisas normais:" },
+            { "Maximum number of regular search results shown", "Número máximo de resultados de pesquisas normais" }
         };
     }
 }

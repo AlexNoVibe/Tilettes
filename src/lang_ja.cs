@@ -184,7 +184,6 @@ namespace WinPanel
             { "Rename", "名前の変更" },
             { "Rename bookmark", "ブックマークの名前を変更" },
             { "Rename...", "名前を変更..." },
-            { "Restart", "再起動" },
             { "Restore", "表示" },
             { "Restore archive...", "アーカイブから復元..." },
             { "Restore backup", "バックアップを復元" },
@@ -328,7 +327,11 @@ namespace WinPanel
             { "Size as WxH, e.g. 8x3", "サイズは幅x高さ、例: 8x3" },
             { "Now: auto ({0}x{1})", "現在: 自動 ({0}x{1})" },
             { "Now: width {0} fixed, height auto", "現在: 幅 {0} を固定、高さは自動" },
-            { "Now: width {0} and height {1} fixed", "現在: 幅 {0} と高さ {1} を固定" }
+            { "Now: width {0} and height {1} fixed", "現在: 幅 {0} と高さ {1} を固定" },
+            { "Past search limit:", "過去の検索の制限:" },
+            { "Maximum number of past-search entries shown above results", "結果の上に表示される過去の検索エントリの最大数" },
+            { "Regular search limit:", "通常の検索の制限:" },
+            { "Maximum number of regular search results shown", "表示される通常の検索結果の最大数" }
         };
     }
 }

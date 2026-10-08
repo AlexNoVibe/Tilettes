@@ -184,7 +184,6 @@ namespace WinPanel
             { "Rename", "重命名" },
             { "Rename bookmark", "重命名书签" },
             { "Rename...", "重命名..." },
-            { "Restart", "重启" },
             { "Restore", "显示" },
             { "Restore archive...", "从压缩包恢复..." },
             { "Restore backup", "恢复备份" },
@@ -328,7 +327,11 @@ namespace WinPanel
             { "Size as WxH, e.g. 8x3", "尺寸如 宽x高，例如 8x3" },
             { "Now: auto ({0}x{1})", "当前：自动 ({0}x{1})" },
             { "Now: width {0} fixed, height auto", "当前：宽度 {0} 已固定，高度自动" },
-            { "Now: width {0} and height {1} fixed", "当前：宽度 {0} 和高度 {1} 已固定" }
+            { "Now: width {0} and height {1} fixed", "当前：宽度 {0} 和高度 {1} 已固定" },
+            { "Past search limit:", "过去搜索限制：" },
+            { "Maximum number of past-search entries shown above results", "显示在结果上方的过去搜索条目的最大数量" },
+            { "Regular search limit:", "常规搜索限制：" },
+            { "Maximum number of regular search results shown", "显示的常规搜索结果的最大数量" }
         };
     }
 }
