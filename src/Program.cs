@@ -1858,7 +1858,7 @@ namespace WinPanel
                 string qLower = q.ToLowerInvariant();
                 // The "past search" block fills in immediately, the regular
                 // results replace the old ones when the worker comes back.
-                FillPastSearchBlock(qLower);
+                FillPastSearchBlock(vv);
                 RebuildPanelSearchList();
                 System.Threading.ThreadPool.QueueUserWorkItem(delegate(object state)
                 {
@@ -1898,15 +1898,15 @@ namespace WinPanel
         // pairs whose QUERY matches what is being typed, best pairs first.
         // Respects the history setting; the panel's own folder groups are not
         // searchable anymore, so entries recorded for them are skipped.
-        private void FillPastSearchBlock(string qLower)
+        private void FillPastSearchBlock(List<string> variants)
         {
             panelSearchPast.Clear();
             try
             {
-                if (!settings.SearchSaveHistory || string.IsNullOrEmpty(qLower)) return;
+                if (!settings.SearchSaveHistory || variants == null || variants.Count == 0) return;
                 var top = SearchHistoryStore.Top(60);
                 int pastLimit = settings.SearchPastResultsLimit;
-                panelSearchPast.AddRange(MatchPastQueries(top, qLower, pastLimit));
+                panelSearchPast.AddRange(MatchPastQueries(top, variants, pastLimit));
             }
             catch { }
         }
@@ -1914,21 +1914,28 @@ namespace WinPanel
         // Pure matching/ranking core (unit-tested): an entry survives when the
         // typed text occurs in the remembered query; prefix matches rank above
         // later occurrences, otherwise the store's score order is preserved.
-        // qLower is lowercased defensively (callers normally pass it already).
-        internal static List<SearchHistoryEntry> MatchPastQueries(List<SearchHistoryEntry> top, string qLower, int max)
+        internal static List<SearchHistoryEntry> MatchPastQueries(List<SearchHistoryEntry> top, List<string> variants, int max)
         {
             var res = new List<SearchHistoryEntry>();
-            if (top == null || string.IsNullOrEmpty(qLower) || max <= 0) return res;
-            string needle = qLower.ToLowerInvariant();
+            if (top == null || variants == null || variants.Count == 0 || max <= 0) return res;
+            var needles = new List<string>(variants.Count);
+            foreach (var v in variants) if (!string.IsNullOrEmpty(v)) needles.Add(v.ToLowerInvariant());
+            if (needles.Count == 0) return res;
+            
             var scored = new List<KeyValuePair<int, SearchHistoryEntry>>();
             for (int i = 0; i < top.Count; i++)
             {
                 var e = top[i];
                 if (e == null || e.IsFolder) continue;
                 string qq = (e.Query ?? "").ToLowerInvariant();
-                int at = qq.IndexOf(needle, StringComparison.Ordinal);
-                if (at < 0) continue;
-                scored.Add(new KeyValuePair<int, SearchHistoryEntry>(at * 1000 + i, e));
+                int bestAt = -1;
+                foreach (var needle in needles)
+                {
+                    int at = qq.IndexOf(needle, StringComparison.Ordinal);
+                    if (at >= 0 && (bestAt < 0 || at < bestAt)) bestAt = at;
+                }
+                if (bestAt < 0) continue;
+                scored.Add(new KeyValuePair<int, SearchHistoryEntry>(bestAt * 1000 + i, e));
             }
             scored.Sort(delegate(KeyValuePair<int, SearchHistoryEntry> a, KeyValuePair<int, SearchHistoryEntry> b)
             {
