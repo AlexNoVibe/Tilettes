@@ -3061,41 +3061,48 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")]
         private static extern bool GetWindowRectNative(IntPtr h, out Win32Rect r);
 
-        private static Rectangle StartButtonRect()
+        private static bool IsStartButtonClicked(Point pt)
         {
             try
             {
-                IntPtr tray = FindWindowNative("Shell_TrayWnd", null);
-                if (tray == IntPtr.Zero) return Rectangle.Empty;
-                Win32Rect tr;
-                if (!GetWindowRectNative(tray, out tr)) return Rectangle.Empty;
-                int tw = tr.R - tr.L, th = tr.B - tr.T;
-                if (tw <= 0 || th <= 0) return Rectangle.Empty;
-                // The button is a window of class "Start" on some builds (exact
-                // rect); on others it has no HWND at all — then derive it as the
-                // leftmost square of the primary taskbar, one taskbar-thickness
-                // side wide (+ the small padding before the next tray button).
-                IntPtr btn = FindWindowExNative(tray, IntPtr.Zero, "Start", null);
-                if (btn == IntPtr.Zero) btn = FindStartButtonNested(tray);
-                if (btn != IntPtr.Zero)
+                if (IsStartButtonInTray(FindWindowNative("Shell_TrayWnd", null), pt)) return true;
+                IntPtr sec = IntPtr.Zero;
+                while ((sec = FindWindowExNative(IntPtr.Zero, sec, "Shell_SecondaryTrayWnd", null)) != IntPtr.Zero)
                 {
-                    Win32Rect r;
-                    if (GetWindowRectNative(btn, out r) && r.R > r.L && r.B > r.T)
-                        return new Rectangle(r.L, r.T, r.R - r.L, r.B - r.T);
+                    if (IsStartButtonInTray(sec, pt)) return true;
                 }
-                if (tw >= th) return new Rectangle(tr.L, tr.T, Math.Min(tw, th + 8), th);
-                return new Rectangle(tr.L, tr.T, tw, Math.Min(th, tw + 8));
             }
             catch (Exception ex)
             {
-                // Throttled: this runs on every mouse click system-wide.
                 if (!startRectErrLogged)
                 {
                     startRectErrLogged = true;
                     AppLog.Write("Start button rect lookup failed, click capture may be off", ex);
                 }
-                return Rectangle.Empty;
             }
+            return false;
+        }
+
+        private static bool IsStartButtonInTray(IntPtr tray, Point pt)
+        {
+            if (tray == IntPtr.Zero) return false;
+            Win32Rect tr;
+            if (!GetWindowRectNative(tray, out tr)) return false;
+            if (pt.X < tr.L || pt.X > tr.R || pt.Y < tr.T || pt.Y > tr.B) return false;
+            int tw = tr.R - tr.L, th = tr.B - tr.T;
+            if (tw <= 0 || th <= 0) return false;
+            
+            IntPtr btn = FindWindowExNative(tray, IntPtr.Zero, "Start", null);
+            if (btn == IntPtr.Zero) btn = FindStartButtonNested(tray);
+            if (btn != IntPtr.Zero)
+            {
+                Win32Rect r;
+                if (GetWindowRectNative(btn, out r) && r.R > r.L && r.B > r.T)
+                    return pt.X >= r.L && pt.X <= r.R && pt.Y >= r.T && pt.Y <= r.B;
+            }
+            Rectangle rFallback = tw >= th ? new Rectangle(tr.L, tr.T, Math.Min(tw, th + 8), th)
+                                           : new Rectangle(tr.L, tr.T, tw, Math.Min(th, tw + 8));
+            return rFallback.Contains(pt);
         }
 
         private static bool startRectErrLogged;
@@ -3128,9 +3135,8 @@ namespace WinPanel
                     if (msg == WM_MOUSE_LDOWN_LL || msg == WM_MOUSE_LUP_LL)
                     {
                         var m = (MSLLHOOKSTRUCT)System.Runtime.InteropServices.Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
-                        Rectangle r = StartButtonRect();
                         bool modified = (Control.ModifierKeys & (Keys.Control | Keys.Shift | Keys.Alt)) != 0;
-                        bool inside = !r.IsEmpty && r.Contains(m.pt);
+                        bool inside = IsStartButtonClicked(m.pt);
                         if (msg == WM_MOUSE_LDOWN_LL)
                         {
                             if (inside && !modified)
@@ -3555,7 +3561,7 @@ namespace WinPanel
                     if (startMouseHook == IntPtr.Zero)
                         AppLog.Write("Start button mouse hook failed err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error());
                     else
-                        AppLog.Write("Start button click capture on, rect=" + StartButtonRect().ToString());
+                        AppLog.Write("Start button click capture on");
                 }
                 if (wantKey || wantClick) EnsureRealStartTile();
             }
