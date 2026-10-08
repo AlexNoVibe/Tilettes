@@ -57,6 +57,7 @@ namespace WinPanel
         // QUERY matches what is being typed ("поиск среди прошлых поисков").
         private readonly List<SearchHistoryEntry> panelSearchPast = new List<SearchHistoryEntry>();
         private readonly Dictionary<string, Bitmap> panelSearchIcons = new Dictionary<string, Bitmap>();
+        private readonly HashSet<string> panelSearchPendingIcons = new HashSet<string>();
         private List<string> panelSearchVariants = new List<string>(); // query variants for match highlighting
         // Fully measured row layouts (see PreparePanelSearchRow): rebuilt per query
         // and per list width, reused across the many repaints of the same results.
@@ -2686,9 +2687,15 @@ namespace WinPanel
                 {
                     foreach (var b in panelSearchIcons.Values) { try { b.Dispose(); } catch { } }
                     panelSearchIcons.Clear();
+                    lock (panelSearchPendingIcons) { panelSearchPendingIcons.Clear(); }
                 }
                 if (!panelSearchIcons.TryGetValue(key, out ic))
                 {
+                    lock (panelSearchPendingIcons)
+                    {
+                        if (panelSearchPendingIcons.Contains(key)) return null;
+                        panelSearchPendingIcons.Add(key);
+                    }
                     // Any path can block the shell (spun-down HDD, slow network, etc.) -
                     // never extract it on the UI thread. The icon arrives in the
                     // background, lands in the cache and the list repaints.
@@ -2718,9 +2725,10 @@ namespace WinPanel
                             if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
                             this.BeginInvoke((MethodInvoker)delegate
                             {
+                                lock (panelSearchPendingIcons) { panelSearchPendingIcons.Remove(gkey); }
+                                if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
                                 try
                                 {
-                                    if (this.IsDisposed) { if (small != null) small.Dispose(); return; }
                                     Bitmap old;
                                     if (panelSearchIcons.TryGetValue(gkey, out old) && old != null) old.Dispose();
                                     panelSearchIcons[gkey] = small;
@@ -2729,7 +2737,11 @@ namespace WinPanel
                                 catch { if (small != null) try { small.Dispose(); } catch { } }
                             });
                         }
-                        catch { if (small != null) try { small.Dispose(); } catch { } }
+                        catch
+                        {
+                            lock (panelSearchPendingIcons) { panelSearchPendingIcons.Remove(gkey); }
+                            if (small != null) try { small.Dispose(); } catch { }
+                        }
                     });
                     ic = null;
                 }
