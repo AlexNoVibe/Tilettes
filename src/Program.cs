@@ -1148,9 +1148,14 @@ namespace WinPanel
                     catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
             }
+            }
             finally 
             { 
                 iconQueueSuspended = false; 
+            }
+            }
+            finally
+            {
                 ResumeHooks();
             }
         }
