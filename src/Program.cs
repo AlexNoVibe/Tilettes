@@ -263,8 +263,11 @@ namespace WinPanel
         // Active decorative skin (null/"None" id = classic behavior).
         private Skin skin = Skin.None;
 
+        public static MainForm Instance;
+
         public MainForm()
         {
+            Instance = this;
             settings = Settings.Load(settingsPath);
             records = Records.Load(recordsPath);
             CurrentSettings = settings;
@@ -1055,13 +1058,16 @@ namespace WinPanel
 
         private void OpenSettings()
         {
-            Rectangle liveRect = WindowState == FormWindowState.Normal ? new Rectangle(this.Location, this.Size) : this.RestoreBounds;
-            var tabNames = new List<string>();
-            try { foreach (var t in records.Tabs) tabNames.Add(t.Name); } catch { }
-            iconQueueSuspended = true;
+            SuspendHooks();
             try
             {
-            using (var sf = new SettingsForm(settings, settingsPath, liveRect, tabNames))
+                Rectangle liveRect = WindowState == FormWindowState.Normal ? new Rectangle(this.Location, this.Size) : this.RestoreBounds;
+                var tabNames = new List<string>();
+                try { foreach (var t in records.Tabs) tabNames.Add(t.Name); } catch { }
+                iconQueueSuspended = true;
+                try
+                {
+                using (var sf = new SettingsForm(settings, settingsPath, liveRect, tabNames))
             {
                 if (sf.ShowDialog() == DialogResult.OK)
                 {
@@ -1142,8 +1148,11 @@ namespace WinPanel
                     catch (Exception ex) { AppLog.Write("Update schedule", ex); }
                 }
             }
+            finally 
+            { 
+                iconQueueSuspended = false; 
+                ResumeHooks();
             }
-            finally { iconQueueSuspended = false; }
         }
 
         // Settings → "Rebuild icons & paths": walks every item of every tab,
@@ -3505,6 +3514,25 @@ namespace WinPanel
                 keybd_event(0x11, 0, KEYEVENTF_KEYUP_LL, System.UIntPtr.Zero); // Ctrl up
             }
             catch { }
+        }
+
+        internal void SuspendHooks()
+        {
+            if (startMouseHook != IntPtr.Zero)
+            {
+                try { UnhookWindowsHookEx(startMouseHook); } catch { }
+                startMouseHook = IntPtr.Zero;
+            }
+            if (winKeyHook != IntPtr.Zero)
+            {
+                try { UnhookWindowsHookEx(winKeyHook); } catch { }
+                winKeyHook = IntPtr.Zero;
+            }
+        }
+
+        internal void ResumeHooks()
+        {
+            ApplyWinKeyHotkey();
         }
 
         private void ApplyWinKeyHotkey()
@@ -6524,76 +6552,84 @@ namespace WinPanel
                 }
                 else if (e.Button == MouseButtons.Right)
                 {
-                    // Red multi-select mode: right-click opens the bulk menu instead.
-                    if (editState == 2)
+                    SuspendHooks();
+                    try
                     {
-                        ShowMultiSelectMenu(tile, item, panel, tabData, e.Location);
-                        return;
-                    }
-                    // Ctrl + right-click on a folder tile: open it in the console
-                    // command from the settings; with the command empty the mini
-                    // explorer opens on the folder instead (the regular menu
-                    // below stays for non-directories and failed launches).
-                    if (CtrlHeld() && LaunchFolderConsoleOrMini(item))
-                        return;
-                    var pt = tile.PointToScreen(e.Location);
-                    if (item.IsFolder)
-                    {
-                        bool canMini = !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path);
-                        if (!isEditMode && !canMini) return;
-                        var fMenu = new ContextMenu();
-                        if (canMini)
-                            fMenu.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenMiniExplorer(item));
-                        if (isEditMode)
+                        // Red multi-select mode: right-click opens the bulk menu instead.
+                        if (editState == 2)
                         {
-                            if (canMini) fMenu.MenuItems.Add("-");
-                            if (tabNavigations[tabData].Count > 0)
-                                fMenu.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
-                            var fSizeMenu = fMenu.MenuItems.Add(Loc.S("Size"));
-                            fSizeMenu.MenuItems.Add("1 x 1", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 1));
-                            fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
-                            fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
-                            fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
-                            fSizeMenu.MenuItems.Add("5 x 5", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 5));
-                            fSizeMenu.MenuItems.Add("6 x 6", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 6));
-                            fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
-                            fMenu.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) => EditItemDescription(item));
-                            fMenu.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) => EditItemAura(item, tile));
-                            fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
-                            fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
-                            var fMoveMenu = fMenu.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
-                            FillMoveToTabMenu(fMoveMenu, panel, tabData, new List<ShortcutItem> { item });
+                            ShowMultiSelectMenu(tile, item, panel, tabData, e.Location);
+                            return;
                         }
-                        fMenu.Show(tile, e.Location);
-                    }
-                    else
-                    {
-                        // The Explorer menu is always available; our own items are shown
-                        // before the Explorer items, edit actions only in edit mode.
-                        NativeContextMenu.ShowContextMenu(item.Path, pt.X, pt.Y, this.Handle, isEditMode,
-                            Loc.S("Description...", "Описание..."), (Action)delegate { EditItemDescription(item); },
-                            tabNavigations[tabData].Count > 0,
-                            () => MoveItemOutOfFolder(panel, tabData, item),
-                            () => OpenContainingFolder(item),
-                            (!string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path)) ? new Action(delegate() { OpenMiniExplorer(item); }) : null,
-                            () => ChangeIconSize(item, tile, panel, tabData, 1),
-                            () => ChangeIconSize(item, tile, panel, tabData, 2),
-                            () => ChangeIconSize(item, tile, panel, tabData, 3),
-                            () => ChangeIconSize(item, tile, panel, tabData, 4),
-                            () => RemoveItem(panel, tile, item, tabData),
-                            () => RenameItem(item, tile),
-                            () => ChangeItemIcon(item, tile),
-                            Loc.S("Aura color...", "Цвет ауры..."),
-                            (Action)delegate { EditItemAura(item, tile); },
-                            () => ChangeIconSize(item, tile, panel, tabData, 5),
-                            () => ChangeIconSize(item, tile, panel, tabData, 6),
-                            OtherTabNames(tabData),
-                            i =>
+                        // Ctrl + right-click on a folder tile: open it in the console
+                        // command from the settings; with the command empty the mini
+                        // explorer opens on the folder instead (the regular menu
+                        // below stays for non-directories and failed launches).
+                        if (CtrlHeld() && LaunchFolderConsoleOrMini(item))
+                            return;
+                        var pt = tile.PointToScreen(e.Location);
+                        if (item.IsFolder)
+                        {
+                            bool canMini = !string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path);
+                            if (!isEditMode && !canMini) return;
+                            var fMenu = new ContextMenu();
+                            if (canMini)
+                                fMenu.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenMiniExplorer(item));
+                            if (isEditMode)
                             {
-                                var target = OtherTabByIndex(tabData, i);
-                                if (target != null)
-                                    MoveItemsToTab(new List<ShortcutItem> { item }, tabData, target);
-                            });
+                                if (canMini) fMenu.MenuItems.Add("-");
+                                if (tabNavigations[tabData].Count > 0)
+                                    fMenu.MenuItems.Add(Loc.S("Move out of folder"), (s2, e2) => MoveItemOutOfFolder(panel, tabData, item));
+                                var fSizeMenu = fMenu.MenuItems.Add(Loc.S("Size"));
+                                fSizeMenu.MenuItems.Add("1 x 1", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 1));
+                                fSizeMenu.MenuItems.Add("2 x 2", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 2));
+                                fSizeMenu.MenuItems.Add("3 x 3", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 3));
+                                fSizeMenu.MenuItems.Add("4 x 4", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 4));
+                                fSizeMenu.MenuItems.Add("5 x 5", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 5));
+                                fSizeMenu.MenuItems.Add("6 x 6", (s2, e2) => ChangeIconSize(item, tile, panel, tabData, 6));
+                                fMenu.MenuItems.Add(Loc.S("Rename"), (s2, e2) => RenameItem(item, tile));
+                                fMenu.MenuItems.Add(Loc.S("Description...", "Описание..."), (s2, e2) => EditItemDescription(item));
+                                fMenu.MenuItems.Add(Loc.S("Aura color...", "Цвет ауры..."), (s2, e2) => EditItemAura(item, tile));
+                                fMenu.MenuItems.Add(Loc.S("Change Icon"), (s2, e2) => ChangeItemIcon(item, tile));
+                                fMenu.MenuItems.Add(Loc.S("Remove"), (s2, e2) => RemoveItem(panel, tile, item, tabData));
+                                var fMoveMenu = fMenu.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
+                                FillMoveToTabMenu(fMoveMenu, panel, tabData, new List<ShortcutItem> { item });
+                            }
+                            fMenu.Show(tile, e.Location);
+                        }
+                        else
+                        {
+                            // The Explorer menu is always available; our own items are shown
+                            // before the Explorer items, edit actions only in edit mode.
+                            NativeContextMenu.ShowContextMenu(item.Path, pt.X, pt.Y, this.Handle, isEditMode,
+                                Loc.S("Description...", "Описание..."), (Action)delegate { EditItemDescription(item); },
+                                tabNavigations[tabData].Count > 0,
+                                () => MoveItemOutOfFolder(panel, tabData, item),
+                                () => OpenContainingFolder(item),
+                                (!string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path)) ? new Action(delegate() { OpenMiniExplorer(item); }) : null,
+                                () => ChangeIconSize(item, tile, panel, tabData, 1),
+                                () => ChangeIconSize(item, tile, panel, tabData, 2),
+                                () => ChangeIconSize(item, tile, panel, tabData, 3),
+                                () => ChangeIconSize(item, tile, panel, tabData, 4),
+                                () => RemoveItem(panel, tile, item, tabData),
+                                () => RenameItem(item, tile),
+                                () => ChangeItemIcon(item, tile),
+                                Loc.S("Aura color...", "Цвет ауры..."),
+                                (Action)delegate { EditItemAura(item, tile); },
+                                () => ChangeIconSize(item, tile, panel, tabData, 5),
+                                () => ChangeIconSize(item, tile, panel, tabData, 6),
+                                OtherTabNames(tabData),
+                                i =>
+                                {
+                                    var target = OtherTabByIndex(tabData, i);
+                                    if (target != null)
+                                        MoveItemsToTab(new List<ShortcutItem> { item }, tabData, target);
+                                });
+                        }
+                    }
+                    finally
+                    {
+                        ResumeHooks();
                     }
                 }
             };
@@ -7890,11 +7926,19 @@ namespace WinPanel
             {
                 if (e.Button == MouseButtons.Right)
                 {
-                    // Ctrl + right-click on a folder tile: open it in the
-                    // console command from the settings (empty = the menu).
-                    if (MainForm.CtrlHeld() && OpenFolderConsole(child))
-                        return;
-                    ShowTileMenu(tile, child, e.Location);
+                    if (MainForm.Instance != null) MainForm.Instance.SuspendHooks();
+                    try
+                    {
+                        // Ctrl + right-click on a folder tile: open it in the
+                        // console command from the settings (empty = the menu).
+                        if (MainForm.CtrlHeld() && OpenFolderConsole(child))
+                            return;
+                        ShowTileMenu(tile, child, e.Location);
+                    }
+                    finally
+                    {
+                        if (MainForm.Instance != null) MainForm.Instance.ResumeHooks();
+                    }
                     return;
                 }
                 if (e.Button != MouseButtons.Left || !dragging) return;
