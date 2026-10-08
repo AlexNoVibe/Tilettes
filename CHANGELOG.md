@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.1 - 2026-10-08
+
+- **Performance optimization:** completely eliminated system mouse cursor freezes during heavy UI operations (opening settings, right-clicking on tiles located on spun-down drives), and fixed thread pool exhaustion during background icon loading.
+- **Start button capture:** fixed Start button click interception on secondary monitors in multi-monitor setups.
+- **Startup tab:** the active search state is now correctly cleared when the panel is shown and a specific "open tab on show" is configured.
+- **Search history:** past search queries are now correctly matched even if typed in the wrong keyboard layout, matching the behavior of regular searches.
+- **Localization & Stability:** added missing translations for search limit fields and fixed a fatal startup crash caused by duplicate translation keys.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.2.0...v1.2.1
+
+
 ## v1.2.0 — 2026-10-07
 
 - **Icon pipeline rebuilt**: folder tiles get their composed previews back (folders-with-folders included), media thumbnails extract on a dedicated STA worker thread instead of dying silently, and folder icons re-extract fresh so tiles paint sharp instead of blurred.
@@ -108,3 +119,5 @@ Performance and hardening release. Release assets are now plain exe files per CP
 - **build:** GitHub Actions attaches exe builds (AnyCPU/x86/x64) instead of a zip
 
 **Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v0.5...v0.6.0-beta
+
+
