@@ -164,6 +164,7 @@ namespace WinPanel
         public SettingsForm(Settings settings, string settingsPath, Rectangle liveWindowRect,
             System.Collections.Generic.List<string> tabNames)
         {
+            this.SuspendLayout();
             this.settings = settings;
             this.settingsPath = settingsPath;
             this.liveRect = liveWindowRect;
@@ -1042,6 +1043,7 @@ namespace WinPanel
             scrollPanel.Controls.Add(numSize);
             scrollPanel.Controls.Add(colorBtn);
             scrollPanel.Controls.Add(combo);
+            this.ResumeLayout(false);
         }
 
         private string ColorValue(Button colorBtn, string original)

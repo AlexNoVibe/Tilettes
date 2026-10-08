@@ -4161,69 +4161,33 @@ namespace WinPanel
         private void LoadTileIcon(TileControl tile, ShortcutItem item)
         {
             if (tile.IsDisposed) return;
-            if (IsSlowIconSource(item) || IconPathNeedsWorkerThread(item == null ? null : item.Path))
+            // Always extract on the STA worker thread. Even local disk or shell
+            // cache misses can block the UI thread long enough to cause stutter.
+            RunIconWorker(delegate
             {
-                // Network source, media preview or composed folder preview:
-                // extract on the STA worker thread - an unreachable share may
-                // stall it for the SMB timeout, a thumbnail composition or a
-                // video frame costs hundreds of ms, and the UI keeps running
-                // either way while the tile keeps its placeholder until the
-                // icon arrives.
-                RunIconWorker(delegate
+                Image img = null;
+                try { img = LoadIconForItem(item); } catch { }
+                if (img == null)
+                    AppLog.Write("LoadTileIcon: no icon extracted for " +
+                                 (item != null ? item.Path : "(null item)"));
+                if (img == null) { try { img = SystemIcons.Application.ToBitmap(); } catch { } }
+                try
                 {
-                    Image img = null;
-                    try { img = LoadIconForItem(item); } catch { }
-                    if (img == null)
-                        AppLog.Write("LoadTileIcon: no icon extracted for " +
-                                     (item != null ? item.Path : "(null item)"));
-                    if (img == null) { try { img = SystemIcons.Application.ToBitmap(); } catch { } }
-                    try
+                    if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
+                    tile.BeginInvoke((MethodInvoker)delegate
                     {
                         if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
-                        tile.BeginInvoke((MethodInvoker)delegate
+                        try
                         {
-                            if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
-                            try
-                            {
-                                if (tile.IconImage != null) tile.IconImage.Dispose();
-                                tile.IconImage = img;
-                                tile.Invalidate();
-                            }
-                            catch { if (img != null) try { img.Dispose(); } catch { } }
-                        });
-                    }
-                    catch { if (img != null) try { img.Dispose(); } catch { } }
-                });
-                return;
-            }
-            Image img2 = null;
-            try
-            {
-                img2 = LoadIconForItem(item);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("LoadTileIcon: LoadIconForItem", ex);
-            }
-            if (img2 == null)
-            {
-                AppLog.Write("LoadTileIcon: no icon extracted for " +
-                             (item != null ? item.Path : "(null item)") + " (ui thread)");
-                try { img2 = SystemIcons.Application.ToBitmap(); }
-                catch { img2 = SystemIcons.Error.ToBitmap(); }
-            }
-            if (tile.IsDisposed) { if (img2 != null) img2.Dispose(); return; }
-            try
-            {
-                if (tile.IconImage != null) tile.IconImage.Dispose();
-                tile.IconImage = img2;
-                tile.Invalidate();
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("LoadTileIcon: assign IconImage", ex);
-                if (img2 != null) img2.Dispose();
-            }
+                            if (tile.IconImage != null) tile.IconImage.Dispose();
+                            tile.IconImage = img;
+                            tile.Invalidate();
+                        }
+                        catch { if (img != null) try { img.Dispose(); } catch { } }
+                    });
+                }
+                catch { if (img != null) try { img.Dispose(); } catch { } }
+            });
         }
 
         // The closed-folder icon is fetched from the shell once and cloned per use:
@@ -4259,115 +4223,52 @@ namespace WinPanel
         private void LoadFolderChildIcon(TileControl tile, ShortcutItem child, int index)
         {
             if (tile.IsDisposed || index >= tile.ChildIcons.Count) return;
-            if (IsSlowIconSource(child) || IconPathNeedsWorkerThread(child == null ? null : child.Path))
+            // Always extract on the STA worker thread. Even local disk or shell
+            // cache misses can block the UI thread long enough to cause stutter.
+            RunIconWorker(delegate
             {
-                // Network source, media preview or composed folder preview:
-                // extract on the STA worker thread (see LoadTileIcon) - the
-                // child icons run on the same UI-thread queue as everything
-                // else.
-                RunIconWorker(delegate
+                Image bimg = null;
+                try
                 {
-                    Image bimg = null;
-                    try
-                    {
-                        // This is the slow-source worker branch: a direct
-                        // directory probe is safe here (network path or not).
-                        bool cfolder = child.IsFolder || IsFolderPathCached(child.Path) ||
-                                       Directory.Exists(child.Path ?? "");
-                        if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
-                            bimg = IconExtractor.LoadAny(child.CustomIconPath);
-                        else
-                        {
-                            string typeIcon = FileTypes.GetIconForPath(child.Path);
-                            if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
-                                bimg = IconExtractor.LoadAny(typeIcon);
-                            else
-                            {
-                                bimg = LoadMediaThumbnail(child.Path, 96, cfolder);
-                                if (bimg == null && cfolder)
-                                    bimg = GetFolderIconImage();
-                                if (bimg == null)
-                                    bimg = IconExtractor.GetIconAuto(child.Path, true);
-                            }
-                        }
-                    }
-                    catch { }
-                    if (bimg == null) { try { bimg = SystemIcons.Application.ToBitmap(); } catch { } }
-                    try
-                    {
-                        if (tile.IsDisposed) { if (bimg != null) bimg.Dispose(); return; }
-                        tile.BeginInvoke((MethodInvoker)delegate
-                        {
-                            if (tile.IsDisposed || index >= tile.ChildIcons.Count) { if (bimg != null) bimg.Dispose(); return; }
-                            try
-                            {
-                                var old = tile.ChildIcons[index];
-                                if (old != null) old.Dispose();
-                                tile.ChildIcons[index] = bimg;
-                                tile.Invalidate();
-                            }
-                            catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
-                        });
-                    }
-                    catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
-                });
-                return;
-            }
-            Image img = null;
-            try
-            {
-                // Group tiles and local directory children (the cached probe
-                // skips network paths - those never take this synchronous branch).
-                bool cfolder = child.IsFolder || IsFolderPathCached(child.Path);
-                if (cfolder)
-                {
-                    // Folder preview composed by the shell from the files inside;
-                    // the shared folder icon when it has none.
-                    img = LoadMediaThumbnail(child.Path, 96, true);
-                    if (img == null) img = GetFolderIconImage();
-                }
-                else
-                {
-                    // 1) direct icon of the child, 2) file type icon, 3) media
-                    // preview (photo/video), 4) standard icon
+                    bool cfolder = child.IsFolder || IsFolderPathCached(child.Path) ||
+                                   Directory.Exists(child.Path ?? "");
                     if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
-                        img = IconExtractor.LoadAny(child.CustomIconPath);
+                        bimg = IconExtractor.LoadAny(child.CustomIconPath);
                     else
                     {
                         string typeIcon = FileTypes.GetIconForPath(child.Path);
                         if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
-                            img = IconExtractor.LoadAny(typeIcon);
+                            bimg = IconExtractor.LoadAny(typeIcon);
                         else
                         {
-                            img = LoadMediaThumbnail(child.Path, 96, false);
-                            if (img == null)
-                                img = IconExtractor.GetIconAuto(child.Path, true);
+                            bimg = LoadMediaThumbnail(child.Path, 96, cfolder);
+                            if (bimg == null && cfolder)
+                                bimg = GetFolderIconImage();
+                            if (bimg == null)
+                                bimg = IconExtractor.GetIconAuto(child.Path, true);
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("LoadFolderChildIcon: icon extraction", ex);
-            }
-            if (img == null)
-            {
-                try { img = SystemIcons.Application.ToBitmap(); }
-                catch { img = SystemIcons.Error.ToBitmap(); }
-            }
-            if (tile.IsDisposed) { if (img != null) img.Dispose(); return; }
-            try
-            {
-                var old = tile.ChildIcons[index];
-                if (old != null) old.Dispose();
-                tile.ChildIcons[index] = img;
-                tile.Invalidate();
-            }
-            catch (Exception ex)
-            {
-                AppLog.Write("LoadFolderChildIcon: assign ChildIcons", ex);
-                if (img != null) img.Dispose();
-            }
+                catch { }
+                if (bimg == null) { try { bimg = SystemIcons.Application.ToBitmap(); } catch { } }
+                try
+                {
+                    if (tile.IsDisposed) { if (bimg != null) bimg.Dispose(); return; }
+                    tile.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (tile.IsDisposed || index >= tile.ChildIcons.Count) { if (bimg != null) bimg.Dispose(); return; }
+                        try
+                        {
+                            var old = tile.ChildIcons[index];
+                            if (old != null) old.Dispose();
+                            tile.ChildIcons[index] = bimg;
+                            tile.Invalidate();
+                        }
+                        catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
+                    });
+                }
+                catch { if (bimg != null) try { bimg.Dispose(); } catch { } }
+            });
         }
 
         // ---------- Item launching ----------
