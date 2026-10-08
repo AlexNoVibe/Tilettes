@@ -5434,6 +5434,11 @@ namespace WinPanel
             {
                 string want = settings.ShowTabName;
                 if (string.IsNullOrEmpty(want)) return;
+                
+                // If the panel enforces a startup tab on show, clear any active search
+                // so the user actually sees the requested tab instead of the search results.
+                if (panelSearchActive) ClearPanelSearch();
+                
                 if (activeTabData != null && string.Equals(activeTabData.Name, want, StringComparison.Ordinal)) return;
                 foreach (var kv in tabDataByButton)
                 {
