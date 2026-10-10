@@ -39,6 +39,8 @@ namespace WinPanel
         private CheckBox chkTrimExt;
         private CheckBox chkCtrlNames;
         private ComboBox cmbLabelAlign;
+        private CheckBox chkShowHelp;
+        private CheckBox chkSavedPos;
 
         private NumericUpDown numIconScale;
         private NumericUpDown numFuzzy, numSearchBoxFont, numSearchResultsFont;
@@ -268,6 +270,13 @@ namespace WinPanel
             Tip(numY, "Window position: distance from the top screen edge", "Положение окна: отступ от верхнего края экрана");
             y += 30;
 
+            chkSavedPos = new CheckBox { Text = Loc.S("Always open at the position from settings", "Всегда открывать в положении из настроек"), Left = 20, Top = y, Width = 540, Checked = settings.AlwaysOpenAtSavedPos, ForeColor = textColor };
+            Tip(chkSavedPos,
+                "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+                "Каждое открытие/разворот ставит окно точно в позицию X/Y выше; пока включено, перетаскивание временное (снимите галочку, перетащите и включите снова, чтобы закрепить новую позицию)");
+            scrollPanel.Controls.Add(chkSavedPos);
+            y += 28;
+
             // The tab every panel show lands on ("always open on tab ...");
             // empty selection = the last used tab, the classic behavior.
             var lblShowTab = new Label { Text = Loc.S("Open tab on show:", "Вкладка при показе:"), Left = 20, Top = y, Width = 130 };
@@ -286,6 +295,13 @@ namespace WinPanel
                 "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
                 "Вкладка, на которой открывается панель: хоткей, клик по кнопке Пуск, разворот из свёрнутого, первый старт. «Последняя использованная» — прежнее поведение.");
             y += 30;
+
+            chkShowHelp = new CheckBox { Text = Loc.S("Show the Help button in the panel", "Показывать кнопку «Справка» на панели"), Left = 20, Top = y, Width = 540, Checked = settings.ShowHelpButton, ForeColor = textColor };
+            Tip(chkShowHelp,
+                "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+                "Крайняя левая кнопка «?» в правом верхнем ряду открывает краткую справку; снимите галочку, чтобы убрать кнопку");
+            scrollPanel.Controls.Add(chkShowHelp);
+            y += 28;
 
             var lblTrans = new Label { Text = Loc.S("Grid Transp. (0-255):", "Прозрачность сетки (0-255):"), Left = 20, Top = y, Width = 130 };
             numGridTransparency = new NumericUpDown { Left = 155, Top = y - 2, Width = 120, Maximum = 255, Minimum = 0, Value = settings.GridTransparency, BackColor = panelColor, ForeColor = textColor, BorderStyle = BorderStyle.FixedSingle };
@@ -1114,6 +1130,8 @@ namespace WinPanel
             settings.StartupHeight = (int)numHeight.Value;
             settings.WindowX = (int)numX.Value;
             settings.WindowY = (int)numY.Value;
+            settings.AlwaysOpenAtSavedPos = chkSavedPos.Checked;
+            settings.ShowHelpButton = chkShowHelp.Checked;
             settings.ShowTabName = cmbShowTab != null && cmbShowTab.SelectedIndex > 0
                 ? (string)cmbShowTab.Items[cmbShowTab.SelectedIndex]
                 : "";

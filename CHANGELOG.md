@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Help button**: the leftmost "?" button in the top-right action row opens a short help box (a plain system MessageBox — the simplest, most compatible dialog, re-fonted to a big 18 pt text via a temporary CBT hook) covering the basics: tab creation and dragging a tab down to a new row, how to add a tile (edit mode on + drag a file or folder from Explorer), the three checkmark-button modes, the item types (regular item, folder, group — groups are edited only with the red checkmark) and the two Start-menu syncs. A settings checkbox ("Show the Help button in the panel") removes the button, and the button rows resize accordingly — min/max/close stay pinned to the corner.
+- **Auto-collapse toggle**: a new ⇩ toggle in the same row (green when on, state kept in settings.ini) minimizes the panel window after any tile opens — drag, edit and red multi-select clicks are never affected. Tile opens inside folder popups collapse the panel too.
+- **Always open at the position from settings**: a settings checkbox ("Always open at the position from settings", under Window Position) snaps the window to the saved X/Y on every open/expand, clamped into the work area. While it is on, dragging the window is temporary — untick, drag and tick again to re-anchor the position.
+- **Startup tab fix**: the "open tab on show" switch could silently stop working after any tab rebuild (settings OK, tab add/delete/reorder, Start Menu sync) — disposed tab buttons left over from the previous build stayed in the button-by-tab dictionary, enumerated first, and their missing panels aborted the whole search. The dictionary is cleared on every rebuild now, and a missing/disposed match keeps the search going instead of aborting.
+
 ## v1.2.1 - 2026-10-08
 
 - **Performance optimization:** completely eliminated system mouse cursor freezes during heavy UI operations (opening settings, right-clicking on tiles located on spun-down drives), and fixed thread pool exhaustion during background icon loading.

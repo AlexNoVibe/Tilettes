@@ -360,7 +360,7 @@ namespace WinPanel
             rightPanel = new Panel
             {
                 Dock = DockStyle.Right,
-                Width = 105,
+                Width = 175,
                 BackColor = bgColor
             };
 
@@ -539,9 +539,11 @@ namespace WinPanel
                 if (appIcon != null) appIcon.Dispose();
             };
             this.ResizeEnd += (s, e) => {
-                if (settings != null) {
+                if (settings != null && !settings.AlwaysOpenAtSavedPos) {
                     // Only the position is remembered; the window always starts with
-                    // StartupWidth x StartupHeight from settings.
+                    // StartupWidth x StartupHeight from settings. With "always open
+                    // at the position from settings" the saved X/Y is the anchor:
+                    // dragging is temporary, so it is not stored.
                     settings.WindowX = this.Location.X;
                     settings.WindowY = this.Location.Y;
                     settings.Save(settingsPath);
@@ -1572,6 +1574,15 @@ namespace WinPanel
                     showSw = System.Diagnostics.Stopwatch.StartNew();
                     IntPtr handleBefore = this.Handle;
                     this.Visible = false;          // a re-home recreate (if any) stays invisible
+                    // "Always open at the position from settings": while hidden,
+                    // restore to Normal first (so the move is not eaten by the
+                    // restore bounds of a maximized state) and snap to the
+                    // saved X/Y before the window surfaces.
+                    if (settings.AlwaysOpenAtSavedPos)
+                    {
+                        this.WindowState = FormWindowState.Normal;
+                        ApplySavedPosition();
+                    }
                     if (settings.MoveToCurrentDesktopOnShow) EnsureOnCurrentDesktop();
                     bool recreated = this.Handle != handleBefore;
                     // Cloaking is reserved for a freshly recreated handle - the
@@ -4950,9 +4961,102 @@ namespace WinPanel
             }
         }
 
+        // Short in-app help: a plain system MessageBox (the simplest, most
+        // compatible Windows dialog) with a bigger text font - a temporary
+        // CBT hook re-fonts the standard dialog (see MessageBoxFont).
+        private void ShowHelpMessageBox()
+        {
+            string text =
+                Loc.S(
+                    "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row\n" +
+                    "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel\n" +
+                    "- Checkmark button: 3 modes - off / edit (green) / selection (red)\n" +
+                    "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark\n" +
+                    "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+                    "• Вкладки: создание — кнопка «+»; перетаскивание вниз — перенос на новый ряд\n" +
+                    "• Как добавить плитку: включите галочку (режим редактирования) и перетащите файл или папку из Проводника на панель\n" +
+                    "• Кнопка-галочка — 3 режима: выкл / редактирование (зелёная) / выделение (красная)\n" +
+                    "• Элементы: обычный элемент, папка, группа. Группы создаются и редактируются только с красной галочкой\n" +
+                    "• Синхронизация с обычным Пуском — 2 синхронизации: зеркало меню «Пуск» и импорт закреплённых плиток");
+            string caption = Loc.S("Help", "Справка");
+            try { MessageBoxFont.Show(this, text, caption, 18f); }
+            catch { try { MessageBox.Show(this, text, caption, MessageBoxButtons.OK, MessageBoxIcon.Information); } catch { } }
+        }
+
+        // The ⇩ toggle (CollapseOnTileClick): minimize the main window after a
+        // tile was opened - the same state the 🗕 button produces. Every restore
+        // path (hotkey, Win toggle, taskbar, tray) works from there. Static so
+        // the popup-form tile handlers can reach it without a form reference.
+        internal static void CollapseAfterTile()
+        {
+            try
+            {
+                foreach (Form f in Application.OpenForms)
+                {
+                    var mf = f as MainForm;
+                    if (mf != null && !mf.IsDisposed)
+                    {
+                        mf.WindowState = FormWindowState.Minimized;
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // "Always open at the position from settings": put the window at
+        // WindowX/WindowY, clamped into the work area of the screen that owns
+        // the saved point, so a changed monitor setup cannot push it off-screen.
+        private void ApplySavedPosition()
+        {
+            try
+            {
+                Rectangle wa = Screen.FromPoint(new Point(settings.WindowX, settings.WindowY)).WorkingArea;
+                int x = Math.Max(wa.Left, Math.Min(wa.Right - this.Width, settings.WindowX));
+                int y = Math.Max(wa.Top, Math.Min(wa.Bottom - this.Height, settings.WindowY));
+                this.Location = new Point(x, y);
+            }
+            catch (Exception ex) { AppLog.Write("ApplySavedPosition", ex); }
+        }
+
+        // The "All apps" feature (an alphabetical Start Menu view behind a
+        // built-in tile) was removed after a trial: it kept re-enumerating the
+        // whole Start Menu on every open. Tiles an earlier build saved into
+        // the Start tab are removed here so no dead tile stays behind.
+        // Runs from LoadTabs; a no-op once nothing matches.
+        private void RemoveLegacyAllAppsTiles()
+        {
+            try
+            {
+                bool changed = false;
+                foreach (var t in records.Tabs)
+                    changed |= StripLegacyAllAppsTiles(t.Items);
+                if (changed) records.Save(recordsPath);
+            }
+            catch (Exception ex) { AppLog.Write("RemoveLegacyAllAppsTiles", ex); }
+        }
+
+        private static bool StripLegacyAllAppsTiles(List<ShortcutItem> items)
+        {
+            if (items == null) return false;
+            bool changed = false;
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                var it = items[i];
+                if (it != null && string.Equals(it.Path, "allapps:", StringComparison.OrdinalIgnoreCase))
+                {
+                    items.RemoveAt(i);
+                    changed = true;
+                }
+                else if (it != null && StripLegacyAllAppsTiles(it.Children)) changed = true;
+            }
+            return changed;
+        }
+
         private void LoadTabs()
         {
             EnsurePowerTiles();
+            RemoveLegacyAllAppsTiles();
             RemoveLegacyUwpTiles();
             try { if (panelSearchActive) HidePanelSearch(); } catch { }
             if (panelSearchRow != null)
@@ -4983,7 +5087,7 @@ namespace WinPanel
             // Tab rows sit directly above the search row: no filler space between them.
             topPanel.Height = tabRows * tabPitch + searchRowH;
 
-            // ---- Right stack: row 1 = min / max / close, row 2 = grid / edit / [update] / settings ----
+            // ---- Right stack: row 1 = min / max / close, row 2 = help / collapse / grid / edit / [update] / settings ----
             // The "Update" plate appears when UpdateChecker found a newer release;
             // both rows grow by the plate width so min/max/close stay in the corner.
             int plateW = 0;
@@ -4992,8 +5096,12 @@ namespace WinPanel
             {
                 using (var pf = new Font("Segoe UI", 9f, FontStyle.Bold))
                     plateW = Math.Max(64, TextRenderer.MeasureText(plateCaption, pf).Width + 18);
-                rightPanel.Width = 105 + plateW;
             }
+            // Fixed 35px action buttons (collapse-toggle / grid / edit / settings,
+            // plus the optional help button) + the optional update plate. Both
+            // rows resize with it, so min/max/close stay pinned to the corner
+            // even when the help button is switched off in the settings.
+            rightPanel.Width = 140 + plateW + (settings.ShowHelpButton ? 35 : 0);
             var winRow = new Panel { Location = new Point(0, 0), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
             var actionRow = new Panel { Location = new Point(0, 31), Size = new Size(rightPanel.Width, 31), BackColor = bgColor };
             winRow.MouseDown += (s, e) => DragWindow(e);
@@ -5018,14 +5126,13 @@ namespace WinPanel
             minBtn.Click += (s, e) => this.WindowState = FormWindowState.Minimized;
             winRow.Controls.Add(minBtn);
 
-            if (plateW > 0)
-            {
-                // Added last = docks first = leftmost: keeps min/max/close pinned
-                // to the right corner while the rows carry the extra update plate.
-                var winFiller = new Panel { Width = plateW, Height = 31, Dock = DockStyle.Left, BackColor = bgColor };
-                winFiller.MouseDown += (s, e) => DragWindow(e);
-                winRow.Controls.Add(winFiller);
-            }
+            // Added last = docks first = leftmost: a filler over the width the
+            // action row uses beyond min/max/close (collapse/help buttons, the
+            // update plate) keeps min/max/close pinned to the right corner at
+            // any width of the rows.
+            var winFiller = new Panel { Width = Math.Max(0, rightPanel.Width - 105), Height = 31, Dock = DockStyle.Left, BackColor = bgColor };
+            winFiller.MouseDown += (s, e) => DragWindow(e);
+            winRow.Controls.Add(winFiller);
 
             var settingsBtn = new Button
             {
@@ -5126,9 +5233,67 @@ namespace WinPanel
             };
             actionRow.Controls.Add(gridBtn);
 
+            // Added after grid so the Dock.Left reverse order puts them LEFT of
+            // it: help | collapse-toggle | grid | edit | [update] | settings.
+            // The ⇩ toggle: when on, opening any tile minimizes the window
+            // (green state, like the update plate).
+            var collapseBtn = new Button
+            {
+                Text = "⇩",
+                Width = 35,
+                Height = 31,
+                Dock = DockStyle.Left,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = settings.CollapseOnTileClick ? Color.FromArgb(39, 174, 96) : bgColor,
+                ForeColor = settings.CollapseOnTileClick ? Color.White : textColor,
+                Cursor = Cursors.Hand,
+                Font = new Font("Segoe UI", 11f)
+            };
+            collapseBtn.FlatAppearance.BorderSize = 0;
+            collapseBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+            itemTip.SetToolTip(collapseBtn, Loc.S(
+                "Auto-collapse: minimize the panel after any tile opens",
+                "Автосворачивание: сворачивать панель после открытия любой плитки"));
+            collapseBtn.Click += (s, e) =>
+            {
+                settings.CollapseOnTileClick = !settings.CollapseOnTileClick;
+                settings.Save(settingsPath);
+                collapseBtn.BackColor = settings.CollapseOnTileClick ? Color.FromArgb(39, 174, 96) : bgColor;
+                collapseBtn.ForeColor = settings.CollapseOnTileClick ? Color.White : textColor;
+            };
+            actionRow.Controls.Add(collapseBtn);
+
+            // The leftmost button: short help as a plain system MessageBox
+            // (the simplest, most compatible Windows dialog). Optional.
+            if (settings.ShowHelpButton)
+            {
+                var helpBtn = new Button
+                {
+                    Text = "?",
+                    Width = 35,
+                    Height = 31,
+                    Dock = DockStyle.Left,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = bgColor,
+                    ForeColor = textColor,
+                    Cursor = Cursors.Hand,
+                    Font = new Font("Segoe UI", 11f, FontStyle.Bold)
+                };
+                helpBtn.FlatAppearance.BorderSize = 0;
+                helpBtn.FlatAppearance.MouseOverBackColor = hoverColor;
+                itemTip.SetToolTip(helpBtn, Loc.S("Help", "Справка"));
+                helpBtn.Click += (s, e) => ShowHelpMessageBox();
+                actionRow.Controls.Add(helpBtn);
+            }
+
             // ---- Tabs (manual rows) ----
             var layoutPanels = new Dictionary<Button, Panel>();
             panelByButton.Clear();
+            // tabDataByButton lives across LoadTabs rebuilds: stale disposed
+            // buttons from older builds would enumerate first in
+            // ActivateStartupTab and silently abort the "open tab on show"
+            // switch (panelByButton no longer holds their panels).
+            tabDataByButton.Clear();
             var tabByButton = new Dictionary<Button, TabData>();
             var buttons = new List<Button>();
             int[] rowX = new int[tabRows];
@@ -5443,8 +5608,12 @@ namespace WinPanel
                 foreach (var kv in tabDataByButton)
                 {
                     if (!string.Equals(kv.Value.Name, want, StringComparison.Ordinal)) continue;
+                    // A button left over from an older LoadTabs rebuild shares the
+                    // tab name but has no panel anymore: keep searching for the
+                    // live button, never abort the whole switch.
+                    if (kv.Key.IsDisposed) continue;
                     Panel p;
-                    if (!panelByButton.TryGetValue(kv.Key, out p) || p.IsDisposed) return;
+                    if (!panelByButton.TryGetValue(kv.Key, out p) || p.IsDisposed) continue;
                     var buttons = new List<Button>(panelByButton.Keys);
                     ActivateTab(kv.Key, panelByButton, buttons);
                     return;
@@ -6877,6 +7046,9 @@ namespace WinPanel
             {
                 LaunchItem(item.Path);
             }
+            // The ⇩ toggle: any opened tile collapses the window (dragging and
+            // the edit/multi-select modes never reach this method).
+            if (settings.CollapseOnTileClick) CollapseAfterTile();
         }
 
         // The tile-open setting as a static read (PopupTile holds no settings
@@ -8205,6 +8377,9 @@ namespace WinPanel
                 if (item.IsFolder) return; // nested folders: open inside the panel for now
                 if (MainForm.TilesOpenByDoubleClick) return; // double-click mode: opened below
                 MainForm.LaunchItem(item.Path);
+                // The ⇩ toggle: a tile opened from a popup collapses the main panel too.
+                Settings cfg = MainForm.CurrentSettings;
+                if (cfg != null && cfg.CollapseOnTileClick) MainForm.CollapseAfterTile();
             }
         }
 
@@ -8218,7 +8393,11 @@ namespace WinPanel
                 return;
             }
             if (e.Button == MouseButtons.Left && MainForm.TilesOpenByDoubleClick && !item.IsFolder)
+            {
                 MainForm.LaunchItem(item.Path);
+                Settings cfg = MainForm.CurrentSettings;
+                if (cfg != null && cfg.CollapseOnTileClick) MainForm.CollapseAfterTile();
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)

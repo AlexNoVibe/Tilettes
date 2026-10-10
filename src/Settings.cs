@@ -164,6 +164,14 @@ namespace WinPanel
         // Hold Ctrl -> tiles show their full (untruncated) name while the key is down.
         public bool LabelCtrlFullNames { get; set; }
 
+        // Panel UI toggles: the optional Help ("?") button in the top-right
+        // action row, the auto-collapse of the window after any tile opens
+        // (the ⇩ toggle button), and snapping the window to WindowX/WindowY
+        // from this file at every show.
+        public bool ShowHelpButton { get; set; }
+        public bool CollapseOnTileClick { get; set; }
+        public bool AlwaysOpenAtSavedPos { get; set; }
+
         public Settings()
         {
             StartupWidth = 900;
@@ -256,6 +264,10 @@ namespace WinPanel
             LabelTrimExtension = true;
             LabelCtrlFullNames = true;
             LabelAlign2Rows = 1;
+
+            ShowHelpButton = true;
+            CollapseOnTileClick = false;
+            AlwaysOpenAtSavedPos = false;
         }
 
         // First start on a small monitor: the factory 900x800 window at Y=100
@@ -495,6 +507,11 @@ namespace WinPanel
                 int la2;
                 if (int.TryParse(ini.Read("LabelAlign2Rows"), out la2) && la2 >= 0 && la2 <= 2) s.LabelAlign2Rows = la2;
 
+                bool shb, cotc, aoasp;
+                if (bool.TryParse(ini.Read("ShowHelpButton"), out shb)) s.ShowHelpButton = shb;
+                if (bool.TryParse(ini.Read("CollapseOnTileClick"), out cotc)) s.CollapseOnTileClick = cotc;
+                if (bool.TryParse(ini.Read("AlwaysOpenAtSavedPos"), out aoasp)) s.AlwaysOpenAtSavedPos = aoasp;
+
                 // While a decorative skin is active, the light/dark flag is not
                 // an independent choice: derive it from the skin's brightness so
                 // the surfaces that only know IsLightTheme (settings dialog,
@@ -600,7 +617,10 @@ namespace WinPanel
                     "LabelTrimShortcut=" + LabelTrimShortcut,
                     "LabelTrimExtension=" + LabelTrimExtension,
                     "LabelCtrlFullNames=" + LabelCtrlFullNames,
-                    "LabelAlign2Rows=" + LabelAlign2Rows
+                    "LabelAlign2Rows=" + LabelAlign2Rows,
+                    "ShowHelpButton=" + ShowHelpButton,
+                    "CollapseOnTileClick=" + CollapseOnTileClick,
+                    "AlwaysOpenAtSavedPos=" + AlwaysOpenAtSavedPos
                 };
                 new IniFile(path).WriteSection("Settings", lines.ToArray());
             }
