@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "Limit für vorherige Suchen:" },
             { "Maximum number of past-search entries shown above results", "Maximale Anzahl der Einträge für vorherige Suchen" },
             { "Regular search limit:", "Reguläres Suchlimit:" },
-            { "Maximum number of regular search results shown", "Maximale Anzahl der regulären Suchergebnisse" }
+            { "Maximum number of regular search results shown", "Maximale Anzahl der regulären Suchergebnisse" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "Hilfe" },
+            { "Auto-collapse: minimize the panel after any tile opens", "Automatisch minimieren: Panel nach dem Öffnen einer Kachel minimieren" },
+            { "Show the Help button in the panel", "Hilfe-Schaltfläche im Panel anzeigen" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "Die linke Schaltfläche \"?\" in der oberen Reihe öffnet ein kurzes Hilfe-Meldungsfeld; abwählen, um die Schaltfläche zu entfernen" },
+            { "Always open at the position from settings", "Immer an der in den Einstellungen gespeicherten Position öffnen" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "Jedes Öffnen/Wiederherstellen setzt das Fenster exakt auf die oben angegebene X/Y-Position; solange die Option aktiv ist, ist das Verschieben des Fensters nur vorübergehend (Option abwählen, Fenster verschieben und erneut anwählen, um die Position neu zu verankern)" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- Tabs: über die Schaltfläche \"+\" anlegen; einen Tab nach unten ziehen, um ihn in eine neue Reihe zu verschieben" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- Kacheln hinzufügen: den Haken aktivieren (Bearbeitungsmodus) und eine Datei oder einen Ordner aus dem Explorer auf das Panel ziehen" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- Haken-Schaltfläche: 3 Modi - aus / Bearbeiten (grün) / Auswahl (rot)" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- Elemente: normales Element, Ordner, Gruppe. Gruppen werden nur mit dem roten Haken erstellt und bearbeitet" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- Synchronisierung mit dem normalen Startmenü: 2 Synchronisierungen - die Startmenü-Spiegelung und der Import der angehefteten Kacheln" },
+            { "Last used", "Zuletzt verwendet" },
+            { "Open tab on show:", "Tab beim Anzeigen:" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "Der Tab, auf dem das Panel geöffnet wird: Hotkey, Klick auf die Start-Schaltfläche, Wiederherstellen aus minimiert, erster Start. \"Zuletzt verwendet\" behält das bisherige Verhalten." }
         };
     }
 }

@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "过去搜索限制：" },
             { "Maximum number of past-search entries shown above results", "显示在结果上方的过去搜索条目的最大数量" },
             { "Regular search limit:", "常规搜索限制：" },
-            { "Maximum number of regular search results shown", "显示的常规搜索结果的最大数量" }
+            { "Maximum number of regular search results shown", "显示的常规搜索结果的最大数量" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "帮助" },
+            { "Auto-collapse: minimize the panel after any tile opens", "自动折叠：打开任何磁贴后最小化面板" },
+            { "Show the Help button in the panel", "在面板上显示“帮助”按钮" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "右上排最左侧的“?”按钮会打开简短的帮助消息框；取消勾选即可移除该按钮" },
+            { "Always open at the position from settings", "始终以设置中的位置打开" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "每次打开/还原时，窗口都会精确放在上方的 X/Y 位置；勾选期间拖动窗口只是临时的（取消勾选、拖动后重新勾选即可重新固定位置）" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- 标签页：用“+”按钮创建；将标签页向下拖动可移到新的一行" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- 添加磁贴：勾选复选标记（编辑模式），然后从资源管理器将文件或文件夹拖到面板上" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- 复选按钮：3 种模式 - 关闭 / 编辑（绿色）/ 选择（红色）" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- 元素：普通元素、文件夹、分组。分组只能在红色复选标记下创建和编辑" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- 与常规“开始”菜单同步：2 种同步 - “开始”菜单镜像和固定磁贴导入" },
+            { "Last used", "上次使用的" },
+            { "Open tab on show:", "显示时的标签页：" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "面板打开时所在的标签页：热键、点击“开始”按钮、从最小化还原、首次启动。“上次使用的”保持原有行为。" }
         };
     }
 }

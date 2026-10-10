@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "Limite ricerche passate:" },
             { "Maximum number of past-search entries shown above results", "Numero massimo di voci di ricerche passate" },
             { "Regular search limit:", "Limite ricerche regolari:" },
-            { "Maximum number of regular search results shown", "Numero massimo di risultati di ricerca regolari" }
+            { "Maximum number of regular search results shown", "Numero massimo di risultati di ricerca regolari" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "Guida" },
+            { "Auto-collapse: minimize the panel after any tile opens", "Riduzione automatica: riduce a icona il pannello dopo l'apertura di qualsiasi riquadro" },
+            { "Show the Help button in the panel", "Mostra il pulsante della guida nel pannello" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "Il pulsante \"?\" all'estrema sinistra della riga superiore apre una breve finestra di guida; deselezionare per rimuovere il pulsante" },
+            { "Always open at the position from settings", "Apri sempre alla posizione salvata nelle impostazioni" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "Ogni apertura/ripristino porta la finestra esattamente alla posizione X/Y indicata sopra; finché l'opzione è selezionata, lo spostamento della finestra è temporaneo (deselezionare, spostare e riselezionare per ancorare di nuovo la posizione)" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- Schede: si creano con il pulsante \"+\"; trascinare una scheda verso il basso per spostarla in una nuova riga" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- Aggiungere riquadri: attivare il segno di spunta (modalità modifica) e trascinare un file o una cartella da Esplora risorse sul pannello" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- Pulsante di spunta: 3 modalità - disattivato / modifica (verde) / selezione (rossa)" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- Elementi: elemento normale, cartella, gruppo. I gruppi si creano e si modificano solo con il segno di spunta rosso" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- Sincronizzazione con il menu Start normale: 2 sincronizzazioni - il mirror del menu Start e l'importazione dei riquadri aggiunti" },
+            { "Last used", "Ultima usata" },
+            { "Open tab on show:", "Scheda alla visualizzazione:" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "La scheda su cui si apre il pannello: tasto di scelta rapida, clic sul pulsante Start, ripristino dal ridotto a icona, primo avvio. \"Ultima usata\" mantiene il comportamento precedente." }
         };
     }
 }

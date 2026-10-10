@@ -4963,21 +4963,27 @@ namespace WinPanel
 
         // Short in-app help: a plain system MessageBox (the simplest, most
         // compatible Windows dialog) with a bigger text font - a temporary
-        // CBT hook re-fonts the standard dialog (see MessageBoxFont).
+        // CBT hook re-fonts the standard dialog (see MessageBoxFont). The
+        // text is composed line by line: every line is its own Loc key so
+        // all ten languages can translate it (see lang_*.cs).
         private void ShowHelpMessageBox()
         {
-            string text =
+            string text = string.Join("\n",
                 Loc.S(
-                    "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row\n" +
-                    "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel\n" +
-                    "- Checkmark button: 3 modes - off / edit (green) / selection (red)\n" +
-                    "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark\n" +
+                    "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+                    "• Вкладки: создание — кнопка «+»; перетаскивание вниз — перенос на новый ряд"),
+                Loc.S(
+                    "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+                    "• Как добавить плитку: включите галочку (режим редактирования) и перетащите файл или папку из Проводника на панель"),
+                Loc.S(
+                    "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+                    "• Кнопка-галочка — 3 режима: выкл / редактирование (зелёная) / выделение (красная)"),
+                Loc.S(
+                    "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+                    "• Элементы: обычный элемент, папка, группа. Группы создаются и редактируются только с красной галочкой"),
+                Loc.S(
                     "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
-                    "• Вкладки: создание — кнопка «+»; перетаскивание вниз — перенос на новый ряд\n" +
-                    "• Как добавить плитку: включите галочку (режим редактирования) и перетащите файл или папку из Проводника на панель\n" +
-                    "• Кнопка-галочка — 3 режима: выкл / редактирование (зелёная) / выделение (красная)\n" +
-                    "• Элементы: обычный элемент, папка, группа. Группы создаются и редактируются только с красной галочкой\n" +
-                    "• Синхронизация с обычным Пуском — 2 синхронизации: зеркало меню «Пуск» и импорт закреплённых плиток");
+                    "• Синхронизация с обычным Пуском — 2 синхронизации: зеркало меню «Пуск» и импорт закреплённых плиток"));
             string caption = Loc.S("Help", "Справка");
             try { MessageBoxFont.Show(this, text, caption, 18f); }
             catch { try { MessageBox.Show(this, text, caption, MessageBoxButtons.OK, MessageBoxIcon.Information); } catch { } }

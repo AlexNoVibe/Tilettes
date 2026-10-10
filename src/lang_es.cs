@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "Límite de búsquedas pasadas:" },
             { "Maximum number of past-search entries shown above results", "Número máximo de búsquedas pasadas mostradas" },
             { "Regular search limit:", "Límite de búsquedas regulares:" },
-            { "Maximum number of regular search results shown", "Número máximo de resultados de búsqueda regulares" }
+            { "Maximum number of regular search results shown", "Número máximo de resultados de búsqueda regulares" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "Ayuda" },
+            { "Auto-collapse: minimize the panel after any tile opens", "Minimizar automáticamente: minimiza el panel tras abrir cualquier mosaico" },
+            { "Show the Help button in the panel", "Mostrar el botón de ayuda en el panel" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "El botón \"?\" del extremo izquierdo de la fila superior abre un breve cuadro de ayuda; desmárquelo para quitar el botón" },
+            { "Always open at the position from settings", "Abrir siempre en la posición guardada en la configuración" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "Cada apertura/restauración coloca la ventana exactamente en la posición X/Y de arriba; mientras esté marcado, arrastrar la ventana es temporal (desmárquelo, arrastre y vuelva a marcarlo para fijar de nuevo la posición)" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- Pestañas: se crean con el botón \"+\"; arrastre una pestaña hacia abajo para moverla a una fila nueva" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- Añadir mosaicos: active la marca (modo de edición) y arrastre un archivo o una carpeta del Explorador al panel" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- Botón de marca: 3 modos - desactivado / edición (verde) / selección (rojo)" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- Elementos: elemento normal, carpeta, grupo. Los grupos solo se crean y editan con la marca roja" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- Sincronización con el menú Inicio normal: 2 sincronizaciones - la réplica del menú Inicio y la importación de los mosaicos anclados" },
+            { "Last used", "Última utilizada" },
+            { "Open tab on show:", "Pestaña al mostrar:" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "La pestaña en la que se abre el panel: tecla rápida, clic en el botón Inicio, restauración desde minimizado, primer inicio. \"Última utilizada\" mantiene el comportamiento anterior." }
         };
     }
 }

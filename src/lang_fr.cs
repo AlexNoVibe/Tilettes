@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "Limite de recherche passée :" },
             { "Maximum number of past-search entries shown above results", "Nombre maximum d'entrées de recherches passées" },
             { "Regular search limit:", "Limite de recherche régulière :" },
-            { "Maximum number of regular search results shown", "Nombre maximum de résultats de recherche réguliers" }
+            { "Maximum number of regular search results shown", "Nombre maximum de résultats de recherche réguliers" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "Aide" },
+            { "Auto-collapse: minimize the panel after any tile opens", "Réduction automatique : réduit le panneau après l'ouverture d'une tuile" },
+            { "Show the Help button in the panel", "Afficher le bouton d'aide dans le panneau" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "Le bouton \"?\" le plus à gauche de la rangée supérieure ouvre une courte boîte d'aide ; décochez pour retirer le bouton" },
+            { "Always open at the position from settings", "Toujours ouvrir à la position enregistrée dans les paramètres" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "Chaque ouverture/restauration replace la fenêtre exactement à la position X/Y indiquée ci-dessus ; tant que l'option est cochée, le déplacement de la fenêtre est temporaire (décochez, déplacez puis recochez pour ancrer à nouveau la position)" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- Onglets : création via le bouton \"+\" ; faites glisser un onglet vers le bas pour le passer sur une nouvelle rangée" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- Ajout de tuiles : activez la coche (mode édition) et faites glisser un fichier ou un dossier de l'Explorateur vers le panneau" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- Bouton à coche : 3 modes - désactivé / édition (vert) / sélection (rouge)" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- Éléments : élément simple, dossier, groupe. Les groupes ne se créent et ne s'éditent qu'avec la coche rouge" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- Synchronisation avec le menu Démarrer normal : 2 synchronisations - le miroir du menu Démarrer et l'importation des tuiles épinglées" },
+            { "Last used", "Dernière utilisée" },
+            { "Open tab on show:", "Onglet à l'affichage :" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "L'onglet sur lequel le panneau s'ouvre : raccourci clavier, clic sur le bouton Démarrer, restauration après réduction, premier démarrage. \"Dernière utilisée\" conserve le comportement précédent." }
         };
     }
 }

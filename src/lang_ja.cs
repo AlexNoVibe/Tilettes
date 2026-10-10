@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "過去の検索の制限:" },
             { "Maximum number of past-search entries shown above results", "結果の上に表示される過去の検索エントリの最大数" },
             { "Regular search limit:", "通常の検索の制限:" },
-            { "Maximum number of regular search results shown", "表示される通常の検索結果の最大数" }
+            { "Maximum number of regular search results shown", "表示される通常の検索結果の最大数" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "ヘルプ" },
+            { "Auto-collapse: minimize the panel after any tile opens", "自動最小化: 任意のタイルを開くとパネルを最小化します" },
+            { "Show the Help button in the panel", "パネルにヘルプボタンを表示する" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "右上の行の左端にある「?」ボタンは簡単なヘルプメッセージボックスを開きます。チェックを外すとボタンが消えます" },
+            { "Always open at the position from settings", "常に設定の位置で開く" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "開く/復元のたびに、ウィンドウは上で指定したX/Y位置に正確に置かれます。チェック中はウィンドウの移動が一時的になります（位置を固定し直すには、チェックを外して移動し、もう一度チェックしてください）" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- タブ: 「+」ボタンで作成。タブを下へドラッグすると新しい行に移動します" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- タイルの追加: チェックを入れて（編集モード）エクスプローラーからファイルやフォルダーをパネルへドラッグします" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- チェックボタン: 3つのモード - オフ / 編集（緑） / 選択（赤）" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- 要素: 通常の要素、フォルダー、グループ。グループは赤いチェックのときだけ作成・編集できます" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- 通常のスタートメニューとの同期: 2種類の同期 - スタートメニューのミラーとピン留めタイルの取り込み" },
+            { "Last used", "最後に使用したタブ" },
+            { "Open tab on show:", "表示時のタブ:" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "パネルを開くタブ: ホットキー、スタートボタンのクリック、最小化からの復元、初回起動。「最後に使用したタブ」は従来の動作を維持します。" }
         };
     }
 }

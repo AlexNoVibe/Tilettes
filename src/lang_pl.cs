@@ -331,7 +331,33 @@ namespace WinPanel
             { "Past search limit:", "Limit poprzednich wyszukiwań:" },
             { "Maximum number of past-search entries shown above results", "Maksymalna liczba wpisów poprzednich wyszukiwań" },
             { "Regular search limit:", "Limit zwykłych wyszukiwań:" },
-            { "Maximum number of regular search results shown", "Maksymalna liczba wyświetlanych zwykłych wyników" }
+            { "Maximum number of regular search results shown", "Maksymalna liczba wyświetlanych zwykłych wyników" },
+
+            // Help button, collapse toggle, saved-position anchor and the help
+            // box lines. "Last used" / "Open tab on show:" were missed when the
+            // pinned-tab row shipped.
+            { "Help", "Pomoc" },
+            { "Auto-collapse: minimize the panel after any tile opens", "Automatyczne minimalizowanie: minimalizuj panel po otwarciu dowolnego kafelka" },
+            { "Show the Help button in the panel", "Pokaż przycisk pomocy na panelu" },
+            { "The leftmost \"?\" button in the top-right row opens a short help message box; untick to remove the button",
+              "Skrajny lewy przycisk \"?\" w górnym rzędzie otwiera krótkie okno pomocy; odznacz, aby usunąć przycisk" },
+            { "Always open at the position from settings", "Zawsze otwieraj w pozycji zapisanej w ustawieniach" },
+            { "Every open/restore puts the window exactly at the X/Y above; while ticked, dragging the window is temporary (untick, drag and tick again to re-anchor)",
+              "Każde otwarcie/przywrócenie ustawia okno dokładnie w pozycji X/Y z pól powyżej; dopóki opcja jest zaznaczona, przeciąganie okna jest tymczasowe (odznacz, przeciągnij i zaznacz ponownie, aby zakotwiczyć pozycję na nowo)" },
+            { "- Tabs: create with the \"+\" button; drag a tab down to move it to a new row",
+              "- Karty: tworzenie przyciskiem \"+\"; przeciągnięcie karty w dół przenosi ją do nowego rzędu" },
+            { "- Adding tiles: turn the checkmark on (edit mode) and drag a file or a folder from Explorer onto the panel",
+              "- Dodawanie kafelków: włącz znacznik (tryb edycji) i przeciągnij plik lub folder z Eksploratora na panel" },
+            { "- Checkmark button: 3 modes - off / edit (green) / selection (red)",
+              "- Przycisk znacznika: 3 tryby - wyłączony / edycja (zielony) / zaznaczanie (czerwony)" },
+            { "- Items: regular item, folder, group. Groups are created and edited only with the red checkmark",
+              "- Elementy: zwykły element, folder, grupa. Grupy tworzy się i edytuje tylko przy czerwonym znaczniku" },
+            { "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
+              "- Synchronizacja ze zwykłym menu Start: 2 synchronizacje - mirror menu Start i import przypiętych kafelków" },
+            { "Last used", "Ostatnio używana" },
+            { "Open tab on show:", "Karta przy otwieraniu:" },
+            { "The tab the panel opens on: hotkey, start-button click, un-minimize, first start. \"Last used\" keeps the previous behavior.",
+              "Karta, na której otwiera się panel: skrót klawiszowy, kliknięcie przycisku Start, przywrócenie z minimalizacji, pierwszy start. \"Ostatnio używana\" zachowuje poprzednie zachowanie." }
         };
     }
 }

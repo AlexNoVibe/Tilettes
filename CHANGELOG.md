@@ -6,6 +6,7 @@
 - **Auto-collapse toggle**: a new ⇩ toggle in the same row (green when on, state kept in settings.ini) minimizes the panel window after any tile opens — drag, edit and red multi-select clicks are never affected. Tile opens inside folder popups collapse the panel too.
 - **Always open at the position from settings**: a settings checkbox ("Always open at the position from settings", under Window Position) snaps the window to the saved X/Y on every open/expand, clamped into the work area. While it is on, dragging the window is temporary — untick, drag and tick again to re-anchor the position.
 - **Startup tab fix**: the "open tab on show" switch could silently stop working after any tab rebuild (settings OK, tab add/delete/reorder, Start Menu sync) — disposed tab buttons left over from the previous build stayed in the button-by-tab dictionary, enumerated first, and their missing panels aborted the whole search. The dictionary is cleared on every rebuild now, and a missing/disposed match keeps the search going instead of aborting.
+- **Full localization of the new UI**: the Help button and help box text (line by line), the ⇩ toggle tooltip, both new settings checkboxes with their tooltips are translated in all ten languages; the "Open tab on show" settings row gained its long-missing translations too ("Last used" and its tooltip were English-only since v1.2.0).
 
 ## v1.2.1 - 2026-10-08
 
