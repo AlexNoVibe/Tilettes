@@ -3821,17 +3821,22 @@ namespace WinPanel
                     // loads either.
                     string negKey = "mediathumb|" + path.ToLowerInvariant() + "|" +
                                     File.GetLastWriteTimeUtc(path).Ticks;
-                    lock (FolderNoThumb)
-                    {
-                        if (FolderNoThumb.Count > 512) FolderNoThumb.Clear();
-                        FolderNoThumb[negKey] = 1;
-                    }
+                    lock (FolderNoThumb) { RememberFolderNoThumb(negKey); }
                     return null;
                 }
                 string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
                              File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
-                Image own = IconExtractor.DiskCacheGetByKey(key);
-                if (own != null) return isFolder ? TrimFolderCompose(own) : own;
+                // Session memory first: a disk-cache hit still pays the stat above
+                // plus a PNG read and decode, which popup rebuilds re-paid for
+                // every thumbnail on every open.
+                Image own = MediaThumbGet(key);
+                if (own != null) return own;
+                own = IconExtractor.DiskCacheGetByKey(key);
+                if (own != null)
+                {
+                    if (isFolder) own = TrimFolderCompose(own);
+                    return MediaThumbPut(key, own);
+                }
                 if (isFolder)
                 {
                     // A folder without composeable pictures fails the attempt;
@@ -3848,28 +3853,86 @@ namespace WinPanel
                     {
                         fimg = TrimFolderCompose(fimg);
                         IconExtractor.DiskCachePutByKey(key, fimg);
+                        return MediaThumbPut(key, fimg);
                     }
-                    else
-                        lock (FolderNoThumb)
-                        {
-                            if (FolderNoThumb.Count > 512) FolderNoThumb.Clear();
-                            FolderNoThumb[negKey] = 1;
-                        }
-                    return fimg;
+                    lock (FolderNoThumb) { RememberFolderNoThumb(negKey); }
+                    return null;
                 }
                 Image img = ShellItemApi.GetShellThumbnail(path, size);
                 if (img == null && IsVideoFile(path))
                     img = MediaFrame.ExtractFrame(path, 512); // own extractor + own cache
                 if (img != null)
+                {
                     IconExtractor.DiskCachePutByKey(key, img);
-                return img;
+                    return MediaThumbPut(key, img);
+                }
+                return null;
             }
             catch { return null; }
         }
 
         // Session memory of folders whose thumbnail attempt failed (nothing the
-        // shell can compose a preview from) - see LoadMediaThumbnail.
+        // shell can compose a preview from) - see LoadMediaThumbnail. Bounded
+        // FIFO: retire the oldest quarter instead of Clear(), which dropped the
+        // whole session memory at once and re-ran every failed compose attempt.
         private static readonly Dictionary<string, byte> FolderNoThumb = new Dictionary<string, byte>();
+        private static readonly Queue<string> FolderNoThumbOrder = new Queue<string>();
+
+        // Must be called under lock (FolderNoThumb).
+        private static void RememberFolderNoThumb(string negKey)
+        {
+            if (string.IsNullOrEmpty(negKey)) return;
+            if (!FolderNoThumb.ContainsKey(negKey)) FolderNoThumbOrder.Enqueue(negKey);
+            FolderNoThumb[negKey] = 1;
+            while (FolderNoThumb.Count > 512 && FolderNoThumbOrder.Count > 0)
+                FolderNoThumb.Remove(FolderNoThumbOrder.Dequeue());
+        }
+
+        // Session memory of finished media thumbnails, keyed exactly like the
+        // disk cache (path + mtime + size). Masters are stored here; callers
+        // always receive their own clone. FIFO eviction past the cap.
+        private static readonly object MediaThumbGate = new object();
+        private static readonly Dictionary<string, Image> MediaThumbCache = new Dictionary<string, Image>();
+        private static readonly Queue<string> MediaThumbOrder = new Queue<string>();
+        private const int MediaThumbCacheCap = 200;
+
+        private static Image MediaThumbGet(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            lock (MediaThumbGate)
+            {
+                Image hit;
+                if (!MediaThumbCache.TryGetValue(key, out hit)) return null;
+                try { return (Image)hit.Clone(); }
+                catch { MediaThumbCache.Remove(key); return null; }
+            }
+        }
+
+        // Takes ownership of img (the master stays in the cache), returns a clone
+        // for the caller or null when cloning fails.
+        private static Image MediaThumbPut(string key, Image img)
+        {
+            if (img == null || string.IsNullOrEmpty(key)) return img;
+            lock (MediaThumbGate)
+            {
+                if (!MediaThumbCache.ContainsKey(key)) MediaThumbOrder.Enqueue(key);
+                Image old;
+                if (MediaThumbCache.TryGetValue(key, out old)) { try { old.Dispose(); } catch { } }
+                MediaThumbCache[key] = img;
+                while (MediaThumbCache.Count > MediaThumbCacheCap && MediaThumbOrder.Count > 0)
+                {
+                    string staleKey = MediaThumbOrder.Dequeue();
+                    Image stale;
+                    if (MediaThumbCache.TryGetValue(staleKey, out stale))
+                    {
+                        MediaThumbCache.Remove(staleKey);
+                        try { stale.Dispose(); } catch { }
+                    }
+                }
+                try { return (Image)img.Clone(); }
+                catch { MediaThumbCache.Remove(key); return null; }
+            }
+        }
 
         // True when a folder has ANY direct child (file or subfolder) - the only
         // case where the shell has something to compose a preview from: a photo
@@ -3879,16 +3942,45 @@ namespace WinPanel
         // upscaled from the thumbnail cache's small entry, which is the smudged
         // tile icon. One enumeration of a local directory; network paths arrive
         // here on a worker thread (IsSlowIconSource), so a slow share cannot
-        // block the UI.
+        // block the UI. Results are memoized by path + folder mtime: the stat
+        // per call is one metadata read, the enumeration it replaces opened the
+        // directory and read its entries every single time.
+        private static readonly object FolderComposeGate = new object();
+        private static readonly Dictionary<string, bool> FolderComposeMemo = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Queue<string> FolderComposeOrder = new Queue<string>();
+
         internal static bool FolderMayComposePreview(string path)
         {
+            string memoKey = null;
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                memoKey = path.ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks;
+            }
+            catch { return false; }
+            lock (FolderComposeGate)
+            {
+                bool memo;
+                if (FolderComposeMemo.TryGetValue(memoKey, out memo)) return memo;
+            }
+            bool result = false;
             try
             {
                 foreach (string f in Directory.EnumerateFileSystemEntries(path))
-                    return true;
+                {
+                    result = true;
+                    break;
+                }
             }
             catch { }
-            return false;
+            lock (FolderComposeGate)
+            {
+                if (!FolderComposeMemo.ContainsKey(memoKey)) FolderComposeOrder.Enqueue(memoKey);
+                FolderComposeMemo[memoKey] = result;
+                while (FolderComposeMemo.Count > 512 && FolderComposeOrder.Count > 0)
+                    FolderComposeMemo.Remove(FolderComposeOrder.Dequeue());
+            }
+            return result;
         }
 
         // Session cache of "is this path a filesystem directory" (UI-thread safe:
@@ -3903,13 +3995,15 @@ namespace WinPanel
             {
                 if (string.IsNullOrEmpty(path) || ShellItemApi.IsShellPath(path)) return false;
                 if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return false;
-                if (IconExtractor.IsNetworkPath(path)) return false;
                 string key = path.ToLowerInvariant();
                 lock (IsDirCache)
                 {
                     bool hit;
                     if (IsDirCache.TryGetValue(key, out hit)) return hit;
                 }
+                // Reached on a miss only: network paths are never stored below,
+                // so known paths short-circuit before the drive-type check.
+                if (IconExtractor.IsNetworkPath(path)) return false;
                 bool isDir = Directory.Exists(path);
                 lock (IsDirCache)
                 {

@@ -85,7 +85,8 @@ namespace WinPanel
         // externally mid-session - an app restart refreshes them.
         private static readonly object CacheGate = new object();
         private static readonly Dictionary<string, Image> IconCache = new Dictionary<string, Image>(StringComparer.OrdinalIgnoreCase);
-        private const int IconCacheCap = 1000;
+        private static readonly Queue<string> IconCacheOrder = new Queue<string>();
+        private const int IconCacheCap = 4000;
 
         private static Image CacheGet(string key)
         {
@@ -103,10 +104,23 @@ namespace WinPanel
             if (img == null) return;
             lock (CacheGate)
             {
+                if (!IconCache.ContainsKey(key)) IconCacheOrder.Enqueue(key);
                 Image old;
                 if (IconCache.TryGetValue(key, out old)) { try { old.Dispose(); } catch { } }
-                if (IconCache.Count >= IconCacheCap) IconCache.Clear();
                 IconCache[key] = img;
+                // Past the cap retire the oldest quarter instead of wiping the whole
+                // cache: a full Clear() threw away the hot working set, so every
+                // rebuild re-stat'ed and re-decoded all icons from the disk cache.
+                while (IconCache.Count > IconCacheCap && IconCacheOrder.Count > 0)
+                {
+                    string staleKey = IconCacheOrder.Dequeue();
+                    Image stale;
+                    if (IconCache.TryGetValue(staleKey, out stale))
+                    {
+                        IconCache.Remove(staleKey);
+                        try { stale.Dispose(); } catch { }
+                    }
+                }
             }
         }
 
@@ -122,14 +136,31 @@ namespace WinPanel
         // UNC paths and network-mapped drives. Local-only checks (no I/O), safe to
         // call on the UI thread: callers send such paths to worker threads because
         // any shell/stat call on them can block for the network timeout.
+        // Drive types are memoized per letter (refreshed at most once a minute):
+        // GetDriveType is cheap, but panel rebuilds ask it hundreds of times.
+        private static readonly object DriveTypeGate = new object();
+        private static readonly Dictionary<string, KeyValuePair<DriveType, int>> DriveTypeMemo =
+            new Dictionary<string, KeyValuePair<DriveType, int>>(StringComparer.OrdinalIgnoreCase);
+        private const int DriveTypeMemoTtlMs = 60000;
+
         internal static bool IsNetworkPath(string path)
         {
             try
             {
                 if (string.IsNullOrEmpty(path)) return false;
                 if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
-                if (path.Length >= 2 && path[1] == ':')
-                    return new DriveInfo(path.Substring(0, 3)).DriveType == DriveType.Network;
+                if (path.Length < 2 || path[1] != ':') return false;
+                string root = path.Substring(0, 3);
+                int now = Environment.TickCount;
+                lock (DriveTypeGate)
+                {
+                    KeyValuePair<DriveType, int> memo;
+                    if (DriveTypeMemo.TryGetValue(root, out memo) && unchecked(now - memo.Value) < DriveTypeMemoTtlMs)
+                        return memo.Key == DriveType.Network;
+                }
+                DriveType type = new DriveInfo(root).DriveType;
+                lock (DriveTypeGate) { DriveTypeMemo[root] = new KeyValuePair<DriveType, int>(type, now); }
+                return type == DriveType.Network;
             }
             catch { }
             return false;
@@ -305,7 +336,7 @@ namespace WinPanel
         public static int ClearAllCaches()
         {
             int removed = 0;
-            lock (CacheGate) { IconCache.Clear(); }
+            lock (CacheGate) { IconCache.Clear(); IconCacheOrder.Clear(); }
             try
             {
                 if (IconCacheDir != null)
