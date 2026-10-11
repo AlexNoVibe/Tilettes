@@ -32,6 +32,7 @@ namespace WinPanel
             public bool IsFolder;
             public string Path;         // launchable path (file/dir) or shell:AppsFolder\...
             public bool IsUwp;
+            public bool EnumIncomplete; // GetDirectories/GetFiles failed (access denied etc.) - the merge must not treat this branch as emptied
             public List<Node> Children = new List<Node>();
         }
 
@@ -165,7 +166,15 @@ namespace WinPanel
             {
                 string[] subDirs = null;
                 try { subDirs = Directory.GetDirectories(dir); }
-                catch (Exception ex) { AppLog.Write("FillChildren: GetDirectories " + dir, ex); }
+                catch (UnauthorizedAccessException)
+                {
+                    // Not an empty source: the merge keeps the existing tiles
+                    // of this branch (EnumIncomplete) and the next successful
+                    // sync diffs the real contents in.
+                    parent.EnumIncomplete = true;
+                    AppLog.Write("FillChildren: access denied, branch kept: " + dir);
+                }
+                catch (Exception ex) { parent.EnumIncomplete = true; AppLog.Write("FillChildren: GetDirectories " + dir, ex); }
                 if (subDirs != null)
                 {
                     foreach (string sub in subDirs)
@@ -193,7 +202,12 @@ namespace WinPanel
             {
                 string[] files = null;
                 try { files = Directory.GetFiles(dir); }
-                catch (Exception ex) { AppLog.Write("FillChildren: GetFiles " + dir, ex); }
+                catch (UnauthorizedAccessException)
+                {
+                    parent.EnumIncomplete = true;
+                    AppLog.Write("FillChildren: access denied, branch kept: " + dir);
+                }
+                catch (Exception ex) { parent.EnumIncomplete = true; AppLog.Write("FillChildren: GetFiles " + dir, ex); }
                 if (files != null)
                 {
                     foreach (string file in files)
@@ -366,7 +380,11 @@ namespace WinPanel
                 ShortcutItem existing;
                 if (bySrc.TryGetValue(n.Src, out existing))
                 {
-                    if (existing.IsFolder && n.IsFolder) changes += MergeList(existing.Children, n.Children, cols, rows);
+                    // An incomplete enumeration (access denied) is not an empty
+                    // source: the existing children stay untouched, the next
+                    // successful sync diffs the real contents in.
+                    if (existing.IsFolder && n.IsFolder && !n.EnumIncomplete)
+                        changes += MergeList(existing.Children, n.Children, cols, rows);
                     // Files are kept as-is (user renames, sizes and positions survive).
                 }
                 else
@@ -418,11 +436,11 @@ namespace WinPanel
                     it.Path = n.Path ?? "";
                     it.IsUwp = n.IsUwp;
                     it.Size = 2; // 1x1 synced tiles proved too small to read
-                    if (n.IsFolder) changes += MergeChildren(it.Children, n.Children);
+                    if (n.IsFolder && !n.EnumIncomplete) changes += MergeChildren(it.Children, n.Children);
                     items.Add(it);
                     changes++;
                 }
-                else if (existing.IsFolder && n.IsFolder)
+                else if (existing.IsFolder && n.IsFolder && !n.EnumIncomplete)
                 {
                     changes += MergeChildren(existing.Children, n.Children);
                 }
