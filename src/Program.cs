@@ -340,6 +340,12 @@ namespace WinPanel
             this.Location = new Point(settings.WindowX, settings.WindowY);
             this.FormBorderStyle = FormBorderStyle.None;
             this.MinimumSize = new Size(300, 200);
+            // Seed the geometry memory with the startup bounds: the window can
+            // be surfaced for the first time through the restore dance
+            // (autostart hidden, summon while minimized) before anything was
+            // ever captured - without a seed the first corrupted restore had
+            // nothing to re-assert from and stayed tiny.
+            lastNormalBounds = new Rectangle(this.Location, this.Size);
             this.DoubleBuffered = true;
             UpdateWindowRegion();
 
@@ -380,6 +386,11 @@ namespace WinPanel
             topPanel.Controls.Add(rightPanel);
 
             this.Resize += (s, e) => UpdateWindowRegion();
+            // Geometry memory for the show-time restore fix (RememberNormalBounds):
+            // only visible normal-state geometry is ever remembered.
+            this.Resize += (s, e) => RememberNormalBounds();
+            this.LocationChanged += (s, e) => RememberNormalBounds();
+            this.Shown += (s, e) => RememberNormalBounds();
 
             // ---- Panel search: the box sits in the top strip, results overlay the tiles ----
             panelSearchTimer = new System.Windows.Forms.Timer();
@@ -912,7 +923,28 @@ namespace WinPanel
             {
                 int cmd = m.WParam.ToInt32() & 0xFFF0;
                 const int SC_RESTORE = 0xF120, SC_MAXIMIZE = 0xF030;
-                if (cmd == SC_RESTORE || cmd == SC_MAXIMIZE) ActivateStartupTab();
+                if (cmd == SC_RESTORE || cmd == SC_MAXIMIZE)
+                {
+                    ActivateStartupTab();
+                    // The taskbar restore bypasses RestoreWindow entirely, so
+                    // the geometry fix from the show path never runs there:
+                    // re-assert the remembered bounds once the native restore
+                    // has completed (a restore rect lost while the window was
+                    // hidden surfaces the tiny minimized placeholder). The
+                    // corrupted WM_SIZE in between must not poison the memory.
+                    suppressGeometryCapture = true;
+                    try
+                    {
+                        BeginInvoke((MethodInvoker)delegate
+                        {
+                            ReassertNormalBounds(!settings.AlwaysOpenAtSavedPos);
+                            if (settings.AlwaysOpenAtSavedPos) ApplySavedPosition();
+                            suppressGeometryCapture = false;
+                            RememberNormalBounds();
+                        });
+                    }
+                    catch { suppressGeometryCapture = false; }
+                }
             }
             const int WM_NCHITTEST = 0x84;
             if (m.Msg == WM_NCHITTEST && WindowState == FormWindowState.Normal)
@@ -1578,8 +1610,34 @@ namespace WinPanel
                 if (staleSurface)
                 {
                     showSw = System.Diagnostics.Stopwatch.StartNew();
+                    // Entering state of the show dance: size/state/mem here and
+                    // in the line below answer "who shrank the window" - the
+                    // corruption is either already present on entry, produced
+                    // by the dance itself, or lands after it (late check).
+                    AppLog.Write(string.Format(
+                        "Show: stale enter size={0}x{1} state={2} vis={3} mem={4}",
+                        this.Width, this.Height, (int)this.WindowState, this.Visible ? 1 : 0,
+                        lastNormalBounds.IsEmpty ? "0" : lastNormalBounds.Width + "x" + lastNormalBounds.Height));
+                    // The whole dance is a restore transition: the corrupted
+                    // restore inside it must not reach the geometry memory.
+                    suppressGeometryCapture = true;
                     IntPtr handleBefore = this.Handle;
                     this.Visible = false;          // a re-home recreate (if any) stays invisible
+                    // Repair the native restore rectangle BEFORE anything can
+                    // restore or recreate the window: the WINDOWPLACEMENT is
+                    // the only thing a restore obeys, so with its rcNormal
+                    // fixed while the window is still hidden the very first
+                    // restore lands on the remembered bounds - the wrong-size
+                    // phase never becomes visible at all (the post-show
+                    // reasserts and the late check stay as safety nets).
+                    RepairNativeRestoreRect();
+                    // The remembered bounds go first, on every path: a restore
+                    // out of the minimized state can surface the tiny
+                    // minimized placeholder, and the recreate fallback of
+                    // EnsureOnCurrentDesktop would bake those bounds into the
+                    // fresh handle. Not only the anchored path - a recreate
+                    // with the anchor off baked them in just the same.
+                    ReassertNormalBounds(false);
                     // "Always open at the position from settings": while hidden,
                     // restore to Normal first (so the move is not eaten by the
                     // restore bounds of a maximized state) and snap to the
@@ -1603,6 +1661,19 @@ namespace WinPanel
                     }
                     this.Visible = true;           // a recreated handle comes back under the cloak
                     this.WindowState = FormWindowState.Normal;
+                    // The show/restore of a hidden minimized window is exactly
+                    // where the native restore rectangle gets lost: re-assert
+                    // the remembered geometry before the first paint, then let
+                    // the saved position pin the location when anchored.
+                    ReassertNormalBounds(!settings.AlwaysOpenAtSavedPos);
+                    if (settings.AlwaysOpenAtSavedPos) ApplySavedPosition();
+                    // The geometry is correct from here on - resume remembering,
+                    // but only when the reassert actually took effect: a dance
+                    // that ends at a size different from the memory must not
+                    // overwrite the memory with its own failure (the late check
+                    // below keeps the good bounds and restores from them).
+                    suppressGeometryCapture = false;
+                    if (Size == lastNormalBounds.Size) RememberNormalBounds();
                     // Finish the whole first paint now, off screen, synchronously
                     // (children included) so uncloaking presents a complete frame.
                     // Always on the light path (no re-home attempted, so any
@@ -1618,8 +1689,16 @@ namespace WinPanel
                         paintMs = (int)paintSw.ElapsedMilliseconds;
                     }
                     showSw.Stop();
-                    AppLog.Write(string.Format("Show: recreate={0} cloak={1} paint={2}ms total={3}ms",
-                        recreated ? 1 : 0, cloakHr, paintMs, showSw.ElapsedMilliseconds));
+                    AppLog.Write(string.Format(
+                        "Show: recreate={0} cloak={1} paint={2}ms total={3}ms size={4}x{5} state={6} mem={7}",
+                        recreated ? 1 : 0, cloakHr, paintMs, showSw.ElapsedMilliseconds,
+                        this.Width, this.Height, (int)this.WindowState,
+                        lastNormalBounds.IsEmpty ? "0" : lastNormalBounds.Width + "x" + lastNormalBounds.Height));
+                    // Some restore paths shrink the window again after the
+                    // synchronous dance returns (a shell-side deferred restore,
+                    // a layout pass spawned by the startup tab switch): verify
+                    // the geometry once more shortly after the show.
+                    ScheduleGeometryCheck();
                 }
                 else
                 {
@@ -3091,6 +3170,39 @@ namespace WinPanel
 
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")]
         private static extern bool GetWindowRectNative(IntPtr h, out Win32Rect r);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowPos")]
+        private static extern bool SetWindowPosNative(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        private const uint SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "ShowWindow")]
+        private static extern bool ShowWindowNative(IntPtr hWnd, int nCmdShow);
+        private const int SW_RESTORE = 9;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
+        // Win32 WINDOWPLACEMENT: the native restore rectangle lives in
+        // rcNormalPosition and is what every restore - WinForms' own, the
+        // taskbar's, a ShowWindow - actually obeys.
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct NativePoint { public int X, Y; }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct WINDOWPLACEMENT
+        {
+            public uint length;
+            public uint flags;
+            public uint showCmd;
+            public NativePoint ptMinPosition;
+            public NativePoint ptMaxPosition;
+            public Win32Rect rcNormalPosition;
+        }
 
         private static bool IsStartButtonClicked(Point pt)
         {
@@ -5136,6 +5248,142 @@ namespace WinPanel
                 this.Location = new Point(x, y);
             }
             catch (Exception ex) { AppLog.Write("ApplySavedPosition", ex); }
+        }
+
+        // The restore rectangle of the native window placement is not reliable
+        // for this panel: a Hide/Show (the anti-black-frame show dance) or a
+        // handle recreate while the window is minimized loses it, and the next
+        // restore surfaces the tiny minimized placeholder (~100x100) instead
+        // of the previous geometry - and every further show repeats it. The
+        // panel therefore keeps its own copy of the last normal-state bounds
+        // and re-asserts it on every show.
+        private Rectangle lastNormalBounds;
+
+        // True while a restore transition is in flight (the show dance, the
+        // taskbar SC_RESTORE, the reassert itself): the corrupted restore
+        // surfaces as a WM_SIZE clamped to MinimumSize (300x200), which passes
+        // the size floor and used to POISON the memory - every later show then
+        // faithfully re-asserted the tiny size. Geometry seen during these
+        // transitions is never a real layout, so it is not remembered.
+        private bool suppressGeometryCapture;
+
+        // Tracks the live geometry while the window is visible and normal;
+        // everything seen in any other state (minimized, hidden, the show
+        // dance) is ignored, so the memory only ever holds sane full-size
+        // bounds. The MinimumSize floor additionally rejects any corrupted
+        // tiny rect from overwriting it.
+        private void RememberNormalBounds()
+        {
+            try
+            {
+                if (suppressGeometryCapture) return;
+                if (IsDisposed || !Visible || WindowState != FormWindowState.Normal) return;
+                Rectangle live = new Rectangle(Location, Size);
+                if (live.Width < MinimumSize.Width || live.Height < MinimumSize.Height) return;
+                lastNormalBounds = live;
+            }
+            catch { }
+        }
+
+        // Puts the window back to the remembered normal bounds. When the saved
+        // position anchors the window, the location comes from the settings
+        // (ApplySavedPosition) and only the size is re-asserted here. The
+        // remembered rect is pushed into the NATIVE window directly: the
+        // corrupted restore is not always observed as a managed size change,
+        // so comparing the cached Size alone could silently miss it.
+        private void ReassertNormalBounds(bool applyLocation)
+        {
+            // The suppression flag is saved and restored, not reset: this runs
+            // INSIDE the show dance (its own SetWindowPos/Size calls must not
+            // re-arm the capture) and a hard reset here used to wipe the
+            // dance's protection mid-flight - the early anchored call disabled
+            // the guard before the corrupted restore, the garbage size got
+            // remembered as sane, and every later show restored it on purpose.
+            bool wasSuppressed = suppressGeometryCapture;
+            try
+            {
+                if (IsDisposed || !IsHandleCreated || lastNormalBounds.IsEmpty) return;
+                suppressGeometryCapture = true;
+                if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+                // WinForms' cached state can say Normal while the native window
+                // is still iconic (the state change is deferred until the
+                // window becomes visible): SetWindowPos on an iconic window
+                // moves the icon and drops the size, and the later deferred
+                // restore re-corrupts the rect. Force the native restore first.
+                if (IsIconic(Handle)) ShowWindowNative(Handle, SW_RESTORE);
+                uint flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+                int x = lastNormalBounds.Left, y = lastNormalBounds.Top;
+                if (!applyLocation) { flags |= SWP_NOMOVE; x = 0; y = 0; }
+                SetWindowPosNative(Handle, IntPtr.Zero, x, y,
+                    lastNormalBounds.Width, lastNormalBounds.Height, flags);
+                if (applyLocation && Location != lastNormalBounds.Location) Location = lastNormalBounds.Location;
+                if (Size != lastNormalBounds.Size) Size = lastNormalBounds.Size;
+            }
+            catch (Exception ex) { AppLog.Write("ReassertNormalBounds", ex); }
+            finally { suppressGeometryCapture = wasSuppressed; }
+        }
+
+        // Rewrites the native WINDOWPLACEMENT's rcNormalPosition with the
+        // remembered bounds while the window is hidden, so the restore inside
+        // the show dance surfaces the correct size on the first frame instead
+        // of the tiny minimized placeholder that only a later correction
+        // repaints away. No-op when the placement already matches the memory.
+        private void RepairNativeRestoreRect()
+        {
+            try
+            {
+                if (IsDisposed || !IsHandleCreated || lastNormalBounds.IsEmpty) return;
+                WINDOWPLACEMENT wp = new WINDOWPLACEMENT();
+                wp.length = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(WINDOWPLACEMENT));
+                if (!GetWindowPlacement(Handle, ref wp)) return;
+                if (wp.rcNormalPosition.L == lastNormalBounds.Left &&
+                    wp.rcNormalPosition.T == lastNormalBounds.Top &&
+                    wp.rcNormalPosition.R - wp.rcNormalPosition.L == lastNormalBounds.Width &&
+                    wp.rcNormalPosition.B - wp.rcNormalPosition.T == lastNormalBounds.Height) return;
+                wp.rcNormalPosition = new Win32Rect
+                {
+                    L = lastNormalBounds.Left,
+                    T = lastNormalBounds.Top,
+                    R = lastNormalBounds.Right,
+                    B = lastNormalBounds.Bottom
+                };
+                wp.showCmd = 0; // SW_HIDE: the caller keeps the window hidden
+                SetWindowPlacement(Handle, ref wp);
+            }
+            catch (Exception ex) { AppLog.Write("RepairNativeRestoreRect", ex); }
+        }
+
+        // Late geometry verification ~0.4 s after a show: if something shrank
+        // the window again after the synchronous dance returned, put the
+        // remembered bounds back and log the correction (who shrank it - the
+        // "Show: ..." log lines bracket the dance, this catches the stragglers).
+        private void ScheduleGeometryCheck()
+        {
+            try
+            {
+                var t = new System.Windows.Forms.Timer { Interval = 400 };
+                t.Tick += (s, e) =>
+                {
+                    t.Stop();
+                    t.Dispose();
+                    try
+                    {
+                        if (IsDisposed || !Visible || lastNormalBounds.IsEmpty) return;
+                        if (WindowState != FormWindowState.Normal) return;
+                        if (Size != lastNormalBounds.Size)
+                        {
+                            AppLog.Write(string.Format("Show: late geometry fix {0}x{1} -> {2}x{3}",
+                                Size.Width, Size.Height, lastNormalBounds.Width, lastNormalBounds.Height));
+                            Size = lastNormalBounds.Size;
+                            if (!settings.AlwaysOpenAtSavedPos && Location != lastNormalBounds.Location)
+                                Location = lastNormalBounds.Location;
+                        }
+                    }
+                    catch (Exception ex) { AppLog.Write("Deferred geometry check", ex); }
+                };
+                t.Start();
+            }
+            catch { }
         }
 
         // The "All apps" feature (an alphabetical Start Menu view behind a
