@@ -306,7 +306,11 @@ namespace WinPanel
 
             // Copy user shortcuts/icons that live outside the panel folder into <exe>\ico
             // so they are not lost when the originals are moved or deleted.
+            // Timed: this used to probe every recorded path with File.Exists on
+            // the startup thread (a stall on dead shares / spun-down drives).
+            var consolidateSw = System.Diagnostics.Stopwatch.StartNew();
             ConsolidateAllRecords();
+            AppLog.Write(string.Format("Startup: consolidate={0}ms", consolidateSw.ElapsedMilliseconds));
 
             // File-type rules (icons and "open with" per extension).
             FileTypes.Load(FileTypes.DefaultFilePath);
@@ -601,7 +605,9 @@ namespace WinPanel
             }
             catch { }
 
+            var loadTabsSw = System.Diagnostics.Stopwatch.StartNew();
             LoadTabs();
+            AppLog.Write(string.Format("Startup: loadTabs={0}ms", loadTabsSw.ElapsedMilliseconds));
 
             ApplyHotkey();
 
@@ -4849,9 +4855,22 @@ namespace WinPanel
         {
             try
             {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) return path;
+                if (string.IsNullOrEmpty(path)) return path;
+                // String checks first, I/O last: this runs for every tile at
+                // startup (in the constructor, before the window exists), and
+                // the old unconditional File.Exists probe stalled the startup
+                // on a dead share or a spun-down drive. After the first
+                // consolidation the records hold either files from the panel's
+                // own ico folder or plain exe/folder paths - both decided
+                // without touching the disk.
                 string lower = path.ToLowerInvariant();
                 if (!lower.EndsWith(".lnk") && !lower.EndsWith(".ico")) return path;
+                string appDir = Application.StartupPath.TrimEnd('\\');
+                if (path.StartsWith(appDir + "\\", StringComparison.OrdinalIgnoreCase)) return path;
+                // A network source must not be probed (let alone copied) on the
+                // startup thread: the stat alone can block for the SMB timeout.
+                if (IconExtractor.IsNetworkPath(path)) return path;
+                if (!File.Exists(path)) return path;
                 return CopyIntoIcoFolder(path);
             }
             catch
