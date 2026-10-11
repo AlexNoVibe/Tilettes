@@ -155,9 +155,24 @@ namespace WinPanel
                 lock (DriveTypeGate)
                 {
                     KeyValuePair<DriveType, int> memo;
-                    if (DriveTypeMemo.TryGetValue(root, out memo) && unchecked(now - memo.Value) < DriveTypeMemoTtlMs)
+                    if (DriveTypeMemo.TryGetValue(root, out memo))
+                    {
+                        if (unchecked(now - memo.Value) < DriveTypeMemoTtlMs)
+                            return memo.Key == DriveType.Network;
+                        // TTL expired: answer from the last known type instead
+                        // of re-probing on the caller's thread. The refresh
+                        // below runs off-thread, because a mapped drive that
+                        // went offline makes DriveInfo.DriveType wait for the
+                        // redirector timeout - seconds - and this call sits in
+                        // rebuilds on the UI thread. Until the refresh lands
+                        // the stale answer is served, the same one the
+                        // blocking variant would have re-confirmed.
+                        QueueDriveTypeRefresh(root);
                         return memo.Key == DriveType.Network;
+                    }
                 }
+                // First query of the session for this letter: no stale answer
+                // exists, one blocking probe is unavoidable.
                 DriveType type = new DriveInfo(root).DriveType;
                 lock (DriveTypeGate) { DriveTypeMemo[root] = new KeyValuePair<DriveType, int>(type, now); }
                 return type == DriveType.Network;
@@ -166,28 +181,89 @@ namespace WinPanel
             return false;
         }
 
+        private static readonly HashSet<string> DriveTypeRefreshQueued =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private static void QueueDriveTypeRefresh(string root)
+        {
+            lock (DriveTypeGate)
+            {
+                if (!DriveTypeRefreshQueued.Add(root)) return;
+            }
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    DriveType type = new DriveInfo(root).DriveType;
+                    lock (DriveTypeGate)
+                    {
+                        DriveTypeMemo[root] = new KeyValuePair<DriveType, int>(type, Environment.TickCount);
+                    }
+                }
+                catch { }
+                finally
+                {
+                    lock (DriveTypeGate) { DriveTypeRefreshQueued.Remove(root); }
+                }
+            });
+        }
+
         private static string BuildIconCacheDir()
         {
             try { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "iconcache"); }
             catch { return null; }
         }
 
+        // Stable cache file name: MD5 of "L|<lower path>". No mtime component -
+        // the icon is pulled from the shell exactly once per path and served
+        // from this folder ever after (refresh only via the manual rebuild), so
+        // a dead path or an absent drive keeps its last known icon without a
+        // single probe of the target. Legacy names (older builds hashed the
+        // mtime in) are resolved by DiskCacheGetMigrated on the first miss.
         private static string DiskCacheFile(string path, bool large)
         {
             if (IconCacheDir == null || string.IsNullOrEmpty(path)) return null;
             try
             {
+                return CacheFileForKey((large ? "L" : "S") + "|" + path.ToLowerInvariant());
+            }
+            catch { return null; }
+        }
+
+        // The pre-stable-key name: local files hashed their mtime in; folders,
+        // network and shell: paths already used the bare key (nothing to move).
+        private static string LegacyDiskCacheFile(string path, bool large)
+        {
+            try
+            {
                 string src = path.ToLowerInvariant();
-                if (!IsNetworkPath(path) && !src.StartsWith("shell:", StringComparison.Ordinal) && !Directory.Exists(path))
+                if (IsNetworkPath(path) || src.StartsWith("shell:", StringComparison.Ordinal)) return null;
+                bool isDir;
+                try { isDir = Directory.Exists(path); } catch { isDir = false; }
+                if (!isDir)
                     src += "|" + File.GetLastWriteTimeUtc(path).Ticks.ToString("x");
-                string key = (large ? "L" : "S") + "|" + src;
-                using (var md5 = System.Security.Cryptography.MD5.Create())
-                {
-                    var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(key));
-                    var sb = new StringBuilder(bytes.Length * 2);
-                    foreach (var b in bytes) sb.Append(b.ToString("x2"));
-                    return Path.Combine(IconCacheDir, sb + ".png");
-                }
+                return CacheFileForKey((large ? "L" : "S") + "|" + src);
+            }
+            catch { return null; }
+        }
+
+        // Reads the stable-key PNG; on a miss tries the legacy mtime-hashed name
+        // and renames the file in place (same folder - no re-extraction, no
+        // re-write). The stat this costs happens only here, on a miss, never on
+        // regular hits.
+        private static Image DiskCacheGetMigrated(string path, bool large)
+        {
+            string file = DiskCacheFile(path, large);
+            Image img = DiskCacheGet(file);
+            if (img != null || file == null) return img;
+            try
+            {
+                string legacy = LegacyDiskCacheFile(path, large);
+                if (legacy == null || !File.Exists(legacy)) return null;
+                Image old = DiskCacheGet(legacy);
+                if (old == null) return null;
+                try { File.Move(legacy, file); } catch { }
+                return old;
             }
             catch { return null; }
         }
@@ -278,7 +354,7 @@ namespace WinPanel
             Image hit = CacheGet(key);
             if (hit != null) return hit;
             string diskFile = DiskCacheFile(path, large);
-            Image img = DiskCacheGet(diskFile);
+            Image img = DiskCacheGetMigrated(path, large);
             if (img == null)
             {
                 img = ExtractIconAuto(path, large);
@@ -305,8 +381,7 @@ namespace WinPanel
                 Image hit = CacheGet(key);
                 if (hit != null) { img = hit; return true; }
                 if (IsNetworkPath(path)) return false; // never stat a share on the UI thread
-                string diskFile = DiskCacheFile(path, large);
-                img = DiskCacheGet(diskFile);
+                img = DiskCacheGetMigrated(path, large);
                 if (img == null) return false;
                 CachePut(key, img);
                 img = (Image)img.Clone();
@@ -315,8 +390,9 @@ namespace WinPanel
             catch { img = null; return false; }
         }
 
-        // Cached-only probe of LoadAny: custom/type icons already decoded this
-        // session (LoadAny caches before any file re-read).
+        // Cached-only probe of LoadAny: the session cache first, then the
+        // iconcache\ copy LoadAny wrote for image files (custom tile icons are
+        // served from our folder without re-reading the source file).
         public static bool TryGetCachedAny(string path, out Image img)
         {
             img = null;
@@ -324,7 +400,12 @@ namespace WinPanel
             {
                 if (string.IsNullOrEmpty(path)) return false;
                 img = CacheGet("A|" + path);
-                return img != null;
+                if (img != null) return true;
+                img = DiskCacheGetByKey("A|" + path);
+                if (img == null) return false;
+                CachePut("A|" + path, img);
+                img = (Image)img.Clone();
+                return true;
             }
             catch { img = null; return false; }
         }
@@ -424,7 +505,9 @@ public static Image GetIcon(string path, bool large)
 
         // Loads an icon (.ico/.exe) or an image file (.png/.jpg/.bmp) as an Image.
         // Cached like GetIconAuto: custom tile icons would otherwise re-read and
-        // re-decode the file on every panel rebuild.
+        // re-decode the file on every panel rebuild. Image files also land in
+        // iconcache\ (stable "A|" key), so after the first pull the source file
+        // is never touched again - a manual rebuild refreshes it.
         public static Image LoadAny(string path)
         {
             try
@@ -438,7 +521,14 @@ public static Image GetIcon(string path, bool large)
                 if (lower.EndsWith(".exe") || lower.EndsWith(".ico"))
                     img = GetIconAuto(path, true);
                 else
-                    img = Image.FromFile(path);
+                {
+                    img = DiskCacheGetByKey(key);
+                    if (img == null)
+                    {
+                        img = Image.FromFile(path);
+                        if (img != null) DiskCachePutByKey(key, img);
+                    }
+                }
                 CachePut(key, img);
                 return img != null ? (Image)img.Clone() : null;
             }

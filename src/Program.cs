@@ -1233,6 +1233,8 @@ namespace WinPanel
                 foreach (var tab in records.Tabs) walk(tab.Items);
 
                 int removed = IconExtractor.ClearAllCaches();
+                ResetIconFailMemo(); // the manual rebuild is the way out of the fail memo too
+                ResetPreviewCaches(); // and out of the frozen previews
                 tabNavigations.Clear();
                 LoadTabs(); // re-render: icons re-extract into the fresh cache
 
@@ -3931,16 +3933,16 @@ namespace WinPanel
                     // inside; anything else goes straight to the sharp jumbo icon.
                     // Checked before the disk cache get, so a cached upscale never
                     // loads either.
-                    string negKey = "mediathumb|" + path.ToLowerInvariant() + "|" +
-                                    File.GetLastWriteTimeUtc(path).Ticks;
+                    string negKey = "mediathumb|" + path.ToLowerInvariant();
                     lock (FolderNoThumb) { RememberFolderNoThumb(negKey); }
                     return null;
                 }
-                string key = "mediathumb|" + path.ToLowerInvariant() + "|" +
-                             File.GetLastWriteTimeUtc(path).Ticks + "|" + size;
-                // Session memory first: a disk-cache hit still pays the stat above
-                // plus a PNG read and decode, which popup rebuilds re-paid for
-                // every thumbnail on every open.
+                string key = "mediathumb|" + path.ToLowerInvariant() + "|" + size;
+                // Session memory first: a disk-cache hit still pays a PNG read and
+                // decode, which popup rebuilds re-paid for every thumbnail on
+                // every open. The key carries no mtime - like the icon cache,
+                // a preview is pulled once and then served from our folder; the
+                // manual rebuild regenerates it.
                 Image own = MediaThumbGet(key);
                 if (own != null) return own;
                 own = IconExtractor.DiskCacheGetByKey(key);
@@ -4006,7 +4008,7 @@ namespace WinPanel
         private static readonly object MediaThumbGate = new object();
         private static readonly Dictionary<string, Image> MediaThumbCache = new Dictionary<string, Image>();
         private static readonly Queue<string> MediaThumbOrder = new Queue<string>();
-        private const int MediaThumbCacheCap = 200;
+        private const int MediaThumbCacheCap = 600;
 
         private static Image MediaThumbGet(string key)
         {
@@ -4054,8 +4056,8 @@ namespace WinPanel
         // upscaled from the thumbnail cache's small entry, which is the smudged
         // tile icon. One enumeration of a local directory; network paths arrive
         // here on a worker thread (IsSlowIconSource), so a slow share cannot
-        // block the UI. Results are memoized by path + folder mtime: the stat
-        // per call is one metadata read, the enumeration it replaces opened the
+        // block the UI. Results are memoized by path for the whole session (the
+        // manual rebuild clears it) - the enumeration it replaces opened the
         // directory and read its entries every single time.
         private static readonly object FolderComposeGate = new object();
         private static readonly Dictionary<string, bool> FolderComposeMemo = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
@@ -4067,7 +4069,10 @@ namespace WinPanel
             try
             {
                 if (string.IsNullOrEmpty(path)) return false;
-                memoKey = path.ToLowerInvariant() + "|" + File.GetLastWriteTimeUtc(path).Ticks;
+                // No mtime in the key - like the preview cache itself, the
+                // compose verdict is frozen for the session; the manual
+                // rebuild clears it.
+                memoKey = path.ToLowerInvariant();
             }
             catch { return false; }
             lock (FolderComposeGate)
@@ -4100,6 +4105,7 @@ namespace WinPanel
         // the slow-source worker branches). The user's directory tiles do not
         // carry any folder flag - IsFolder on ShortcutItem marks group tiles.
         private static readonly Dictionary<string, bool> IsDirCache = new Dictionary<string, bool>();
+        private static readonly Queue<string> IsDirCacheOrder = new Queue<string>();
 
         internal static bool IsFolderPathCached(string path)
         {
@@ -4119,8 +4125,13 @@ namespace WinPanel
                 bool isDir = Directory.Exists(path);
                 lock (IsDirCache)
                 {
-                    if (IsDirCache.Count > 2048) IsDirCache.Clear();
+                    if (!IsDirCache.ContainsKey(key)) IsDirCacheOrder.Enqueue(key);
                     IsDirCache[key] = isDir;
+                    // Retire the oldest quarter like the other session caches:
+                    // a full Clear() dropped the whole working set at once and
+                    // re-ran every Directory.Exists on the next rebuild.
+                    while (IsDirCache.Count > 2048 && IsDirCacheOrder.Count > 0)
+                        IsDirCache.Remove(IsDirCacheOrder.Dequeue());
                 }
                 return isDir;
             }
@@ -4147,6 +4158,11 @@ namespace WinPanel
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
                 if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
                     return IconExtractor.LoadAny(typeIcon);
+                // Remembered extraction failure: the main-path chain below
+                // (thumbnail, folder preview, shell extraction) sleeps for the
+                // session or until the lazy retry - only the custom and
+                // type-icon branches above can still serve a live icon.
+                if (IconFailSleeps(item.Path)) return null;
                 // 3) photo/video live preview (photo itself, video frame) and the
                 // folder preview for directory tiles. Slow (network) sources run
                 // here on a worker thread, so the direct Directory.Exists probe
@@ -4179,6 +4195,298 @@ namespace WinPanel
             }
         }
 
+        // Memoized File.Exists for the per-tile icon path checks. Every rebuild
+        // asked File.Exists for each tile's custom icon and its type icon - two
+        // metadata reads per tile on the UI thread even when the icon itself
+        // was already in the session cache. Re-stats at most once a minute per
+        // path; a failed stat is never cached. Bounded FIFO like the other
+        // session caches.
+        private class ExistsMemoEntry { public bool Value; public int CheckedAt; }
+        private static readonly object ExistsMemoGate = new object();
+        private static readonly Dictionary<string, ExistsMemoEntry> ExistsMemo =
+            new Dictionary<string, ExistsMemoEntry>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Queue<string> ExistsMemoOrder = new Queue<string>();
+        private const int ExistsMemoTtlMs = 60000;
+        private const int ExistsMemoCap = 1024;
+
+        internal static bool FileExistsMemoized(string path)
+        {
+            int now = Environment.TickCount;
+            lock (ExistsMemoGate)
+            {
+                ExistsMemoEntry e;
+                if (ExistsMemo.TryGetValue(path, out e) && unchecked(now - e.CheckedAt) < ExistsMemoTtlMs)
+                    return e.Value;
+            }
+            bool value = File.Exists(path);
+            lock (ExistsMemoGate)
+            {
+                ExistsMemoEntry e;
+                if (!ExistsMemo.TryGetValue(path, out e))
+                {
+                    e = new ExistsMemoEntry();
+                    ExistsMemo[path] = e;
+                    ExistsMemoOrder.Enqueue(path);
+                    while (ExistsMemo.Count > ExistsMemoCap && ExistsMemoOrder.Count > 0)
+                        ExistsMemo.Remove(ExistsMemoOrder.Dequeue());
+                }
+                e.Value = value;
+                e.CheckedAt = now;
+            }
+            return value;
+        }
+
+        // Memory of paths whose icon extraction failed, so a dead tile stops
+        // re-running the whole shell chain - this month, next month, every
+        // session. Classified at failure time: a drive letter missing from
+        // GetLogicalDrives (an unmounted removable/network drive, UNC included)
+        // may come back - the path is re-probed lazily on the next rebuild
+        // after 5 and then 120 minutes; a missing target on a present drive
+        // will not appear out of nowhere, so it is checked only once more, on
+        // the next start. Past that lifetime probe count the path is marked
+        // dead and written to iconfail.txt next to settings.ini: no automatic
+        // probes in ANY session, only the manual "rebuild icons" (or the drive
+        // of a dead missing-drive path actually mounting) brings it back.
+        // Either way the tile shows the same SystemIcons.Application fallback
+        // the chain would produce. No timers; the schedule is checked on
+        // rebuilds only, and the file is rewritten only when a lifetime probe
+        // count changes.
+        private class IconFailEntry
+        {
+            public int NextRetryAt; public int Step; public bool AttemptDue;
+            public int Probes;             // lifetime failed probes, persisted
+            public bool Dead;              // past the lifetime probe count
+            public bool WaitDrive;         // died with its drive absent - one probe when the letter shows up
+        }
+        private static readonly object IconFailGate = new object();
+        private static readonly Dictionary<string, IconFailEntry> IconFailMemo =
+            new Dictionary<string, IconFailEntry>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Queue<string> IconFailOrder = new Queue<string>();
+        private static readonly int[] IconFailRetryMinutes = { 5, 120 };
+        // Lifetime probe limits per class: a missing target gets the initial
+        // probe plus one more on the next start; a missing drive gets the
+        // initial probe plus one per scheduled retry.
+        private const int IconFailProbesNoTarget = 2;
+        private const int IconFailProbesNoDrive = 1 + 2; // = 1 + IconFailRetryMinutes.Length
+        private const int IconFailCap = 512;
+        private static readonly string IconFailFile = BuildIconFailFile();
+        private static bool iconFailLoaded;
+
+        private static string BuildIconFailFile()
+        {
+            try { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "iconfail.txt"); }
+            catch { return null; }
+        }
+
+        // Loads the persisted probe counts once; entries past their lifetime
+        // limit wake up dead, the rest wake up due (the new session's first
+        // render is their scheduled re-check).
+        private static void EnsureIconFailLoaded()
+        {
+            if (iconFailLoaded) return;
+            iconFailLoaded = true;
+            try
+            {
+                if (IconFailFile == null || !File.Exists(IconFailFile)) return;
+                foreach (string line in File.ReadAllLines(IconFailFile))
+                {
+                    int p1 = line.IndexOf('|');
+                    int p2 = p1 >= 0 ? line.IndexOf('|', p1 + 1) : -1;
+                    int probes;
+                    if (p2 < 0 || !int.TryParse(line.Substring(0, p1), out probes) || probes <= 0) continue;
+                    bool waitDrive = line[p1 + 1] == 'W';
+                    string path = line.Substring(p2 + 1);
+                    if (string.IsNullOrEmpty(path) || IconFailMemo.ContainsKey(path)) continue;
+                    var e = new IconFailEntry { Probes = probes, AttemptDue = true };
+                    int limit = PathDriveMissing(path) ? IconFailProbesNoDrive : IconFailProbesNoTarget;
+                    if (probes >= limit || (probes >= IconFailProbesNoTarget && !waitDrive))
+                    {
+                        e.Dead = true;
+                        e.WaitDrive = waitDrive;
+                    }
+                    IconFailMemo[path] = e;
+                    IconFailOrder.Enqueue(path);
+                }
+            }
+            catch { }
+        }
+
+        // Rewrites iconfail.txt from the memo (a handful of short lines,
+        // changed only on lifetime probe transitions). Best effort.
+        private static void PersistIconFails()
+        {
+            try
+            {
+                if (IconFailFile == null) return;
+                var sb = new System.Text.StringBuilder();
+                lock (IconFailGate)
+                {
+                    foreach (var kv in IconFailMemo)
+                        sb.Append(kv.Value.Probes).Append('|')
+                          .Append(kv.Value.WaitDrive ? 'W' : 'D').Append('|')
+                          .Append(kv.Key).Append("\r\n");
+                }
+                string tmp = IconFailFile + ".tmp";
+                File.WriteAllText(tmp, sb.ToString());
+                if (File.Exists(IconFailFile)) File.Delete(IconFailFile);
+                File.Move(tmp, IconFailFile);
+            }
+            catch { }
+        }
+
+        // True while the path must NOT be re-extracted. An entry whose lazy
+        // retry moment has come is flagged AttemptDue and left in place (so
+        // the next recording can continue the schedule instead of restarting
+        // it). A dead entry sleeps forever - except one that died with its
+        // drive absent: the drive mounting is a real user action, and it gets
+        // exactly one probe on the next rebuild after that.
+        private static bool IconFailSleeps(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            EnsureIconFailLoaded();
+            int now = Environment.TickCount;
+            lock (IconFailGate)
+            {
+                IconFailEntry e;
+                if (!IconFailMemo.TryGetValue(path, out e)) return false;
+                if (e.Dead)
+                {
+                    if (!e.WaitDrive || PathDriveMissing(path)) return true;
+                    e.Dead = false;
+                    e.AttemptDue = true;
+                    return false;
+                }
+                if (e.NextRetryAt == int.MaxValue) return true;
+                if (unchecked(now - e.NextRetryAt) < 0)
+                {
+                    // A scheduled missing-drive entry whose drive has since
+                    // mounted needs no wait - probe it on this rebuild.
+                    if (PathDriveMissing(path)) return true;
+                }
+                e.AttemptDue = true;
+                return false;
+            }
+        }
+
+        // Records a failed extraction; returns a short diagnostic suffix for
+        // the log - the lifetime schedule is written down so future log reads
+        // can tell retries from spam (a path can log at most: its first
+        // probes, the death line and one recovery per session). Returns null
+        // when nothing is worth logging - a skipped attempt while the entry
+        // is still sleeping (or already dead).
+        private static string RememberIconFail(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            EnsureIconFailLoaded();
+            int now = Environment.TickCount;
+            string tail = null;
+            bool persist = false;
+            lock (IconFailGate)
+            {
+                IconFailEntry e;
+                bool wasPresent = IconFailMemo.TryGetValue(path, out e);
+                if (wasPresent && !e.AttemptDue) return null;
+                if (!wasPresent)
+                {
+                    e = new IconFailEntry();
+                    IconFailMemo[path] = e;
+                    IconFailOrder.Enqueue(path);
+                    while (IconFailMemo.Count > IconFailCap && IconFailOrder.Count > 0)
+                        IconFailMemo.Remove(IconFailOrder.Dequeue());
+                }
+                e.Probes++;
+                persist = true;
+                bool driveMissing = PathDriveMissing(path);
+                e.WaitDrive = driveMissing; // persisted: the drive was absent at this recording
+                int limit = driveMissing ? IconFailProbesNoDrive : IconFailProbesNoTarget;
+                if (e.Probes >= limit)
+                {
+                    // Lifetime probe count spent: dead until the manual
+                    // rebuild (or, for a missing drive, until the drive
+                    // actually mounts - see IconFailSleeps).
+                    e.Dead = true;
+                    e.WaitDrive = driveMissing;
+                    e.Step = 0;
+                    e.NextRetryAt = int.MaxValue;
+                    tail = driveMissing
+                        ? "drive missing; marked dead - only the manual rebuild checks it again"
+                        : "path missing on a present drive; marked dead - only the manual rebuild checks it again";
+                }
+                else if (driveMissing)
+                {
+                    int step = wasPresent ? Math.Min(e.Step + 1, IconFailRetryMinutes.Length - 1) : 0;
+                    e.Step = step;
+                    e.NextRetryAt = unchecked(now + IconFailRetryMinutes[step] * 60000);
+                    tail = "drive missing; retry " + (step + 1) + "/" + IconFailRetryMinutes.Length +
+                           " in " + IconFailRetryMinutes[step] + " min";
+                }
+                else
+                {
+                    // Drive present, target missing: files do not appear out
+                    // of nowhere - the second and last check happens on the
+                    // next start (Probes carries across sessions).
+                    e.Step = 0;
+                    e.NextRetryAt = int.MaxValue;
+                    tail = "path missing on a present drive; will re-check once on the next start";
+                }
+                e.AttemptDue = false;
+            }
+            if (persist) PersistIconFails();
+            return tail;
+        }
+
+        // The path just produced an icon; returns true when a remembered
+        // failure was actually dropped (worth one "recovered" log line).
+        private static bool ForgetIconFail(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            EnsureIconFailLoaded();
+            bool removed;
+            lock (IconFailGate) { removed = IconFailMemo.Remove(path); }
+            if (removed) PersistIconFails();
+            return removed;
+        }
+
+        // Instant and device-safe: a lettered path is "drive missing" when its
+        // letter is not among the mounted drives; UNC paths have no letter, an
+        // unreachable share is the same "may come back" case. DriveInfo.IsReady
+        // is deliberately not used - it can spin idle drives up.
+        private static bool PathDriveMissing(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) return false;
+                if (path.StartsWith(@"\\", StringComparison.Ordinal)) return true;
+                if (path.Length < 2 || path[1] != ':') return false;
+                string letter = path.Substring(0, 2);
+                foreach (string d in Environment.GetLogicalDrives())
+                    if (string.Equals(d.TrimEnd('\\'), letter, StringComparison.OrdinalIgnoreCase)) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        internal static void ResetIconFailMemo()
+        {
+            lock (IconFailGate)
+            {
+                IconFailMemo.Clear();
+                IconFailOrder.Clear();
+            }
+            try { if (IconFailFile != null && File.Exists(IconFailFile)) File.Delete(IconFailFile); } catch { }
+            iconFailLoaded = true;
+        }
+
+        // The manual rebuild must refresh previews too: the session preview
+        // caches are keyed without mtime now, so they would otherwise serve
+        // the old images for the rest of the session.
+        internal static void ResetPreviewCaches()
+        {
+            lock (MediaThumbGate) { MediaThumbCache.Clear(); MediaThumbOrder.Clear(); }
+            lock (FolderNoThumb) { FolderNoThumb.Clear(); FolderNoThumbOrder.Clear(); }
+            lock (FolderComposeGate) { FolderComposeMemo.Clear(); FolderComposeOrder.Clear(); }
+        }
+
         // Cached-only mirror of LoadIconForItem: hands out the icon when it is
         // already in the session/disk cache and never extracts. Used by the
         // panel rebuild to render known icons synchronously instead of popping
@@ -4189,6 +4497,25 @@ namespace WinPanel
             try
             {
                 if (item == null) return false;
+                // Custom icon first: the session cache and iconcache\ answer
+                // without a single probe of the custom file - once an icon is
+                // cached, nothing re-checks it (the manual rebuild refreshes).
+                // The memoized existence check only runs on a cache miss, to
+                // decide whether queueing is worth it; a missing custom file
+                // falls through to the type icon and the main chain.
+                if (!string.IsNullOrEmpty(item.CustomIconPath))
+                {
+                    if (IconExtractor.TryGetCachedAny(item.CustomIconPath, out img)) return true;
+                    if (FileExistsMemoized(item.CustomIconPath)) return false; // exists - the queue loads it
+                }
+                // A remembered extraction failure answers synchronously with the
+                // same SystemIcons.Application fallback the chain would produce,
+                // without queueing anything.
+                if (IconFailSleeps(item.Path))
+                {
+                    try { img = SystemIcons.Application.ToBitmap(); } catch { img = null; }
+                    return img != null;
+                }
                 // Media previews and folder previews must NOT come from the icon
                 // cache: it still holds the pre-preview generic icon for that
                 // path, and serving it would freeze the tile on the generic icon
@@ -4200,11 +4527,12 @@ namespace WinPanel
                 if (IsMediaFile(item.Path) || item.IsFolder || IsFolderPathCached(item.Path) ||
                     string.Equals(item.Path, StartMenuPath, StringComparison.OrdinalIgnoreCase) ||
                     IsPowerTilePath(item.Path)) return false;
-                if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
-                    return IconExtractor.TryGetCachedAny(item.CustomIconPath, out img);
                 string typeIcon = FileTypes.GetIconForPath(item.Path);
-                if (!string.IsNullOrEmpty(typeIcon) && File.Exists(typeIcon))
-                    return IconExtractor.TryGetCachedAny(typeIcon, out img);
+                if (!string.IsNullOrEmpty(typeIcon))
+                {
+                    if (IconExtractor.TryGetCachedAny(typeIcon, out img)) return true;
+                    if (FileExistsMemoized(typeIcon)) return false; // exists - the queue loads it
+                }
                 return IconExtractor.TryGetCachedAuto(item.Path, true, out img);
             }
             catch { img = null; return false; }
@@ -4428,10 +4756,23 @@ namespace WinPanel
             RunIconWorker(delegate
             {
                 Image img = null;
+                string itemPath = item != null ? item.Path : null;
                 try { img = LoadIconForItem(item); } catch { }
-                if (img == null)
-                    AppLog.Write("LoadTileIcon: no icon extracted for " +
-                                 (item != null ? item.Path : "(null item)"));
+                if (img != null)
+                {
+                    // Worth a line only when a remembered failure just ended -
+                    // the fail/recover pairs are how log reads tell flapping
+                    // paths from spam.
+                    if (ForgetIconFail(itemPath))
+                        AppLog.Write("LoadTileIcon: icon recovered for " + itemPath);
+                }
+                else
+                {
+                    string tail = RememberIconFail(itemPath);
+                    if (tail != null)
+                        AppLog.Write("LoadTileIcon: no icon extracted for " +
+                                     (item != null ? item.Path : "(null item)") + " (" + tail + ")");
+                }
                 if (img == null) { try { img = SystemIcons.Application.ToBitmap(); } catch { } }
                 try
                 {
@@ -4496,6 +4837,12 @@ namespace WinPanel
                                    Directory.Exists(child.Path ?? "");
                     if (!string.IsNullOrEmpty(child.CustomIconPath) && File.Exists(child.CustomIconPath))
                         bimg = IconExtractor.LoadAny(child.CustomIconPath);
+                    else if (IconFailSleeps(child.Path))
+                    {
+                        // Remembered failure: the main chain (thumbnail, folder
+                        // preview, shell extraction) sleeps - the custom and
+                        // type-icon branches above can still serve a live icon.
+                    }
                     else
                     {
                         string typeIcon = FileTypes.GetIconForPath(child.Path);
@@ -4512,6 +4859,13 @@ namespace WinPanel
                     }
                 }
                 catch { }
+                string childPath = child != null ? child.Path : null;
+                if (bimg != null)
+                {
+                    if (ForgetIconFail(childPath))
+                        AppLog.Write("LoadFolderChildIcon: icon recovered for " + childPath);
+                }
+                else RememberIconFail(childPath);
                 if (bimg == null) { try { bimg = SystemIcons.Application.ToBitmap(); } catch { } }
                 try
                 {
@@ -6255,6 +6609,13 @@ namespace WinPanel
             // recomputes the layout, which made a 5000-tile tab take ~18 s to
             // appear. Suspend the layout for the bulk and do a single pass.
             layoutPanel.SuspendLayout();
+            // One log line per tab render. The synchronous phase is where a
+            // rebuild can stall the UI, and until now nothing in the log
+            // showed it. cold = icon tasks this render had to queue (cache
+            // misses) - a warm rebuild must log cold=0 and a small sync=.
+            int queueBefore = iconQueue.Count;
+            int tileCount = itemsToRender != null ? itemsToRender.Count : 0;
+            var renderSw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 foreach (var item in itemsToRender)
@@ -6262,7 +6623,14 @@ namespace WinPanel
                     AddShortcutControl(layoutPanel, item, tabData);
                 }
             }
-            finally { layoutPanel.ResumeLayout(true); }
+            finally
+            {
+                layoutPanel.ResumeLayout(true);
+                renderSw.Stop();
+                AppLog.Write(string.Format("Rebuild: tab={0} tiles={1} cold={2} sync={3}ms",
+                    tabData.Name, tileCount, Math.Max(0, iconQueue.Count - queueBefore),
+                    renderSw.ElapsedMilliseconds));
+            }
 
             // Tile groups live on grid tabs at the root view only: fit the auto
             // axes to the member tiles, then build the chrome windows - they
@@ -7033,8 +7401,17 @@ namespace WinPanel
 
             if (item.IsFolder)
             {
-                if (!string.IsNullOrEmpty(item.CustomIconPath) && File.Exists(item.CustomIconPath))
-                    EnqueueIconTask(() => LoadTileIcon(tile, item));
+                // Custom icon: the session cache answers synchronously with no
+                // probe at all; the queue only loads it when it is not cached
+                // yet and the file actually exists.
+                Image cachedCustom;
+                if (!string.IsNullOrEmpty(item.CustomIconPath))
+                {
+                    if (IconExtractor.TryGetCachedAny(item.CustomIconPath, out cachedCustom))
+                        tile.IconImage = cachedCustom;
+                    else if (FileExistsMemoized(item.CustomIconPath))
+                        EnqueueIconTask(() => LoadTileIcon(tile, item));
+                }
 
                 int maxIcons = item.Children != null ? Math.Min(9, item.Children.Count) : 0;
                 for (int i = 0; i < maxIcons; i++) tile.ChildIcons.Add(null);

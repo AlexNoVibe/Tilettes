@@ -137,8 +137,9 @@ namespace WinPanel
             try
             {
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
-                string key = "mediaframe|" + path.ToLowerInvariant() + "|" +
-                             File.GetLastWriteTimeUtc(path).Ticks + "|" + width;
+                // No mtime in the key: the frame is pulled once and served from
+                // the cache folder afterwards - the manual rebuild regenerates.
+                string key = "mediaframe|" + path.ToLowerInvariant() + "|" + width;
                 Bitmap cached = IconExtractor.DiskCacheGetByKey(key) as Bitmap;
                 if (cached != null) return cached;
 
