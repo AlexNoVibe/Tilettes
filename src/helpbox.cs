@@ -36,8 +36,8 @@ namespace WinPanel
         private static extern int GetClassName(IntPtr hWnd, StringBuilder sb, int maxCount);
         [DllImport("user32.dll")]
         private static extern bool EnumChildWindows(IntPtr parent, EnumChildProc proc, IntPtr lParam);
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr GetModuleHandle(string name);
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
         [DllImport("gdi32.dll")]
         private static extern bool DeleteObject(IntPtr obj);
 
@@ -49,7 +49,15 @@ namespace WinPanel
                 font = new Font("Segoe UI", fontSize);
                 fontHandle = font.ToHfont();
                 hookProcRef = new HookProc(CbtHookProc);
-                hookHandle = SetWindowsHookEx(WH_CBT, hookProcRef, GetModuleHandle(null), 0);
+                // Thread-local hook (NULL module + this thread's id): dwThreadId
+                // 0 means ALL desktop threads, i.e. a global hook - those need a
+                // real DLL module, so with the exe's module handle the call kept
+                // failing with error 1428 and the box silently stayed in the
+                // standard 9 pt font. Checked and logged, never silent again.
+                hookHandle = SetWindowsHookEx(WH_CBT, hookProcRef, IntPtr.Zero, GetCurrentThreadId());
+                if (hookHandle == IntPtr.Zero)
+                    AppLog.Write(string.Format("Help font hook failed: error {0}",
+                        Marshal.GetLastWin32Error()));
                 MessageBox.Show(owner, text, caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             finally
