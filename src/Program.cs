@@ -5210,7 +5210,7 @@ namespace WinPanel
                     "- Sync with the regular Start menu: 2 syncs - the Start Menu mirror and the pinned tiles import",
                     "• Синхронизация с обычным Пуском — 2 синхронизации: зеркало меню «Пуск» и импорт закреплённых плиток"));
             string caption = Loc.S("Help", "Справка");
-            try { MessageBoxFont.Show(this, text, caption, 18f); }
+            try { MessageBoxFont.Show(this, text, caption, 14f); }
             catch { try { MessageBox.Show(this, text, caption, MessageBoxButtons.OK, MessageBoxIcon.Information); } catch { } }
         }
 
