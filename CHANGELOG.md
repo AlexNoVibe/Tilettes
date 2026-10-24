@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Past-search context menu**: right-clicking a row in the "Past search" block of the panel search now opens the same menu the regular results have — **Open**, **Open in Mini Explorer** and **Open containing folder** (a stored shortcut reveals its resolved target, so the real app/folder is shown) — plus a separator and **Remove from past search**, which deletes the remembered query → item pair from searchHistory.xml for good and drops the row from the open overlay; the entry never ranks or shows up in past search again (and the live-search boost for that pair is gone with it). Mini Explorer and Explorer open at the item's original folder — a file selects its entry, a folder navigates into it.
+- **Fixed: the keyboard context menu of the search list never opened** — Shift+F10 / the menu key fell back to `IndexFromPoint(8,8)`, which with a section header first always hit the inert "Past search" header row; the menu now addresses the selected row instead, so keyboard users get the same row menus mouse users do.
+- The past-search menu is fully localized: "Remove from past search" ships in all ten languages.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.2.2...v1.2.3
+
 ## v1.2.2 - 2026-10-12
 
 - **Fixed: the window restored tiny (~100×100)** after it had been minimized with the title-bar button (or the ⇩/🖺 collapse): hiding and re-showing a minimized window loses the native restore rectangle, so every next summon surfaced the minimized placeholder instead of the real size, and repeated summons kept it broken. The panel now keeps its own copy of the last normal-state geometry — seeded from the startup bounds so even the first show after a hidden autostart has it, and blind to anything seen during a restore transition (the corrupted restore arrives clamped to the minimum size, which used to poison the memory and make every later show restore the tiny size on purpose). Before the window is shown, the corrupted native WINDOWPLACEMENT itself is rewritten with the remembered bounds, so the very first restore already lands at full size — no visible wrong-size phase; the bounds are also re-asserted into the native window on every show and on the taskbar-restore path (a corrupted restore is not always visible to the managed size cache, and a window that is still iconic must be force-restored before SetWindowPos can size it), with a late verification 0.4 s after each show catching anything that shrinks the window afterwards. The show dance logs its entering/leaving size, state and memory to log.txt, so a recurrence is diagnosable; the desktop-rehome (COM) recreate path is covered on every anchor setting too.

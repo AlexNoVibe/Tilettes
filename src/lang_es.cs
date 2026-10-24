@@ -178,6 +178,7 @@ namespace WinPanel
             { "Remove", "Quitar" },
             { "Remove ", "Quitar " },
             { "Remove from Panel", "Quitar del panel" },
+            { "Remove from past search", "Quitar de búsquedas anteriores" },
             { "Remove icon", "Quitar icono" },
             { "Remove selected", "Quitar seleccionados" },
             { "Remove selected (", "Quitar seleccionados (" },

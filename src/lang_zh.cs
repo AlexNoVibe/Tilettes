@@ -178,6 +178,7 @@ namespace WinPanel
             { "Remove", "移除" },
             { "Remove ", "移除 " },
             { "Remove from Panel", "从面板移除" },
+            { "Remove from past search", "从过去的搜索中移除" },
             { "Remove icon", "移除图标" },
             { "Remove selected", "移除所选" },
             { "Remove selected (", "移除所选 (" },
