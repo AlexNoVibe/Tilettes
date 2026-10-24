@@ -99,7 +99,12 @@ namespace WinPanel
                     int x = (short)((long)m.LParam & 0xFFFF);
                     int y = (short)(((long)m.LParam >> 16) & 0xFFFF);
                     Point p = (x >= 0 && y >= 0) ? this.PointToClient(new Point(x, y)) : new Point(8, 8);
-                    RowMenuRequested(p, this.IndexFromPoint(p));
+                    // Keyboard invocation (Shift+F10 / menu key) passes (-1,-1);
+                    // the menu then belongs to the SELECTED row - IndexFromPoint
+                    // of the (8,8) corner would always hit row 0, which with a
+                    // section header first is an inert header.
+                    int row = (x >= 0 && y >= 0) ? this.IndexFromPoint(p) : this.SelectedIndex;
+                    RowMenuRequested(p, row);
                     return; // swallowed: never bubble to the parent/form menu
                 }
                 base.WndProc(ref m);
@@ -422,10 +427,18 @@ namespace WinPanel
             };
             panelSearchList.RowMenuRequested = (p, i) =>
             {
-                // Valid result row → the result menu; the past-search block,
-                // the headers and the empty area below the rows → no menu at
-                // all (never the form's "Settings" menu underneath).
-                if (i < 0 || IsHeaderRow(i) || IsPastRow(i)) return;
+                // Valid result row → the result menu; a past-search row → its
+                // own menu; the headers and the empty area below the rows → no
+                // menu at all (never the form's "Settings" menu underneath).
+                if (i < 0 || IsHeaderRow(i)) return;
+                if (IsPastRow(i))
+                {
+                    int pi = i - 1;
+                    if (pi < 0 || pi >= panelSearchPast.Count) return;
+                    panelSearchList.SelectedIndex = i;
+                    ShowPastSearchContextMenu(pi, p);
+                    return;
+                }
                 int ri = i - PastBlockOffset();
                 if (ri < 0 || ri >= panelSearchResults.Count) return;
                 panelSearchList.SelectedIndex = i;
@@ -2568,6 +2581,23 @@ namespace WinPanel
             m.Show(panelSearchList, location);
         }
 
+        // Right-click menu of a "Прошлый поиск" row (index into panelSearchPast):
+        // the same open actions the regular results have (open, mini explorer,
+        // reveal in Explorer) plus forgetting this remembered pair.
+        private void ShowPastSearchContextMenu(int i, Point location)
+        {
+            if (i < 0 || i >= panelSearchPast.Count) return;
+            var he = panelSearchPast[i];
+            var m = new ContextMenu();
+            m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenPastSearchEntry(he));
+            m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenPathInMiniExplorer(PastEntryRevealPath(he)));
+            m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(PastEntryRevealPath(he)));
+            m.MenuItems.Add(new MenuItem("-"));
+            m.MenuItems.Add(Loc.S("Remove from past search", "Удалить из прошлого поиска"),
+                (s2, e2) => RemovePastSearchEntry(he));
+            m.Show(panelSearchList, location);
+        }
+
         // The path a search result refers to for "open the original folder": the
         // resolved target for shortcuts (the actual app/folder), the item path
         // otherwise.
@@ -2582,12 +2612,45 @@ namespace WinPanel
             return it == null ? null : it.Path;
         }
 
+        // Same for a remembered history entry: a stored .lnk reveals its
+        // resolved target. ResolveTarget is the cheap uncached .lnk parse -
+        // past rows are fresh objects, so the meta-entry cache would never hit.
+        private static string PastEntryRevealPath(SearchHistoryEntry he)
+        {
+            if (he == null || string.IsNullOrEmpty(he.Path)) return null;
+            try
+            {
+                if (he.Path.ToLowerInvariant().EndsWith(".lnk"))
+                {
+                    string t = PanelSearch.ResolveTarget(he.Path);
+                    if (!string.IsNullOrEmpty(t)) return t;
+                }
+            }
+            catch { }
+            return he.Path;
+        }
+
+        // Forgets one remembered pair and drops its row from the current
+        // "Прошлый поиск" block; the overlay stays open.
+        private void RemovePastSearchEntry(SearchHistoryEntry he)
+        {
+            if (he == null) return;
+            panelSearchPast.Remove(he);
+            try { SearchHistoryStore.Remove(he.Query, he.Path); }
+            catch { }
+            RebuildPanelSearchList();
+        }
+
         // Mini explorer at a search result's original folder: folder results
         // navigate into the folder itself, files/folders reveal their parent
         // with the entry selected.
         private void OpenSearchResultInMiniExplorer(ShortcutItem it)
         {
-            string p = SearchResultRevealPath(it);
+            OpenPathInMiniExplorer(SearchResultRevealPath(it));
+        }
+
+        private void OpenPathInMiniExplorer(string p)
+        {
             if (string.IsNullOrEmpty(p)) return;
             try
             {
@@ -2605,7 +2668,7 @@ namespace WinPanel
                 if (string.IsNullOrEmpty(dir)) return;
                 OpenMiniExplorerAt(dir, Path.GetFileName(p));
             }
-            catch (Exception ex) { AppLog.Write("OpenSearchResultInMiniExplorer", ex); }
+            catch (Exception ex) { AppLog.Write("OpenPathInMiniExplorer", ex); }
         }
 
         // Creates (or reuses) the mini explorer window at `folder`, optionally

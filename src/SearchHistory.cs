@@ -157,6 +157,34 @@ namespace WinPanel
             lock (Gate) { return entries == null ? 0 : entries.Count; }
         }
 
+        // Deletes one remembered pair (query -> item) and saves. Returns true
+        // when the pair existed. UI thread only.
+        public static bool Remove(string query, string path)
+        {
+            bool removed = false;
+            try
+            {
+                if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(path)) return false;
+                lock (Gate)
+                {
+                    if (entries == null) return false;
+                    for (int i = 0; i < entries.Count; i++)
+                    {
+                        if (string.Equals(entries[i].Query, query, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(entries[i].Path, path, StringComparison.OrdinalIgnoreCase))
+                        {
+                            entries.RemoveAt(i);
+                            removed = true;
+                            break;
+                        }
+                    }
+                }
+                if (removed) Save();
+            }
+            catch (Exception ex) { AppLog.Write("SearchHistory.Remove", ex); }
+            return removed;
+        }
+
         public static void Clear()
         {
             lock (Gate) { entries = new List<SearchHistoryEntry>(); }

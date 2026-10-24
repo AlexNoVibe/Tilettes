@@ -178,6 +178,7 @@ namespace WinPanel
             { "Remove", "削除" },
             { "Remove ", "削除 " },
             { "Remove from Panel", "パネルから削除" },
+            { "Remove from past search", "過去の検索から削除" },
             { "Remove icon", "アイコンを削除" },
             { "Remove selected", "選択を削除" },
             { "Remove selected (", "選択を削除 (" },
