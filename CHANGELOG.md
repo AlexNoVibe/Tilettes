@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.3 - 2026-10-25
 
 - **Past-search context menu**: right-clicking a row in the "Past search" block of the panel search now opens the same menu the regular results have — **Open**, **Open in Mini Explorer** and **Open containing folder** (a stored shortcut reveals its resolved target, so the real app/folder is shown) — plus a separator and **Remove from past search**, which deletes the remembered query → item pair from searchHistory.xml for good and drops the row from the open overlay; the entry never ranks or shows up in past search again (and the live-search boost for that pair is gone with it). Mini Explorer and Explorer open at the item's original folder — a file selects its entry, a folder navigates into it.
 - **Fixed: the keyboard context menu of the search list never opened** — Shift+F10 / the menu key fell back to `IndexFromPoint(8,8)`, which with a section header first always hit the inert "Past search" header row; the menu now addresses the selected row instead, so keyboard users get the same row menus mouse users do.
