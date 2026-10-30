@@ -165,6 +165,7 @@ namespace WinPanel
             { "Open With by File Type", "ファイル種別ごとの起動方法" },
             { "Open console window here", "ここでコンソールウィンドウを開く" },
             { "Open containing folder", "上位フォルダーを開く" },
+            { "Run as administrator", "管理者として実行" },
             { "Open folders in:", "フォルダーを開く場所:" },
             { "Open in Explorer", "エクスプローラーで開く" },
             { "Open in Mini Explorer", "ミニエクスプローラーで開く" },

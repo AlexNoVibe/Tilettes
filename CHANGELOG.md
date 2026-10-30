@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **"Open containing folder" on a tile now lands where the real file lives**: every .lnk added to the panel is kept as the panel's own copy in the `ico\` folder, so revealing the tile path always opened that folder instead of the place the shortcut points at. The tile's shortcut is resolved first (the same three-source .lnk parse the search uses: the binary LinkInfo block, the raw-bytes scan and WScript.Shell) and the target's folder opens with the file selected. A shortcut whose target is gone still opens its target's folder when that folder exists; a shortcut that resolves to nothing local (a packaged-app pin), a dead link on a gone drive, a plain file or folder keep the old behavior. The bulk "Open containing folder" of a red multi-selection groups by the real folders too — ten shortcuts to the same app open one window, not ten, and opening that menu touches no disk at all.
+- **"Run as administrator" in the search context menus**: the regular results and the "Past search" rows both gained the entry. It elevates the real target behind a shortcut (with the target's own folder as the working directory) instead of the panel's `ico\` copy, runs a batch file through an elevated `cmd.exe /c` because runas does not reach a .bat directly, and a "No" in the UAC prompt stays silent. Folders, packaged apps and shortcuts that do not resolve to a real file are not offered it — opening such a menu costs no disk I/O.
+- The new entry ships in all ten languages.
+
 ## v1.2.3 - 2026-10-25
 
 - **Past-search context menu**: right-clicking a row in the "Past search" block of the panel search now opens the same menu the regular results have — **Open**, **Open in Mini Explorer** and **Open containing folder** (a stored shortcut reveals its resolved target, so the real app/folder is shown) — plus a separator and **Remove from past search**, which deletes the remembered query → item pair from searchHistory.xml for good and drops the row from the open overlay; the entry never ranks or shows up in past search again (and the live-search boost for that pair is gone with it). Mini Explorer and Explorer open at the item's original folder — a file selects its entry, a folder navigates into it.

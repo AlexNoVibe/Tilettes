@@ -2576,6 +2576,7 @@ namespace WinPanel
             var it = panelSearchResults[i];
             var m = new ContextMenu();
             m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenResultIndex(i));
+            AddRunAsAdminItem(m, it == null ? null : it.Path, it != null && it.IsFolder);
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenSearchResultInMiniExplorer(it));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(SearchResultRevealPath(it)));
             m.Show(panelSearchList, location);
@@ -2590,6 +2591,7 @@ namespace WinPanel
             var he = panelSearchPast[i];
             var m = new ContextMenu();
             m.MenuItems.Add(Loc.S("Open"), (s2, e2) => OpenPastSearchEntry(he));
+            AddRunAsAdminItem(m, he.Path, he.IsFolder);
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenPathInMiniExplorer(PastEntryRevealPath(he)));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(PastEntryRevealPath(he)));
             m.MenuItems.Add(new MenuItem("-"));
@@ -2628,6 +2630,81 @@ namespace WinPanel
             }
             catch { }
             return he.Path;
+        }
+
+        // "Run as administrator" row of the search menus: elevation makes sense
+        // for a file only - a folder has nothing to elevate, and a packaged app
+        // (an AppsFolder AUMID, or the shortcut pinned to one, which resolves
+        // to an empty target) has no elevated form.
+        private static void AddRunAsAdminItem(ContextMenu m, string path, bool isFolder)
+        {
+            if (isFolder) return;
+            if (!CanRunAsAdmin(path)) return;
+            m.MenuItems.Add(Loc.S("Run as administrator", "Запуск от имени администратора"),
+                (s2, e2) => LaunchAsAdmin(path));
+        }
+
+        private static bool CanRunAsAdmin(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            try
+            {
+                bool isLnk = path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase);
+                string target = ResolveRevealPath(path);
+                if (string.IsNullOrEmpty(target)) return false;
+                // A shortcut that did not resolve to a real file (a packaged-app
+                // pin, a dead link) has nothing to elevate: the shell would just
+                // fail on the shortcut itself.
+                if (isLnk && string.Equals(target, path, StringComparison.OrdinalIgnoreCase)) return false;
+                if (UwpApps.IsAppsFolderAumid(target)) return false;
+                // A shortcut may point at a folder, which has nothing to elevate
+                // either. Only a shortcut costs a stat here (a local one - a
+                // network target is left alone, the menu must not stall on a
+                // share); plain files and folders are already known by their
+                // record, so opening the menu touches no disk at all.
+                if (isLnk && !IconExtractor.IsNetworkPath(target))
+                {
+                    bool dir = false;
+                    try { dir = Directory.Exists(target); } catch { }
+                    if (dir) return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("CanRunAsAdmin: " + ex.Message);
+                return false;
+            }
+        }
+
+        // The real file behind a shortcut is elevated: running the panel's own
+        // ico\ copy would only reproduce the shortcut, and its working directory
+        // would be that folder. A "No" in the UAC prompt is not an error.
+        internal static void LaunchAsAdmin(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            string target = ResolveRevealPath(path);
+            try
+            {
+                if (Directory.Exists(target))
+                {
+                    RevealInExplorer(target);
+                    return;
+                }
+                string ext = Path.GetExtension(target);
+                if (string.Equals(ext, ".bat", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(ext, ".cmd", StringComparison.OrdinalIgnoreCase))
+                {
+                    // runas does not reach a batch file directly: an elevated
+                    // cmd.exe runs it, in the batch's own folder.
+                    string comspec = Environment.GetEnvironmentVariable("ComSpec");
+                    if (string.IsNullOrEmpty(comspec)) comspec = "cmd.exe";
+                    StartDetached(comspec, "/c \"" + target + "\"", null, "runas");
+                    return;
+                }
+                StartDetached(target, null, null, "runas");
+            }
+            catch (Exception ex) { AppLog.Write("LaunchAsAdmin: " + target, ex); }
         }
 
         // Forgets one remembered pair and drops its row from the current
@@ -5341,6 +5418,14 @@ namespace WinPanel
         // its resources no matter where Tilettes was started from.
         private static void StartDetached(string fileName, string arguments, string workDir)
         {
+            StartDetached(fileName, arguments, workDir, null);
+        }
+
+        // verb: the shell verb to run with ("runas" = the UAC prompt); null keeps
+        // the plain double-click behavior. The cancel answer of the prompt is
+        // swallowed: a user who said "No" does not need an error about it.
+        private static void StartDetached(string fileName, string arguments, string workDir, string verb)
+        {
             var t = new Thread(delegate()
             {
                 try
@@ -5353,13 +5438,21 @@ namespace WinPanel
                         string fmExe, fmTemplate;
                         if (TryGetFolderOpenCommand(out fmExe, out fmTemplate) && IsDirectoryPath(fileName))
                         {
-                            System.Diagnostics.Process.Start(BuildShellStart(fmExe, FolderOpenArgs(fmTemplate, fmExe, fileName), fileName));
+                            System.Diagnostics.ProcessStartInfo fm = BuildShellStart(fmExe, FolderOpenArgs(fmTemplate, fmExe, fileName), fileName);
+                            if (!string.IsNullOrEmpty(verb)) fm.Verb = verb;
+                            System.Diagnostics.Process.Start(fm);
                             return;
                         }
-                        System.Diagnostics.Process.Start(BuildShellStart(fileName, null, workDir));
+                        System.Diagnostics.ProcessStartInfo plain = BuildShellStart(fileName, null, workDir);
+                        if (!string.IsNullOrEmpty(verb)) plain.Verb = verb;
+                        System.Diagnostics.Process.Start(plain);
                     }
                     else
-                        System.Diagnostics.Process.Start(BuildShellStart(fileName, arguments, workDir));
+                    {
+                        System.Diagnostics.ProcessStartInfo psi = BuildShellStart(fileName, arguments, workDir);
+                        if (!string.IsNullOrEmpty(verb)) psi.Verb = verb;
+                        System.Diagnostics.Process.Start(psi);
+                    }
                 }
                 catch (System.ComponentModel.Win32Exception wex)
                 {
@@ -7868,7 +7961,48 @@ namespace WinPanel
         internal static void OpenContainingFolder(ShortcutItem item)
         {
             if (SuppressDoubleLaunch("select:" + item.Path)) return;
-            RevealInExplorer(item.Path);
+            RevealInExplorer(ResolveRevealPath(item.Path));
+        }
+
+        // The path "open containing folder" should reveal. Every .lnk added to
+        // the panel is kept as the panel's own copy in <exe>\ico, so revealing
+        // the tile path itself always landed in that folder instead of where
+        // the file the user means lives; the target saved inside the shortcut
+        // is the real answer. Everything else (plain files, folders, a shortcut
+        // with no local target - packaged apps resolve to an empty target)
+        // keeps its own path, so a dead shortcut still reveals its own place.
+        internal static string ResolveRevealPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return path;
+            try
+            {
+                if (!path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return path;
+                string target = PanelSearch.ResolveTarget(path);
+                if (string.IsNullOrEmpty(target)) return path;
+                // A network target is taken on trust: a stat on a dead share
+                // stalls the click for the SMB timeout, and Explorer itself
+                // reports the missing target well enough.
+                if (IconExtractor.IsNetworkPath(target)) return target;
+                bool alive = false;
+                try { alive = File.Exists(target) || Directory.Exists(target); }
+                catch (Exception ex) { AppLog.Write("ResolveRevealPath: exists", ex); }
+                if (alive) return target;
+                // The file is gone but the folder it lived in is still there:
+                // Explorer opens that folder (a /select on a missing entry just
+                // shows the parent).
+                string dir = null;
+                try { dir = Path.GetDirectoryName(target); } catch { }
+                bool dirAlive = false;
+                try { dirAlive = !string.IsNullOrEmpty(dir) && Directory.Exists(dir); }
+                catch (Exception ex) { AppLog.Write("ResolveRevealPath: dir", ex); }
+                if (dirAlive) return target;
+                return path;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("ResolveRevealPath: " + ex.Message);
+                return path;
+            }
         }
 
         // Opens Explorer with `path` selected in its folder (a plain Explorer
@@ -8511,21 +8645,36 @@ namespace WinPanel
                 var moveTo = m.MenuItems.Add(Loc.S("Move to tab", "Переместить на вкладку"));
                 FillMoveToTabMenu(moveTo, panel, tabData, new List<ShortcutItem>(multiSelection));
                 // Reveal where the selection lives: one window per distinct
-                // parent folder, not one per tile (ten selected tiles from one
-                // directory would otherwise open ten Explorers).
-                var perFolder = new Dictionary<string, ShortcutItem>(StringComparer.OrdinalIgnoreCase);
+                // folder, not one per tile (ten selected tiles from one
+                // directory would otherwise open ten Explorers). The folder is
+                // the one of the real target, so shortcut tiles group by where
+                // the files they point at live, not by the panel's ico\ copies.
+                var perFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var it in multiSelection)
                 {
+                    string p = it == null ? null : it.Path;
+                    try
+                    {
+                        // Grouping needs the folder only, never a live probe: the
+                        // full resolution (with its existence fallback) runs for
+                        // the folders that actually open, after the click.
+                        if (!string.IsNullOrEmpty(p) && p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string t = PanelSearch.ResolveTarget(p);
+                            if (!string.IsNullOrEmpty(t)) p = t;
+                        }
+                    }
+                    catch { }
                     string dir = null;
-                    try { dir = string.IsNullOrEmpty(it.Path) ? null : Path.GetDirectoryName(it.Path); }
+                    try { dir = string.IsNullOrEmpty(p) ? null : Path.GetDirectoryName(p); }
                     catch { }
                     if (string.IsNullOrEmpty(dir)) continue;
-                    if (!perFolder.ContainsKey(dir)) perFolder[dir] = it;
+                    if (!perFolder.ContainsKey(dir)) perFolder[dir] = p;
                 }
                 if (perFolder.Count > 0)
                     m.MenuItems.Add(Loc.S("Open containing folder", "Открыть содержащую папку"), (s2, e2) =>
                     {
-                        foreach (var it in perFolder.Values) OpenContainingFolder(it);
+                        foreach (var p in perFolder.Values) RevealInExplorer(ResolveRevealPath(p));
                     });
                 m.MenuItems.Add(Loc.S("Clear selection", "Снять выделение"), (s2, e2) => ClearMultiSelection());
                 m.Show(tile, location);

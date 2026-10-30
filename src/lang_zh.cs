@@ -165,6 +165,7 @@ namespace WinPanel
             { "Open With by File Type", "按文件类型选择打开方式" },
             { "Open console window here", "在此打开控制台窗口" },
             { "Open containing folder", "打开所在文件夹" },
+            { "Run as administrator", "以管理员身份运行" },
             { "Open folders in:", "文件夹打开方式：" },
             { "Open in Explorer", "在资源管理器中打开" },
             { "Open in Mini Explorer", "在迷你资源管理器中打开" },

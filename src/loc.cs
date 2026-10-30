@@ -122,6 +122,7 @@ namespace WinPanel
             // Main panel folder menu / native menu items
             { "Open in Mini Explorer", "Открыть в мини-проводнике" },
             { "Open containing folder", "Открыть содержащую папку" },
+            { "Run as administrator", "Запуск от имени администратора" },
             { "Move out of folder", "Вынести из папки" },
             { "Size", "Размер" },
             { "Change Icon", "Сменить иконку" },
