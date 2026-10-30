@@ -2681,6 +2681,31 @@ namespace WinPanel
             }
         }
 
+        // The working directory of an elevated launch of the target behind
+        // `path`: the shortcut's own "Start in" when the row is a .lnk and
+        // names one, otherwise null - BuildShellStart then falls back to the
+        // launched file's folder, the same way a plain tile open does.
+        internal static string AdminWorkDir(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) ||
+                    !path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return null;
+                string lnkTarget, lnkDir;
+                if (!TryResolveLnk(path, out lnkTarget, out lnkDir)) return null;
+                if (string.IsNullOrEmpty(lnkDir)) return null;
+                // A network "Start in" is taken on trust: no stat from the
+                // menu click (a dead share must not stall it).
+                if (!IconExtractor.IsNetworkPath(lnkDir) && !Directory.Exists(lnkDir)) return null;
+                return lnkDir;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("AdminWorkDir: " + ex.Message);
+                return null;
+            }
+        }
+
         // The real file behind a shortcut is elevated: running the panel's own
         // ico\ copy would only reproduce the shortcut, and its working directory
         // would be that folder. A "No" in the UAC prompt is not an error.
@@ -2688,6 +2713,7 @@ namespace WinPanel
         {
             if (string.IsNullOrEmpty(path)) return;
             string target = ResolveRevealPath(path);
+            string startIn = AdminWorkDir(path);
             try
             {
                 bool network = false;
@@ -2710,12 +2736,15 @@ namespace WinPanel
                     // and every relative path in the batch would break.
                     string comspec = Environment.GetEnvironmentVariable("ComSpec");
                     if (string.IsNullOrEmpty(comspec)) comspec = "cmd.exe";
-                    string workDir = null;
-                    try { workDir = Path.GetDirectoryName(target); } catch { }
+                    string workDir = startIn;
+                    if (string.IsNullOrEmpty(workDir))
+                    {
+                        try { workDir = Path.GetDirectoryName(target); } catch { }
+                    }
                     StartDetached(comspec, "/c \"" + target + "\"", workDir, "runas");
                     return;
                 }
-                StartDetached(target, null, null, "runas");
+                StartDetached(target, null, startIn, "runas");
             }
             catch (Exception ex) { AppLog.Write("LaunchAsAdmin: " + target, ex); }
         }
