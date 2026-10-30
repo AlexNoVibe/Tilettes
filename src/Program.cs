@@ -2657,16 +2657,20 @@ namespace WinPanel
                 // fail on the shortcut itself.
                 if (isLnk && string.Equals(target, path, StringComparison.OrdinalIgnoreCase)) return false;
                 if (UwpApps.IsAppsFolderAumid(target)) return false;
-                // A shortcut may point at a folder, which has nothing to elevate
-                // either. Only a shortcut costs a stat here (a local one - a
-                // network target is left alone, the menu must not stall on a
-                // share); plain files and folders are already known by their
-                // record, so opening the menu touches no disk at all.
+                // A shortcut may point at a folder or at a file that is gone:
+                // neither is worth a UAC prompt (a dead target would only
+                // produce a "cannot open" notice after it). Only a shortcut
+                // costs a stat here - a local one, a network target is left
+                // alone so the menu cannot stall on a share; plain files and
+                // folders are already known from their record.
                 if (isLnk && !IconExtractor.IsNetworkPath(target))
                 {
                     bool dir = false;
                     try { dir = Directory.Exists(target); } catch { }
                     if (dir) return false;
+                    bool file = false;
+                    try { file = File.Exists(target); } catch { }
+                    if (!file) return false;
                 }
                 return true;
             }
@@ -2686,7 +2690,12 @@ namespace WinPanel
             string target = ResolveRevealPath(path);
             try
             {
-                if (Directory.Exists(target))
+                bool network = false;
+                try { network = IconExtractor.IsNetworkPath(target); }
+                catch (Exception ex) { AppLog.Write("LaunchAsAdmin: IsNetworkPath", ex); }
+                // The folder check is a local stat only: a network target must
+                // not be probed from the menu click (SMB timeout).
+                if (!network && Directory.Exists(target))
                 {
                     RevealInExplorer(target);
                     return;
@@ -2696,10 +2705,14 @@ namespace WinPanel
                     string.Equals(ext, ".cmd", StringComparison.OrdinalIgnoreCase))
                 {
                     // runas does not reach a batch file directly: an elevated
-                    // cmd.exe runs it, in the batch's own folder.
+                    // cmd.exe runs it, with the batch's own folder as the
+                    // working directory - cmd.exe itself would land in System32
+                    // and every relative path in the batch would break.
                     string comspec = Environment.GetEnvironmentVariable("ComSpec");
                     if (string.IsNullOrEmpty(comspec)) comspec = "cmd.exe";
-                    StartDetached(comspec, "/c \"" + target + "\"", null, "runas");
+                    string workDir = null;
+                    try { workDir = Path.GetDirectoryName(target); } catch { }
+                    StartDetached(comspec, "/c \"" + target + "\"", workDir, "runas");
                     return;
                 }
                 StartDetached(target, null, null, "runas");
@@ -8014,11 +8027,17 @@ namespace WinPanel
             string dir = null;
             try { dir = Path.GetDirectoryName(path); }
             catch (Exception ex) { AppLog.Write("RevealInExplorer: GetDirectoryName", ex); }
+            // A network target is opened on trust: a stat on a dead share would
+            // stall the click for the SMB timeout, and Explorer (or the file
+            // manager) reports a missing share by itself.
+            bool network = false;
+            try { network = IconExtractor.IsNetworkPath(path); }
+            catch (Exception ex) { AppLog.Write("RevealInExplorer: IsNetworkPath", ex); }
             string fmExe, fmTemplate;
             if (TryGetFolderOpenCommand(out fmExe, out fmTemplate))
             {
                 string openDir = !string.IsNullOrEmpty(dir) ? dir : path;
-                if (IsDirectoryPath(openDir))
+                if (network || IsDirectoryPath(openDir))
                 {
                     StartDetached(fmExe, FolderOpenArgs(fmTemplate, fmExe, openDir), openDir);
                     return;
@@ -8026,9 +8045,12 @@ namespace WinPanel
             }
             if (!string.IsNullOrEmpty(dir))
             {
-                bool dirExists = false;
-                try { dirExists = Directory.Exists(dir); }
-                catch (Exception ex) { AppLog.Write("RevealInExplorer: Directory.Exists", ex); }
+                bool dirExists = network;
+                if (!network)
+                {
+                    try { dirExists = Directory.Exists(dir); }
+                    catch (Exception ex) { AppLog.Write("RevealInExplorer: Directory.Exists", ex); }
+                }
                 if (dirExists)
                     StartDetached("explorer.exe", "/select,\"" + path + "\"");
                 else
@@ -8649,32 +8671,31 @@ namespace WinPanel
                 // directory would otherwise open ten Explorers). The folder is
                 // the one of the real target, so shortcut tiles group by where
                 // the files they point at live, not by the panel's ico\ copies.
-                var perFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                // Grouping only needs the folder: the full resolution, with all
+                // its existence fallbacks, runs on the click from the original
+                // tile path - exactly the way the single-tile menu does it.
+                var perFolder = new Dictionary<string, ShortcutItem>(StringComparer.OrdinalIgnoreCase);
                 foreach (var it in multiSelection)
                 {
                     string p = it == null ? null : it.Path;
+                    string dir = null;
                     try
                     {
-                        // Grouping needs the folder only, never a live probe: the
-                        // full resolution (with its existence fallback) runs for
-                        // the folders that actually open, after the click.
                         if (!string.IsNullOrEmpty(p) && p.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
                         {
                             string t = PanelSearch.ResolveTarget(p);
                             if (!string.IsNullOrEmpty(t)) p = t;
                         }
+                        dir = string.IsNullOrEmpty(p) ? null : Path.GetDirectoryName(p);
                     }
                     catch { }
-                    string dir = null;
-                    try { dir = string.IsNullOrEmpty(p) ? null : Path.GetDirectoryName(p); }
-                    catch { }
                     if (string.IsNullOrEmpty(dir)) continue;
-                    if (!perFolder.ContainsKey(dir)) perFolder[dir] = p;
+                    if (!perFolder.ContainsKey(dir)) perFolder[dir] = it;
                 }
                 if (perFolder.Count > 0)
                     m.MenuItems.Add(Loc.S("Open containing folder", "Открыть содержащую папку"), (s2, e2) =>
                     {
-                        foreach (var p in perFolder.Values) RevealInExplorer(ResolveRevealPath(p));
+                        foreach (var it in perFolder.Values) OpenContainingFolder(it);
                     });
                 m.MenuItems.Add(Loc.S("Clear selection", "Снять выделение"), (s2, e2) => ClearMultiSelection());
                 m.Show(tile, location);
