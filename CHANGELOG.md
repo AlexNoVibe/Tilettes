@@ -1,10 +1,12 @@
 # Changelog
 
-## Unreleased
+## v1.2.4 - 2026-10-31
 
 - **"Open containing folder" on a tile now lands where the real file lives**: every .lnk added to the panel is kept as the panel's own copy in the `ico\` folder, so revealing the tile path always opened that folder instead of the place the shortcut points at. The tile's shortcut is resolved first (the same three-source .lnk parse the search uses: the binary LinkInfo block, the raw-bytes scan and WScript.Shell) and the target's folder opens with the file selected. A shortcut whose target is gone still opens its target's folder when that folder exists; a shortcut that resolves to nothing local (a packaged-app pin), a dead link on a gone drive, a plain file or folder keep the old behavior. The bulk "Open containing folder" of a red multi-selection groups by the real folders too — ten shortcuts to the same app open one window, not ten, and building that menu only resolves shortcut targets through the session cache (the .lnk files themselves may be read on a first use in a session — no existence probes). A target on a network share is revealed without probing, so a dead share cannot stall the click.
 - **"Run as administrator" in the search context menus**: the regular results and the "Past search" rows both gained the entry. It elevates the real target behind a shortcut (with the target's own folder as the working directory) instead of the panel's `ico\` copy, runs a batch file through an elevated `cmd.exe /c` in the batch's own folder (runas does not reach a .bat directly), honors the shortcut's own "Start in" working directory for the elevated launch too (a plain tile open already did), and a "No" in the UAC prompt stays silent. Folders, packaged apps, dead shortcut targets and shortcuts that resolve to nothing local are not offered it (for a shortcut that costs two local stats when the menu opens; network targets are never probed).
 - The new entry ships in all ten languages.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.2.3...v1.2.4
 
 ## v1.2.3 - 2026-10-25
 
