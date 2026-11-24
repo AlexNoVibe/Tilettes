@@ -192,6 +192,7 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 - **Panel search** shows the best **200** matches; a file list shows at most **800** entries per directory.
 - **Console is `cmd.exe` only**: single-line commands; interactive/TUI programs (editors, pagers with key input) do not work properly; the output buffer auto-clears after ~150 000 characters; encoding follows the system OEM code page (e.g. CP866).
 - **Global hotkey** is one letter/digit plus modifiers; registration fails with a balloon tip if another program already owns it.
+- **Win key invocation over elevated windows (UIPI)**: if the active foreground window runs as Administrator, Windows UIPI (User Interface Privilege Isolation) prevents the low-level keyboard hook from intercepting or swallowing the Win key properly. **Workaround**: run Tilettes as Administrator (or configure autostart via Task Scheduler with highest privileges).
 - **Panel size resets to Startup Size on every launch** — only the position is remembered (by design).
 - **Drag & drop and tile moving require edit mode** ("Allow adding icons" / ✅ button).
 - Folder tiles preview at most **9** child icons; the folder popup shows at most **4** columns per row.
