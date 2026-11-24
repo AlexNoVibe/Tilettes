@@ -3371,6 +3371,12 @@ namespace WinPanel
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPhysicalPoint(NativePoint pt);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool IsChild(IntPtr hWndParent, IntPtr hWnd);
+
         // Win32 WINDOWPLACEMENT: the native restore rectangle lives in
         // rcNormalPosition and is what every restore - WinForms' own, the
         // taskbar's, a ShowWindow - actually obeys.
@@ -3413,6 +3419,12 @@ namespace WinPanel
         private static bool IsStartButtonInTray(IntPtr tray, Point pt)
         {
             if (tray == IntPtr.Zero) return false;
+            try
+            {
+                IntPtr wnd = WindowFromPhysicalPoint(new NativePoint { X = pt.X, Y = pt.Y });
+                if (wnd == IntPtr.Zero || (wnd != tray && !IsChild(tray, wnd))) return false;
+            }
+            catch { }
             Win32Rect tr;
             if (!GetWindowRectNative(tray, out tr)) return false;
             if (pt.X < tr.L || pt.X > tr.R || pt.Y < tr.T || pt.Y > tr.B) return false;
@@ -7727,6 +7739,7 @@ namespace WinPanel
                                 tabNavigations[tabData].Count > 0,
                                 () => MoveItemOutOfFolder(panel, tabData, item),
                                 () => OpenContainingFolder(item),
+                                (!string.IsNullOrEmpty(item.Path) && item.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) ? new Action(() => RevealInExplorer(item.Path)) : null,
                                 (!string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path)) ? new Action(delegate() { OpenMiniExplorer(item); }) : null,
                                 () => ChangeIconSize(item, tile, panel, tabData, 1),
                                 () => ChangeIconSize(item, tile, panel, tabData, 2),
@@ -9184,6 +9197,8 @@ namespace WinPanel
             if (!child.IsFolder && !string.IsNullOrEmpty(child.Path))
             {
                 menu.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => MainForm.OpenContainingFolder(child));
+                if (child.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                    menu.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => MainForm.RevealInExplorer(child.Path));
             }
             if (editMode && navStack.Count == 0) // "move out" makes sense only for the root level
             {

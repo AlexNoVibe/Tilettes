@@ -157,7 +157,7 @@ One row each for **Tiles**, **Tabs** and **UI**:
 | Ctrl+Click a folder tile | Open the mini explorer (if enabled). |
 | Drag a tile (edit mode) | Move it; drop onto a folder to move it inside. |
 | Drop files onto the panel (edit mode) | Add as tiles (drop onto a folder to add inside). |
-| Right-click a tile | Native Explorer menu plus: Description…, Size 1×1–6×6, Rename, Change Icon, Remove, Move out of folder, Move to tab ▸, Open in Mini Explorer (folders). |
+| Right-click a tile | Native Explorer menu plus: Open shortcut location (shortcuts), Description…, Size 1×1–6×6, Rename, Change Icon, Remove, Move out of folder, Move to tab ▸, Open in Mini Explorer (folders). |
 | Right-click a tab | Delete (last tab is protected), Rename, Toggle free/grid layout. |
 | Drag a tab | Reorder within a row or move to another row. |
 | Right-click empty panel | Create Folder, Settings. |
@@ -196,7 +196,7 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 - **Panel size resets to Startup Size on every launch** — only the position is remembered (by design).
 - **Drag & drop and tile moving require edit mode** ("Allow adding icons" / ✅ button).
 - Folder tiles preview at most **9** child icons; the folder popup shows at most **4** columns per row.
-- `.lnk`/`.ico` items added to the panel are **copied into `ico\`** so they survive moving of the originals.
+- `.lnk`/`.ico` items added to the panel are **copied into `ico\`** so they survive moving of the originals. If you need to edit shortcut parameters, arguments, or the working directory, modify the copy inside `ico\` (this mechanism is planned to be redesigned).
 - **Restore archive** accepts only zips created by Tilettes ("Backup now" / "Save backup (zip)").
 - Rounded window corners are temporarily removed while resizing (technique to avoid flicker) and restored on release.
 - The layout fix covers the EN↔RU QWERTY pair; other layouts are passed through untouched.

@@ -165,6 +165,7 @@ namespace WinPanel
             { "Open With by File Type", "Abrir com por tipo de arquivo" },
             { "Open console window here", "Abrir janela de console aqui" },
             { "Open containing folder", "Abrir pasta que o contém" },
+            { "Open shortcut location", "Abrir local do atalho" },
             { "Run as administrator", "Executar como administrador" },
             { "Open folders in:", "Abrir pastas em:" },
             { "Open in Explorer", "Abrir no Explorador" },

@@ -178,6 +178,7 @@ namespace WinPanel
             string descriptionLabel, Action onEditDescription,
             bool canMoveOutOfFolder, Action onMoveOutOfFolder,
             Action onOpenContainingFolder,
+            Action onOpenShortcutLocation,
             Action onOpenMiniExplorer,
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
             Action onRemove, Action onRename, Action onChangeIcon,
@@ -195,7 +196,7 @@ namespace WinPanel
                 // sense (remove the dead tile, rename it, open the parent...).
                 // A silent "nothing happens" looked like the tile not existing.
                 ShowOwnMenuFallback(x, y, handle, editMode, descriptionLabel, onEditDescription,
-                    canMoveOutOfFolder, onMoveOutOfFolder, onOpenContainingFolder, onOpenMiniExplorer,
+                    canMoveOutOfFolder, onMoveOutOfFolder, onOpenContainingFolder, onOpenShortcutLocation, onOpenMiniExplorer,
                     onSize1, onSize2, onSize3, onSize4, onSize5, onSize6,
                     onRemove, onRename, onChangeIcon, auraLabel, onAura, moveToTabs, onMoveToTab);
                 return;
@@ -224,6 +225,8 @@ namespace WinPanel
                     if (onOpenMiniExplorer != null)
                         InsertCustomItem(hMenu, pos++, customIdStart + 9, Loc.S("Open in Mini Explorer"), marker);
                     InsertCustomItem(hMenu, pos++, customIdStart + 7, Loc.S("Open containing folder"), marker);
+                    if (onOpenShortcutLocation != null)
+                        InsertCustomItem(hMenu, pos++, customIdStart + 16, Loc.S("Open shortcut location", "Открыть папку ярлыка"), marker);
                     if (descriptionLabel != null && onEditDescription != null)
                         InsertCustomItem(hMenu, pos++, customIdStart + 11, descriptionLabel, marker);
                     if (editMode && canMoveOutOfFolder)
@@ -317,6 +320,7 @@ namespace WinPanel
                         finally { if (dirPtr != IntPtr.Zero) Marshal.FreeHGlobal(dirPtr); }
                     }
                     else if (cmd == customIdStart + 7) { if (onOpenContainingFolder != null) onOpenContainingFolder(); }
+                    else if (cmd == customIdStart + 16) { if (onOpenShortcutLocation != null) onOpenShortcutLocation(); }
                     else if (cmd == customIdStart + 8) { if (onMoveOutOfFolder != null) onMoveOutOfFolder(); }
                     else if (cmd == customIdStart + 9) { if (onOpenMiniExplorer != null) onOpenMiniExplorer(); }
                     else if (cmd == customIdStart) { if (onSize1 != null) onSize1(); }
@@ -349,7 +353,7 @@ namespace WinPanel
         private static void ShowOwnMenuFallback(int x, int y, IntPtr handle, bool editMode,
             string descriptionLabel, Action onEditDescription,
             bool canMoveOutOfFolder, Action onMoveOutOfFolder,
-            Action onOpenContainingFolder, Action onOpenMiniExplorer,
+            Action onOpenContainingFolder, Action onOpenShortcutLocation, Action onOpenMiniExplorer,
             Action onSize1, Action onSize2, Action onSize3, Action onSize4,
             Action onSize5, Action onSize6,
             Action onRemove, Action onRename, Action onChangeIcon,
@@ -361,6 +365,8 @@ namespace WinPanel
                 var m = new System.Windows.Forms.ContextMenu();
                 if (onOpenContainingFolder != null)
                     m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => onOpenContainingFolder());
+                if (onOpenShortcutLocation != null)
+                    m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => onOpenShortcutLocation());
                 if (onOpenMiniExplorer != null)
                     m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => onOpenMiniExplorer());
                 if (descriptionLabel != null && onEditDescription != null)
