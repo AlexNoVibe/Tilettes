@@ -225,8 +225,6 @@ namespace WinPanel
                     if (onOpenMiniExplorer != null)
                         InsertCustomItem(hMenu, pos++, customIdStart + 9, Loc.S("Open in Mini Explorer"), marker);
                     InsertCustomItem(hMenu, pos++, customIdStart + 7, Loc.S("Open containing folder"), marker);
-                    if (onOpenShortcutLocation != null)
-                        InsertCustomItem(hMenu, pos++, customIdStart + 16, Loc.S("Open shortcut location", "Открыть папку ярлыка"), marker);
                     if (descriptionLabel != null && onEditDescription != null)
                         InsertCustomItem(hMenu, pos++, customIdStart + 11, descriptionLabel, marker);
                     if (editMode && canMoveOutOfFolder)
@@ -279,6 +277,12 @@ namespace WinPanel
                             moveItem.hbmpItem = marker;
                             InsertMenuItem(hMenu, (uint)GetMenuItemCount(hMenu), true, ref moveItem);
                         }
+                    }
+
+                    if (onOpenShortcutLocation != null)
+                    {
+                        InsertSeparator(hMenu, (uint)GetMenuItemCount(hMenu));
+                        InsertCustomItem(hMenu, (uint)GetMenuItemCount(hMenu), customIdStart + 16, Loc.S("Open shortcut location", "Открыть папку ярлыка"), marker);
                     }
 
                     ContextMenuHook hook = new ContextMenuHook(handle, contextMenu);
@@ -365,8 +369,6 @@ namespace WinPanel
                 var m = new System.Windows.Forms.ContextMenu();
                 if (onOpenContainingFolder != null)
                     m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => onOpenContainingFolder());
-                if (onOpenShortcutLocation != null)
-                    m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => onOpenShortcutLocation());
                 if (onOpenMiniExplorer != null)
                     m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => onOpenMiniExplorer());
                 if (descriptionLabel != null && onEditDescription != null)
@@ -401,6 +403,11 @@ namespace WinPanel
                             moveTo.MenuItems.Add(moveToTabs[i], (s2, e2) => onMoveToTab(idx));
                         }
                     }
+                }
+                if (onOpenShortcutLocation != null)
+                {
+                    m.MenuItems.Add("-");
+                    m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => onOpenShortcutLocation());
                 }
                 if (m.MenuItems.Count > 0)
                 {

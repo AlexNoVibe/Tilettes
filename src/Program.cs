@@ -2579,6 +2579,8 @@ namespace WinPanel
             AddRunAsAdminItem(m, it == null ? null : it.Path, it != null && it.IsFolder);
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenSearchResultInMiniExplorer(it));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(SearchResultRevealPath(it)));
+            if (it != null && !it.IsFolder && !string.IsNullOrEmpty(it.Path) && it.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => RevealInExplorer(it.Path));
             m.Show(panelSearchList, location);
         }
 
@@ -2594,6 +2596,8 @@ namespace WinPanel
             AddRunAsAdminItem(m, he.Path, he.IsFolder);
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenPathInMiniExplorer(PastEntryRevealPath(he)));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(PastEntryRevealPath(he)));
+            if (he != null && !he.IsFolder && !string.IsNullOrEmpty(he.Path) && he.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => RevealInExplorer(he.Path));
             m.MenuItems.Add(new MenuItem("-"));
             m.MenuItems.Add(Loc.S("Remove from past search", "Удалить из прошлого поиска"),
                 (s2, e2) => RemovePastSearchEntry(he));
@@ -9197,8 +9201,6 @@ namespace WinPanel
             if (!child.IsFolder && !string.IsNullOrEmpty(child.Path))
             {
                 menu.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => MainForm.OpenContainingFolder(child));
-                if (child.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-                    menu.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => MainForm.RevealInExplorer(child.Path));
             }
             if (editMode && navStack.Count == 0) // "move out" makes sense only for the root level
             {
@@ -9231,6 +9233,10 @@ namespace WinPanel
                     if (onChanged != null) onChanged();
                     Rebuild();
                 });
+            }
+            if (!child.IsFolder && !string.IsNullOrEmpty(child.Path) && child.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                menu.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => MainForm.RevealInExplorer(child.Path));
             }
             if (menu.MenuItems.Count > 0)
                 menu.Show(tile, location);
