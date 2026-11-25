@@ -352,7 +352,25 @@ public static class LnkHelper
                 bw.Write(Encoding.Unicode.GetBytes(chars));
             }
             bw.Write((uint)0);
-            File.WriteAllBytes(destPath, ms.ToArray());
+            WriteBytesAtomic(destPath, ms.ToArray());
+        }
+    }
+
+    private static void WriteBytesAtomic(string destPath, byte[] data)
+    {
+        string tmpPath = destPath + ".tmp." + Guid.NewGuid().ToString("N").Substring(0, 8);
+        try
+        {
+            File.WriteAllBytes(tmpPath, data);
+            if (File.Exists(destPath))
+                File.Replace(tmpPath, destPath, null);
+            else
+                File.Move(tmpPath, destPath);
+        }
+        finally
+        {
+            if (File.Exists(tmpPath))
+                try { File.Delete(tmpPath); } catch { }
         }
     }
 
@@ -389,7 +407,7 @@ public static class LnkHelper
             bytes[0x15] = (byte)((flags >> 8) & 0xFF);
             bytes[0x16] = (byte)((flags >> 16) & 0xFF);
             bytes[0x17] = (byte)((flags >> 24) & 0xFF);
-            File.WriteAllBytes(origLnkPath, bytes);
+            WriteBytesAtomic(origLnkPath, bytes);
         }
     }
 }
@@ -548,11 +566,18 @@ foreach ($entry in $icoEntries) {
 
     $icoInfo = [LnkHelper]::ReadLnk($entry.FullName)
     if ($icoInfo.IsRedirect) {
+        $redirExists = $false
+        try { $redirExists = Test-Path -LiteralPath $icoInfo.RawLinkInfoPath } catch { $redirExists = $false }
         $alreadyRedirect.Add([pscustomobject]@{
             Name   = $entry.Name
             Ico    = $icoInfo
-            Exists = (Test-Path -LiteralPath $icoInfo.RawLinkInfoPath)
+            Exists = $redirExists
         })
+        continue
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($icoInfo.ReadError)) {
+        $skippedNoTarget.Add([pscustomobject]@{ Name = $entry.Name; Path = $entry.FullName; Reason = "Read error: $($icoInfo.ReadError)" })
         continue
     }
 
@@ -781,17 +806,27 @@ function Ensure-BackupDir {
 $converted = 0
 $pushedAndConverted = 0
 $skipped = 0
+$origBackupSeq = 0
 
 if ($readyExact.Count -gt 0) {
     $ans = Read-Host "Convert $($readyExact.Count) EXACT-match shortcut(s) to redirect links (originals untouched, backup in _migration_backup_$stamp)? [y/N]"
     if ($ans -match '^(y|yes|д|да)$') {
         Ensure-BackupDir
         foreach ($item in $readyExact) {
-            Copy-Item -LiteralPath $item.Ico.FilePath -Destination (Join-Path $backupIcoDir $item.Name) -Force
-            $meta = Get-RedirectIconMeta $item.Orig
-            [LnkHelper]::WriteRedirectLnkFile($item.Ico.FilePath, $item.Orig.FilePath, $meta.IconPath, $meta.IconIndex, $item.Orig.ShowCmd)
-            Write-Host "  [CONVERTED] $($item.Name) -> $($item.Orig.FilePath)" -ForegroundColor Green
-            $converted++
+            $icoBackupPath = Join-Path $backupIcoDir $item.Name
+            try {
+                Copy-Item -LiteralPath $item.Ico.FilePath -Destination $icoBackupPath -Force
+                $meta = Get-RedirectIconMeta $item.Orig
+                [LnkHelper]::WriteRedirectLnkFile($item.Ico.FilePath, $item.Orig.FilePath, $meta.IconPath, $meta.IconIndex, $item.Orig.ShowCmd)
+                Write-Host "  [CONVERTED] $($item.Name) -> $($item.Orig.FilePath)" -ForegroundColor Green
+                $converted++
+            } catch {
+                Write-Warning "Failed to convert $($item.Name): $($_.Exception.Message). Restoring/skipping."
+                if (Test-Path -LiteralPath $icoBackupPath) {
+                    try { Copy-Item -LiteralPath $icoBackupPath -Destination $item.Ico.FilePath -Force } catch { }
+                }
+                $skipped++
+            }
         }
     } else {
         Write-Host "Skipped exact-match batch." -ForegroundColor Gray
@@ -814,27 +849,45 @@ if ($readyDiff.Count -gt 0) {
         $choice = Read-Host "  Action: [S]kip (default), [R]eplace ico with redirect (discard ico edits), [P]ush ico params -> original & convert"
         if ($choice -match '^(r|replace)$') {
             Ensure-BackupDir
-            Copy-Item -LiteralPath $item.Ico.FilePath -Destination (Join-Path $backupIcoDir $item.Name) -Force
-            $meta = Get-RedirectIconMeta $item.Orig
-            [LnkHelper]::WriteRedirectLnkFile($item.Ico.FilePath, $item.Orig.FilePath, $meta.IconPath, $meta.IconIndex, $item.Orig.ShowCmd)
-            Write-Host "  [CONVERTED (replaced)] $($item.Name) -> $($item.Orig.FilePath)" -ForegroundColor Green
-            $converted++
+            $icoBackupPath = Join-Path $backupIcoDir $item.Name
+            try {
+                Copy-Item -LiteralPath $item.Ico.FilePath -Destination $icoBackupPath -Force
+                $meta = Get-RedirectIconMeta $item.Orig
+                [LnkHelper]::WriteRedirectLnkFile($item.Ico.FilePath, $item.Orig.FilePath, $meta.IconPath, $meta.IconIndex, $item.Orig.ShowCmd)
+                Write-Host "  [CONVERTED (replaced)] $($item.Name) -> $($item.Orig.FilePath)" -ForegroundColor Green
+                $converted++
+            } catch {
+                Write-Warning "Failed to replace $($item.Name): $($_.Exception.Message). Restoring/skipping."
+                if (Test-Path -LiteralPath $icoBackupPath) {
+                    try { Copy-Item -LiteralPath $icoBackupPath -Destination $item.Ico.FilePath -Force } catch { }
+                }
+                $skipped++
+            }
         } elseif ($choice -match '^(p|push)$') {
             Ensure-BackupDir
             if (-not (Test-Path -LiteralPath $backupOrigDir)) {
                 New-Item -ItemType Directory -Path $backupOrigDir -Force | Out-Null
             }
-            $origBackupPath = Join-Path $backupOrigDir ([System.IO.Path]::GetFileName($item.Orig.FilePath))
-            Copy-Item -LiteralPath $item.Orig.FilePath -Destination $origBackupPath -Force
+            $origBackupSeq++
+            $origBackupName = ("{0:D3}_{1}" -f $origBackupSeq, [System.IO.Path]::GetFileName($item.Orig.FilePath))
+            $origBackupPath = Join-Path $backupOrigDir $origBackupName
+            $icoBackupPath = Join-Path $backupIcoDir $item.Name
             try {
+                Copy-Item -LiteralPath $item.Orig.FilePath -Destination $origBackupPath -Force
+                Copy-Item -LiteralPath $item.Ico.FilePath -Destination $icoBackupPath -Force
                 [LnkHelper]::CopyParamsToOriginal($item.Ico, $item.Orig.FilePath)
-                Copy-Item -LiteralPath $item.Ico.FilePath -Destination (Join-Path $backupIcoDir $item.Name) -Force
                 $meta = Get-RedirectIconMeta $item.Ico
                 [LnkHelper]::WriteRedirectLnkFile($item.Ico.FilePath, $item.Orig.FilePath, $meta.IconPath, $meta.IconIndex, $item.Ico.ShowCmd)
                 Write-Host "  [PUSHED + CONVERTED] $($item.Name) -> $($item.Orig.FilePath)" -ForegroundColor Green
                 $pushedAndConverted++
             } catch {
-                Write-Warning "Failed to update original ($($item.Orig.FilePath)): $($_.Exception.Message). Shortcut left unchanged."
+                Write-Warning "Failed to push/convert $($item.Name) ($($item.Orig.FilePath)): $($_.Exception.Message). Rolling back."
+                if (Test-Path -LiteralPath $origBackupPath) {
+                    try { Copy-Item -LiteralPath $origBackupPath -Destination $item.Orig.FilePath -Force } catch { }
+                }
+                if (Test-Path -LiteralPath $icoBackupPath) {
+                    try { Copy-Item -LiteralPath $icoBackupPath -Destination $item.Ico.FilePath -Force } catch { }
+                }
                 $skipped++
             }
         } else {
