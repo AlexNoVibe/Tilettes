@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.3.0 - 2026-11-25
+
+- **Redirect `.lnk` links in `ico\`**: adding a shortcut now creates a lightweight `.lnk -> .lnk` redirect instead of duplicating the shortcut file, keeping edits to the original shortcut in sync.
+- **"Open shortcut location" context menu item**: added to tile, folder popup, search result, and past-search menus (localized in all 10 languages). Follows `.lnk -> .lnk` redirect chains to reveal the original shortcut's folder, or reveals the `ico\` shortcut when it points directly to a target file.
+- **Migration script (`scripts/migrate-ico-shortcuts.ps1`)**: added an interactive read-only-by-default PowerShell script to inspect and migrate legacy byte-copied `.lnk` files in `ico\` into redirect links, with backups and rollback.
+- **Corner clicks & docs**: ignore Start-corner clicks when covered by another window; documented the Win-key UIPI limitation with elevated windows in `README.md`.
+
+**Full Changelog**: https://github.com/AlexNoVibe/Tilettes/compare/v1.2.4...v1.3.0
+
 ## v1.2.4 - 2026-10-31
 
 - **"Open containing folder" on a tile now lands where the real file lives**: every .lnk added to the panel is kept as the panel's own copy in the `ico\` folder, so revealing the tile path always opened that folder instead of the place the shortcut points at. The tile's shortcut is resolved first (the same three-source .lnk parse the search uses: the binary LinkInfo block, the raw-bytes scan and WScript.Shell) and the target's folder opens with the file selected. A shortcut whose target is gone still opens its target's folder when that folder exists; a shortcut that resolves to nothing local (a packaged-app pin), a dead link on a gone drive, a plain file or folder keep the old behavior. The bulk "Open containing folder" of a red multi-selection groups by the real folders too — ten shortcuts to the same app open one window, not ten, and building that menu only resolves shortcut targets through the session cache (the .lnk files themselves may be read on a first use in a session — no existence probes). A target on a network share is revealed without probing, so a dead share cannot stall the click.
