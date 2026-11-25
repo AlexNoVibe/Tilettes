@@ -2659,7 +2659,8 @@ namespace WinPanel
                 // A shortcut that did not resolve to a real file (a packaged-app
                 // pin, a dead link) has nothing to elevate: the shell would just
                 // fail on the shortcut itself.
-                if (isLnk && string.Equals(target, path, StringComparison.OrdinalIgnoreCase)) return false;
+                if (isLnk && (string.Equals(target, path, StringComparison.OrdinalIgnoreCase) ||
+                              target.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))) return false;
                 if (UwpApps.IsAppsFolderAumid(target)) return false;
                 // A shortcut may point at a folder or at a file that is gone:
                 // neither is worth a UAC prompt (a dead target would only
@@ -5127,7 +5128,8 @@ namespace WinPanel
             }
 
             // File-type rule: open with the program assigned to this extension (if any).
-            string target = path;
+            string target = ResolveLnkChain(path);
+            string launchPath = target;
             string args = null;
             string workDir = null;
             try
@@ -5150,7 +5152,7 @@ namespace WinPanel
             catch (Exception ex) { AppLog.Write("LaunchItem: file-type rule", ex); }
 
             try { StartDetached(target, args, workDir); }
-            catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError(ShortLaunchNotice(path)); }
+            catch (Exception ex) { AppLog.Write("LaunchItem: StartDetached", ex); ReportLaunchError(ShortLaunchNotice(launchPath)); }
         }
 
         // The folder-opening command from the settings. Accepted forms:
@@ -5299,6 +5301,7 @@ namespace WinPanel
                     // locale decodes to garbage that merely fails
                     // Directory.Exists, and non-conformant shortcuts carry
                     // garbage offsets outright.
+                    path = ResolveLnkChain(path);
                     string target = ParseLnkLocalBasePath(path);
                     if (!string.IsNullOrEmpty(target) && Directory.Exists(target))
                     {
@@ -5357,6 +5360,35 @@ namespace WinPanel
                 }
                 if ((flags & 0x02) == 0) return null; // no LinkInfo: target lives in the ID list only
                 if (off + 0x1C > b.Length) return null;
+                int linkInfoSize = b[off] | (b[off + 1] << 8) | (b[off + 2] << 16) | (b[off + 3] << 24);
+                int linkInfoHeaderSize = b[off + 0x04] | (b[off + 0x05] << 8) | (b[off + 0x06] << 16) | (b[off + 0x07] << 24);
+                int linkInfoEnd = (linkInfoSize > 0x1C && linkInfoSize <= b.Length - off) ? off + linkInfoSize : b.Length;
+                if (linkInfoHeaderSize >= 0x24 && linkInfoEnd - off >= 0x24)
+                {
+                    int localBaseUniOff = b[off + 0x1C] | (b[off + 0x1D] << 8) | (b[off + 0x1E] << 16) | (b[off + 0x1F] << 24);
+                    int pu = off + localBaseUniOff;
+                    if (localBaseUniOff >= 0x24 && pu > off && pu < linkInfoEnd - 1)
+                    {
+                        int endu = pu;
+                        while (endu + 1 < linkInfoEnd && !(b[endu] == 0 && b[endu + 1] == 0)) endu += 2;
+                        string uniPath = System.Text.Encoding.Unicode.GetString(b, pu, endu - pu);
+                        if (!string.IsNullOrEmpty(uniPath))
+                        {
+                            if (uniPath.EndsWith("\\", StringComparison.Ordinal))
+                            {
+                                int commonUniOff = b[off + 0x20] | (b[off + 0x21] << 8) | (b[off + 0x22] << 16) | (b[off + 0x23] << 24);
+                                int qu = off + commonUniOff;
+                                if (commonUniOff >= 0x24 && qu > off && qu < linkInfoEnd - 1)
+                                {
+                                    int endu2 = qu;
+                                    while (endu2 + 1 < linkInfoEnd && !(b[endu2] == 0 && b[endu2 + 1] == 0)) endu2 += 2;
+                                    uniPath += System.Text.Encoding.Unicode.GetString(b, qu, endu2 - qu);
+                                }
+                            }
+                            return uniPath;
+                        }
+                    }
+                }
                 int localBasePathOffset = b[off + 0x10] | (b[off + 0x11] << 8) | (b[off + 0x12] << 16) | (b[off + 0x13] << 24);
                 int p = off + localBasePathOffset;
                 if (p <= off || p >= b.Length) return null;
@@ -5399,6 +5431,36 @@ namespace WinPanel
         // or unreadable (garbage offsets beyond the file), and the shell
         // still resolves them through the ID list — so the folder open
         // must scan the raw bytes too instead of trusting the spec layout.
+        // Follows .lnk -> .lnk redirect chains created by ConsolidateFilePath so
+        // launches, icon extraction, and folder/admin helpers always reach the
+        // live source shortcut. Bounded and cycle-guarded; never uses the
+        // session ResolveCache so edits to the source .lnk take effect at once.
+        internal static string ResolveLnkChain(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+                return path;
+            try
+            {
+                string cur = path;
+                string icoPrefix = Path.Combine(Application.StartupPath, "ico").TrimEnd('\\') + "\\";
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int hop = 0; hop < 8; hop++)
+                {
+                    if (!seen.Add(cur)) break;
+                    bool inIco = cur.StartsWith(icoPrefix, StringComparison.OrdinalIgnoreCase);
+                    if ((!inIco && IconExtractor.IsNetworkPath(cur)) || !File.Exists(cur)) break;
+                    string next = ParseLnkLocalBasePath(cur);
+                    if (string.IsNullOrEmpty(next) || !next.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) break;
+                    cur = next;
+                }
+                return cur;
+            }
+            catch
+            {
+                return path;
+            }
+        }
+
         internal static string ScanUtf16AbsolutePath(byte[] b)
         {
             for (int i = 0x14; i + 12 <= b.Length; i += 2)
@@ -5574,15 +5636,116 @@ namespace WinPanel
         // referenced assemblies). Used to pin the working directory of shortcut
         // launches: with an empty "Start in" the child would otherwise inherit
         // Tilettes' own working directory and lose the file's surroundings.
+        [System.Runtime.InteropServices.ComImport]
+        [System.Runtime.InteropServices.Guid("00021401-0000-0000-C000-000000000046")]
+        private class ShellLinkCom { }
+
+        [System.Runtime.InteropServices.ComImport]
+        [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+        [System.Runtime.InteropServices.Guid("000214F9-0000-0000-C000-000000000046")]
+        private interface IShellLinkW
+        {
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetPath([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder pszFile, int cchMaxPath, IntPtr pfd, int fFlags);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetIDList(out IntPtr ppidl);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetIDList(IntPtr pidl);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetDescription([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder pszName, int cchMaxName);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetDescription([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszName);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetWorkingDirectory([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder pszDir, int cchMaxPath);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetWorkingDirectory([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszDir);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetArguments([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder pszArgs, int cchMaxPath);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetArguments([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszArgs);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetHotkey(out short pwHotkey);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetHotkey(short wHotkey);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetShowCmd(out int piShowCmd);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetShowCmd(int iShowCmd);
+            [System.Runtime.InteropServices.PreserveSig]
+            int GetIconLocation([System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder pszIconPath, int cchIconPath, out int piIcon);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetIconLocation([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetRelativePath([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
+            [System.Runtime.InteropServices.PreserveSig]
+            int Resolve(IntPtr hwnd, int fFlags);
+            [System.Runtime.InteropServices.PreserveSig]
+            int SetPath([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string pszFile);
+        }
+
+        private static bool TryReadShellLinkW(string lnkPath, out string target, out string workDir, out string iconPath, out int iconIndex, out int showCmd)
+        {
+            target = null; workDir = null; iconPath = null; iconIndex = 0; showCmd = 1;
+            IShellLinkW sl = null;
+            try
+            {
+                sl = (IShellLinkW)new ShellLinkCom();
+                ((System.Runtime.InteropServices.ComTypes.IPersistFile)sl).Load(lnkPath, 0);
+                var sbTarget = new System.Text.StringBuilder(1024);
+                int hr = sl.GetPath(sbTarget, sbTarget.Capacity, IntPtr.Zero, 0);
+                if (hr >= 0 && sbTarget.Length > 0) target = sbTarget.ToString();
+                if (string.IsNullOrEmpty(target))
+                {
+                    sbTarget.Length = 0;
+                    hr = sl.GetPath(sbTarget, sbTarget.Capacity, IntPtr.Zero, 4); // SLGP_RAWPATH
+                    if (hr >= 0 && sbTarget.Length > 0)
+                        target = Environment.ExpandEnvironmentVariables(sbTarget.ToString());
+                }
+                var sbDir = new System.Text.StringBuilder(1024);
+                if (sl.GetWorkingDirectory(sbDir, sbDir.Capacity) >= 0 && sbDir.Length > 0)
+                    workDir = sbDir.ToString();
+                var sbIcon = new System.Text.StringBuilder(1024);
+                int idx;
+                if (sl.GetIconLocation(sbIcon, sbIcon.Capacity, out idx) >= 0)
+                {
+                    string ip = sbIcon.ToString().Trim();
+                    if (!string.IsNullOrEmpty(ip)) iconPath = ip;
+                    iconIndex = idx;
+                }
+                int sc;
+                if (sl.GetShowCmd(out sc) >= 0 && (sc == 3 || sc == 7))
+                    showCmd = sc;
+                return true;
+            }
+            catch { return false; }
+            finally
+            {
+                if (sl != null) try { System.Runtime.InteropServices.Marshal.ReleaseComObject(sl); } catch { }
+            }
+        }
+
         internal static bool TryResolveLnk(string lnkPath, out string target, out string workDir)
         {
             target = null; workDir = null;
             try
             {
+                string effectiveLnk = ResolveLnkChain(lnkPath);
+                if (string.IsNullOrEmpty(effectiveLnk) || !File.Exists(effectiveLnk)) effectiveLnk = lnkPath;
+                string tmpIcon;
+                int tmpIdx, tmpShow;
+                if (TryReadShellLinkW(effectiveLnk, out target, out workDir, out tmpIcon, out tmpIdx, out tmpShow))
+                {
+                    if (!string.IsNullOrEmpty(workDir) && workDir.IndexOf('%') >= 0)
+                        workDir = Environment.ExpandEnvironmentVariables(workDir);
+                    return !string.IsNullOrEmpty(target);
+                }
                 var t = Type.GetTypeFromProgID("WScript.Shell");
                 if (t == null) return false;
                 object sh = Activator.CreateInstance(t);
-                object sc = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
+                object sc = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, sh, new object[] { effectiveLnk });
+
+
+
                 target = sc.GetType().InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
                 workDir = sc.GetType().InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
                 return !string.IsNullOrEmpty(target);
@@ -5645,6 +5808,8 @@ namespace WinPanel
                 // startup thread: the stat alone can block for the SMB timeout.
                 if (IconExtractor.IsNetworkPath(path)) return path;
                 if (!File.Exists(path)) return path;
+                if (lower.EndsWith(".lnk"))
+                    return CreateLnkRedirectInIcoFolder(path);
                 return CopyIntoIcoFolder(path);
             }
             catch
@@ -5674,7 +5839,7 @@ namespace WinPanel
         {
             string appDir = Application.StartupPath.TrimEnd('\\');
             if (path.StartsWith(appDir + "\\", StringComparison.OrdinalIgnoreCase)) return path;
-            string destDir = Path.Combine(appDir, "ico");
+            string destDir = Path.Combine(Application.StartupPath, "ico");
             if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir);
             string fileName = Path.GetFileName(path);
             string dest = Path.Combine(destDir, fileName);
@@ -5692,6 +5857,167 @@ namespace WinPanel
             }
             File.Copy(path, dest);
             return dest;
+        }
+
+        // Creates a .lnk in <exe>\ico\ pointing at sourcePath instead of copying
+        // the source .lnk byte-for-byte. Built directly in MS-SHLLINK format
+        // because WScript.Shell / IShellLinkW dereference .lnk targets on Save()
+        // and reject .lnk IDLists on Load().
+        private static string CreateLnkRedirectInIcoFolder(string sourcePath)
+        {
+            sourcePath = Path.GetFullPath(sourcePath);
+            string appDir = Application.StartupPath.TrimEnd('\\');
+            if (sourcePath.StartsWith(appDir + "\\", StringComparison.OrdinalIgnoreCase)) return sourcePath;
+            string destDir = Path.Combine(Application.StartupPath, "ico");
+            if (!Directory.Exists(destDir)) Directory.CreateDirectory(destDir);
+            string fileName = Path.GetFileName(sourcePath);
+            string dest = Path.Combine(destDir, fileName);
+            if (File.Exists(dest))
+            {
+                if (string.Equals(ParseLnkLocalBasePath(dest), sourcePath, StringComparison.OrdinalIgnoreCase))
+                    return dest;
+                string baseName = Path.GetFileNameWithoutExtension(fileName);
+                string origExt = Path.GetExtension(fileName);
+                bool found = false;
+                for (int i = 2; i < 1000; i++)
+                {
+                    string cand = Path.Combine(destDir, baseName + " (" + i + ")" + origExt);
+                    if (!File.Exists(cand)) { dest = cand; found = true; break; }
+                    if (string.Equals(ParseLnkLocalBasePath(cand), sourcePath, StringComparison.OrdinalIgnoreCase))
+                        return cand;
+                }
+                if (!found)
+                    dest = Path.Combine(destDir, baseName + " (" + Guid.NewGuid().ToString("N").Substring(0, 6) + ")" + origExt);
+            }
+
+            string iconPath;
+            int iconIndex;
+            int showCmd;
+            TryReadLnkMetadata(sourcePath, out iconPath, out iconIndex, out showCmd);
+            WriteRedirectLnkFile(dest, sourcePath, iconPath, iconIndex, showCmd);
+            return dest;
+        }
+
+        private static void TryReadLnkMetadata(string lnkPath, out string iconPath, out int iconIndex, out int showCmd)
+        {
+            iconPath = null;
+            iconIndex = 0;
+            showCmd = 1;
+            try
+            {
+                string target = null;
+                string tmpWd;
+                if (!TryReadShellLinkW(lnkPath, out target, out tmpWd, out iconPath, out iconIndex, out showCmd))
+                {
+                    var t = Type.GetTypeFromProgID("WScript.Shell");
+                    if (t == null) return;
+                    object sh = Activator.CreateInstance(t);
+                    object sc = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
+                    string rawIcon = sc.GetType().InvokeMember("IconLocation", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
+                    if (!string.IsNullOrEmpty(rawIcon))
+                    {
+                        int comma = rawIcon.LastIndexOf(',');
+                        int idx;
+                        if (comma >= 0 && int.TryParse(rawIcon.Substring(comma + 1).Trim(), out idx))
+                        {
+                            string p = rawIcon.Substring(0, comma).Trim();
+                            iconIndex = idx;
+                            if (!string.IsNullOrEmpty(p)) iconPath = p;
+                        }
+                        else
+                        {
+                            string p = rawIcon.Trim();
+                            if (!string.IsNullOrEmpty(p)) iconPath = p;
+                        }
+                    }
+                    target = sc.GetType().InvokeMember("TargetPath", System.Reflection.BindingFlags.GetProperty, null, sc, null) as string;
+                    object wsObj = sc.GetType().InvokeMember("WindowStyle", System.Reflection.BindingFlags.GetProperty, null, sc, null);
+                    if (wsObj is int)
+                    {
+                        int ws = (int)wsObj;
+                        if (ws == 3 || ws == 7) showCmd = ws;
+                    }
+                }
+                if (string.IsNullOrEmpty(iconPath) && !string.IsNullOrEmpty(target) &&
+                    (target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                     target.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) ||
+                     target.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) &&
+                    File.Exists(target))
+                {
+                    iconPath = target;
+                    iconIndex = 0;
+                }
+            }
+            catch { }
+        }
+
+        private static void WriteRedirectLnkFile(string destPath, string targetPath, string iconPath, int iconIndex, int showCmd)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                // ShellLinkHeader (76 bytes = 0x4C)
+                bw.Write((uint)0x0000004C);
+                bw.Write(new Guid("00021401-0000-0000-C000-000000000046").ToByteArray());
+                uint flags = 0x02u | 0x80u; // HasLinkInfo | IsUnicode
+                if (!string.IsNullOrEmpty(iconPath)) flags |= 0x40u; // HasIconLocation
+                bw.Write(flags);
+                bw.Write((uint)0x20); // FILE_ATTRIBUTE_ARCHIVE
+                bw.Write((ulong)0); // CreationTime
+                bw.Write((ulong)0); // AccessTime
+                bw.Write((ulong)0); // WriteTime
+                bw.Write((uint)0); // FileSize
+                bw.Write((int)iconIndex);
+                bw.Write((uint)(showCmd > 0 ? showCmd : 1));
+                bw.Write((ushort)0); // HotKey
+                bw.Write((ushort)0); // Reserved1
+                bw.Write((uint)0); // Reserved2
+                bw.Write((uint)0); // Reserved3
+
+                // LinkInfo (0x24 extended header with Unicode path offsets)
+                byte[] localBaseAnsi = System.Text.Encoding.Default.GetBytes(targetPath + "\0");
+                byte[] localBaseUni = System.Text.Encoding.Unicode.GetBytes(targetPath + "\0");
+                byte[] commonAnsi = new byte[] { 0 };
+                byte[] commonUni = new byte[] { 0, 0 };
+                const int volIdSize = 17;
+                const int linkInfoHeaderSize = 0x24;
+                int volIdOff = linkInfoHeaderSize;
+                int localBaseOff = volIdOff + volIdSize;
+                int commonOff = localBaseOff + localBaseAnsi.Length;
+                int localBaseUniOff = commonOff + commonAnsi.Length;
+                int commonUniOff = localBaseUniOff + localBaseUni.Length;
+                int linkInfoSize = commonUniOff + commonUni.Length;
+
+                bw.Write((uint)linkInfoSize);
+                bw.Write((uint)linkInfoHeaderSize);
+                bw.Write((uint)1); // VolumeIDAndLocalBasePath
+                bw.Write((uint)volIdOff);
+                bw.Write((uint)localBaseOff);
+                bw.Write((uint)0); // CommonNetworkRelativeLinkOffset
+                bw.Write((uint)commonOff);
+                bw.Write((uint)localBaseUniOff);
+                bw.Write((uint)commonUniOff);
+
+                bw.Write((uint)volIdSize);
+                bw.Write((uint)3); // DRIVE_FIXED
+                bw.Write((uint)0);
+                bw.Write((uint)16); // VolumeLabelOffset
+                bw.Write((byte)0);
+
+                bw.Write(localBaseAnsi);
+                bw.Write(commonAnsi);
+                bw.Write(localBaseUni);
+                bw.Write(commonUni);
+
+                if (!string.IsNullOrEmpty(iconPath))
+                {
+                    char[] chars = iconPath.ToCharArray();
+                    bw.Write((ushort)chars.Length);
+                    bw.Write(System.Text.Encoding.Unicode.GetBytes(chars));
+                }
+                bw.Write((uint)0); // TerminalBlock
+                File.WriteAllBytes(destPath, ms.ToArray());
+            }
         }
 
         private static bool FilesEqual(string a, string b)

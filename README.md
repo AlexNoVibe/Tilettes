@@ -196,7 +196,7 @@ Any single-line `cmd.exe` command can be typed and run (Enter or **Run**). The w
 - **Panel size resets to Startup Size on every launch** — only the position is remembered (by design).
 - **Drag & drop and tile moving require edit mode** ("Allow adding icons" / ✅ button).
 - Folder tiles preview at most **9** child icons; the folder popup shows at most **4** columns per row.
-- `.lnk`/`.ico` items added to the panel are **copied into `ico\`** so they survive moving of the originals. If you need to edit shortcut parameters, arguments, or the working directory, modify the copy inside `ico\` (this mechanism is planned to be redesigned).
+- `.lnk` items added to the panel are stored in `ico\` as lightweight redirect shortcuts pointing to the original `.lnk` (instead of byte-copying), so editing arguments, working directory, or target in the original `.lnk` takes effect immediately on the next launch (moving or deleting the original `.lnk` breaks the link). `.ico` files and custom icons are copied into `ico\`.
 - **Restore archive** accepts only zips created by Tilettes ("Backup now" / "Save backup (zip)").
 - Rounded window corners are temporarily removed while resizing (technique to avoid flicker) and restored on release.
 - The layout fix covers the EN↔RU QWERTY pair; other layouts are passed through untouched.
@@ -240,7 +240,7 @@ Some antivirus products occasionally flag `Tilettes.exe` with a generic heuristi
 | `bookmarks.xml` | Mini explorer bookmarks |
 | `filetypes.xml` | File type rules |
 | `searchHistory.xml` | Panel search history ("past search") |
-| `ico\` | Copies of .lnk/.ico items and custom icons |
+| `ico\` | Redirect `.lnk` links to panel shortcuts, plus copied `.ico` and custom icons |
 | `iconcache\` | Persistent icon cache (icons extracted once per tile lifetime) |
 | `autoBackup\` | Scheduled full-backup zips |
 | `log.txt` | Application log (repeated lines are deduplicated) |

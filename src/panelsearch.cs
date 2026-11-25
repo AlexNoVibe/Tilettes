@@ -234,11 +234,13 @@ namespace WinPanel
                 string hit;
                 if (ResolveCache.TryGetValue(key, out hit)) return hit;
             }
+            string cur = lnkPath;
+            try { cur = MainForm.ResolveLnkChain(lnkPath); } catch { }
             string target = null;
-            try { target = MainForm.ParseLnkLocalBasePath(lnkPath); } catch { }
+            try { target = MainForm.ParseLnkLocalBasePath(cur); } catch { }
             if (string.IsNullOrEmpty(target))
             {
-                try { target = MainForm.ScanUtf16AbsolutePath(File.ReadAllBytes(lnkPath)); }
+                try { target = MainForm.ScanUtf16AbsolutePath(File.ReadAllBytes(cur)); }
                 catch { }
             }
             if (string.IsNullOrEmpty(target))
@@ -257,13 +259,15 @@ namespace WinPanel
                     }
                     if (sh != null)
                     {
-                        object sc = sh.GetType().InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnkPath });
+                        object sc = sh.GetType().InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { cur });
                         object tp = sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null);
                         target = tp as string;
                     }
                 }
                 catch { }
             }
+            if (string.IsNullOrEmpty(target) && !string.Equals(cur, lnkPath, StringComparison.OrdinalIgnoreCase))
+                target = cur;
             string resolved = target ?? "";
             lock (ResolveGate)
             {

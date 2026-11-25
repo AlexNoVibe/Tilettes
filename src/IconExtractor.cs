@@ -439,6 +439,13 @@ namespace WinPanel
         {
             try
             {
+                string resolved = MainForm.ResolveLnkChain(path);
+                if (!string.IsNullOrEmpty(resolved) && File.Exists(resolved))
+                    path = resolved;
+            }
+            catch { }
+            try
+            {
                 if (ShellItemApi.IsShellPath(path))
                     return ShellItemApi.GetShellIcon(path, large ? 96 : 48);
             }
