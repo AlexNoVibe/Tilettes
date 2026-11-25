@@ -2580,7 +2580,7 @@ namespace WinPanel
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenSearchResultInMiniExplorer(it));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(SearchResultRevealPath(it)));
             if (it != null && !it.IsFolder && !string.IsNullOrEmpty(it.Path) && it.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => RevealInExplorer(it.Path));
+                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => OpenShortcutLocation(it.Path));
             m.Show(panelSearchList, location);
         }
 
@@ -2597,7 +2597,7 @@ namespace WinPanel
             m.MenuItems.Add(Loc.S("Open in Mini Explorer"), (s2, e2) => OpenPathInMiniExplorer(PastEntryRevealPath(he)));
             m.MenuItems.Add(Loc.S("Open containing folder"), (s2, e2) => RevealInExplorer(PastEntryRevealPath(he)));
             if (he != null && !he.IsFolder && !string.IsNullOrEmpty(he.Path) && he.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
-                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => RevealInExplorer(he.Path));
+                m.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => OpenShortcutLocation(he.Path));
             m.MenuItems.Add(new MenuItem("-"));
             m.MenuItems.Add(Loc.S("Remove from past search", "Удалить из прошлого поиска"),
                 (s2, e2) => RemovePastSearchEntry(he));
@@ -8069,7 +8069,7 @@ namespace WinPanel
                                 tabNavigations[tabData].Count > 0,
                                 () => MoveItemOutOfFolder(panel, tabData, item),
                                 () => OpenContainingFolder(item),
-                                (!string.IsNullOrEmpty(item.Path) && item.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) ? new Action(() => RevealInExplorer(item.Path)) : null,
+                                (!string.IsNullOrEmpty(item.Path) && item.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) ? new Action(() => OpenShortcutLocation(item.Path)) : null,
                                 (!string.IsNullOrEmpty(item.Path) && Directory.Exists(item.Path)) ? new Action(delegate() { OpenMiniExplorer(item); }) : null,
                                 () => ChangeIconSize(item, tile, panel, tabData, 1),
                                 () => ChangeIconSize(item, tile, panel, tabData, 2),
@@ -8347,6 +8347,11 @@ namespace WinPanel
         {
             if (SuppressDoubleLaunch("select:" + item.Path)) return;
             RevealInExplorer(ResolveRevealPath(item.Path));
+        }
+
+        internal static void OpenShortcutLocation(string path)
+        {
+            RevealInExplorer(ResolveLnkChain(path));
         }
 
         // The path "open containing folder" should reveal. Every .lnk added to
@@ -9562,7 +9567,7 @@ namespace WinPanel
             }
             if (!child.IsFolder && !string.IsNullOrEmpty(child.Path) && child.Path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
             {
-                menu.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => MainForm.RevealInExplorer(child.Path));
+                menu.MenuItems.Add(Loc.S("Open shortcut location", "Открыть папку ярлыка"), (s2, e2) => MainForm.OpenShortcutLocation(child.Path));
             }
             if (menu.MenuItems.Count > 0)
                 menu.Show(tile, location);
